@@ -1,13 +1,7 @@
 {
-  "host": "10.241.228.999",
+  "host": "10.241.228.107",
   "port": 5432,
   "database": "AUVERGNE",
-<<<<<<< HEAD
-  "username": "yo dda",
-  "password": "infra"
-}
-=======
   "username": "yadda",
-  "password": "jaddy"
+  "password": "joodhood"
 }
->>>>>>> 3df22eb (general update comment)

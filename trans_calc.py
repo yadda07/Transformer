@@ -63,9 +63,7 @@ class SimpleTransformer:
         except Exception:
             pass
         
-        field = QgsField("temp", QVariant.String)
-        field.setTypeName('string')
-        field.setLength(255)
+        field = QgsField("temp", QVariant.String, "string", 255)
         return field
     
     def test_filter_expression(self, filter_expression: str, source_layer: QgsVectorLayer) -> Tuple[bool, str, int]:
@@ -84,7 +82,7 @@ class SimpleTransformer:
                 matching_features = 0
                 total_tested = 0
                 test_errors = 0
-                max_tests = min(50, source_layer.featureCount())  # Test on maximum 50 features
+                max_tests = min(50, source_layer.featureCount())  
                 
                 # Count the actual number of features that match the filter
                 request = QgsFeatureRequest()
@@ -256,10 +254,65 @@ class SimpleTransformer:
             debug_results.append(f"Exception: {str(e)}")
             return "\n".join(debug_results)
 
+    def _detect_expression_geometry_type(self, source_layer: QgsVectorLayer, geometry_expression: str) -> Optional[str]:
+        """Detect the geometry type that an expression will produce by testing it on a sample feature"""
+        try:
+            # Setup expression evaluation context
+            context = QgsExpressionContext()
+            context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(source_layer))
+            context.setFields(source_layer.fields())
+            
+            # Parse expression
+            expression = QgsExpression(geometry_expression)
+            if expression.hasParserError():
+                QgsMessageLog.logMessage(f"Syntax error in geometry expression: {expression.parserErrorString()}", "Transformer", Qgis.Warning)
+                return None
+            
+            # Get first feature to test expression
+            features = source_layer.getFeatures()
+            try:
+                test_feature = next(features)
+                if not test_feature.hasGeometry():
+                    QgsMessageLog.logMessage("Source layer has no geometry for type detection", "Transformer", Qgis.Warning)
+                    return None
+            except StopIteration:
+                QgsMessageLog.logMessage("No features available for geometry type detection", "Transformer", Qgis.Warning)
+                return None
+            
+            # Evaluate expression on test feature
+            context.setFeature(test_feature)
+            expression.prepare(context)
+            result = expression.evaluate(context)
+            
+            if expression.hasEvalError():
+                QgsMessageLog.logMessage(f"Evaluation error in geometry expression: {expression.evalErrorString()}", "Transformer", Qgis.Warning)
+                return None
+            
+            # Check if result is a geometry and determine type
+            if isinstance(result, QgsGeometry) and not result.isNull():
+                result_geom_type = result.type()
+                geom_type_names = {
+                    QgsWkbTypes.PointGeometry: "Point",
+                    QgsWkbTypes.LineGeometry: "LineString", 
+                    QgsWkbTypes.PolygonGeometry: "Polygon"
+                }
+                detected_type = geom_type_names.get(result_geom_type)
+                if detected_type:
+                    QgsMessageLog.logMessage(f"Detected geometry type: {detected_type} from expression test", "Transformer", Qgis.Info)
+                    return detected_type
+            
+            QgsMessageLog.logMessage(f"Expression result is not a valid geometry: {type(result)}", "Transformer", Qgis.Warning)
+            return None
+        
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Error detecting geometry type: {str(e)}", "Transformer", Qgis.Warning)
+            return None
+
     def create_memory_layer_from_shapefile(self, shp_path: str, table_name: str, 
                                          calculated_fields: Dict[str, str],
                                          filter_config: Optional[Dict[str, Any]] = None,
-                                         target_crs: Optional[QgsCoordinateReferenceSystem] = None) -> Optional[QgsVectorLayer]:
+                                         target_crs: Optional[QgsCoordinateReferenceSystem] = None,
+                                         geometry_expression: Optional[str] = None) -> Optional[QgsVectorLayer]:
         """Create memory layer from shapefile with calculated fields and optional filter"""
         try:
             source_layer = QgsVectorLayer(shp_path, "temp_source", "ogr")
@@ -267,14 +320,22 @@ class SimpleTransformer:
                 QgsMessageLog.logMessage(f"Invalid shapefile: {shp_path}", "Transformer", Qgis.Warning)
                 return None
             
-            # Determine geometry type
-            geom_type = source_layer.geometryType()
-            geom_type_names = {
-                QgsWkbTypes.PointGeometry: "Point",
-                QgsWkbTypes.LineGeometry: "LineString", 
-                QgsWkbTypes.PolygonGeometry: "Polygon"
-            }
-            geom_name = geom_type_names.get(geom_type, "Point")
+            # Determine geometry type - use polygon for geometry expressions
+            if geometry_expression and geometry_expression != "$geometry":
+                # Most geometry expressions produce polygons (buffer, convex_hull, etc.)
+                geom_name = self._detect_expression_geometry_type(source_layer, geometry_expression)
+                if geom_name is None:
+                    geom_name = "Polygon"
+                QgsMessageLog.logMessage(f"Using geometry type: {geom_name} from expression detection", "Transformer", Qgis.Info)
+            else:
+                # Use original geometry type
+                geom_type = source_layer.geometryType()
+                geom_type_names = {
+                    QgsWkbTypes.PointGeometry: "Point",
+                    QgsWkbTypes.LineGeometry: "LineString", 
+                    QgsWkbTypes.PolygonGeometry: "Polygon"
+                }
+                geom_name = geom_type_names.get(geom_type, "Point")
             
             # Get CRS
             source_crs = source_layer.crs()
@@ -349,30 +410,74 @@ class SimpleTransformer:
             for source_feature in source_layer.getFeatures(feature_request):
                 dest_feature = QgsFeature(dest_layer.fields())
                 
-                if source_feature.hasGeometry():
-                    geometry = source_feature.geometry()
-                    
-                    # Vérifier que la géométrie n'est pas None
-                    if geometry is None:
-                        QgsMessageLog.logMessage(f"Géométrie None détectée pour feature ID {source_feature.id()}", "Transformer", Qgis.Warning)
-                        errors += 1
-                        continue
-                    
-                    # Apply coordinate transformation if needed
-                    if coordinate_transform:
-                        try:
-                            geometry.transform(coordinate_transform)
-                        except Exception as e:
-                            QgsMessageLog.logMessage(f"Erreur de transformation géométrique: {str(e)}", "Transformer", Qgis.Warning)
-                            # Use original geometry if transformation fails
-                            geometry = source_feature.geometry()
-                            if geometry is None:
-                                QgsMessageLog.logMessage(f"Géométrie originale aussi None pour feature ID {source_feature.id()}", "Transformer", Qgis.Warning)
-                                errors += 1
-                                continue
-                    
-                    dest_feature.setGeometry(geometry)
+                # Handle geometry - either from expression or copy original
+                final_geometry = None
                 
+                if geometry_expression and geometry_expression != "$geometry":
+                    # Use custom geometry expression
+                    QgsMessageLog.logMessage(f"Applying geometry expression: {geometry_expression}", "Transformer", Qgis.Info)
+                    try:
+                        expr = QgsExpression(geometry_expression)
+                        if not expr.isValid():
+                            QgsMessageLog.logMessage(f"Invalid geometry expression: {expr.parserErrorString()}", "Transformer", Qgis.Warning)
+                            # Fallback to original geometry
+                            if source_feature.hasGeometry():
+                                final_geometry = source_feature.geometry()
+                        else:
+                            # Setup expression context
+                            context = QgsExpressionContext()
+                            context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(source_layer))
+                            context.setFeature(source_feature)
+                            context.setFields(source_layer.fields())
+                            
+                            # Evaluate expression
+                            expr.prepare(context)
+                            result = expr.evaluate(context)
+                            
+                            if expr.hasEvalError():
+                                QgsMessageLog.logMessage(f"Geometry expression evaluation error: {expr.evalErrorString()}", "Transformer", Qgis.Warning)
+                                # Fallback to original geometry
+                                if source_feature.hasGeometry():
+                                    final_geometry = source_feature.geometry()
+                            elif isinstance(result, QgsGeometry):
+                                final_geometry = result
+                                QgsMessageLog.logMessage(f"Geometry expression applied successfully: {geometry_expression}", "Transformer", Qgis.Info)
+                            elif result is not None:
+                                QgsMessageLog.logMessage(f"Geometry expression returned non-geometry: {type(result)}", "Transformer", Qgis.Warning)
+                                # Fallback to original geometry
+                                if source_feature.hasGeometry():
+                                    final_geometry = source_feature.geometry()
+                            else:
+                                # Expression returned None - create null geometry or fallback
+                                if source_feature.hasGeometry():
+                                    final_geometry = source_feature.geometry()
+                    except Exception as e:
+                        QgsMessageLog.logMessage(f"Error evaluating geometry expression: {str(e)}", "Transformer", Qgis.Warning)
+                        # Fallback to original geometry
+                        if source_feature.hasGeometry():
+                            final_geometry = source_feature.geometry()
+                else:
+                    # Use original geometry (default behavior)
+                    if source_feature.hasGeometry():
+                        final_geometry = source_feature.geometry()
+                
+                # Apply coordinate transformation if needed
+                if final_geometry is not None and coordinate_transform:
+                    try:
+                        final_geometry.transform(coordinate_transform)
+                    except Exception as e:
+                        QgsMessageLog.logMessage(f"Error transforming geometry: {str(e)}", "Transformer", Qgis.Warning)
+                        # Use original geometry if transformation fails
+                        if source_feature.hasGeometry():
+                            final_geometry = source_feature.geometry()
+                        else:
+                            final_geometry = None
+                
+                # Set final geometry
+                if final_geometry is not None:
+                    dest_feature.setGeometry(final_geometry)
+                
+                # Calculate and set attribute fields
                 calculated_values = self.calculate_fields(
                     source_feature, source_layer, calculated_fields
                 )
@@ -483,6 +588,10 @@ class SimpleTransformer:
                 # Get filter configuration
                 filter_config = config.get("filter", {"enabled": False, "expression": ""})
                 
+                # Get geometry expression configuration
+                geometry_expression = config.get("geometry_expression")
+                QgsMessageLog.logMessage(f"Table {table_name}: geometry_expression = {geometry_expression}", "Transformer", Qgis.Info)
+                
                 # Reset error flags
                 for field_name in calculated_fields.keys():
                     if hasattr(self, f'_logged_error_{field_name}'):
@@ -491,7 +600,7 @@ class SimpleTransformer:
                         delattr(self, f'_logged_exception_{field_name}')
                 
                 layer = self.create_memory_layer_from_shapefile(
-                    shp_path, table_name, calculated_fields, filter_config, target_crs
+                    shp_path, table_name, calculated_fields, filter_config, target_crs, geometry_expression
                 )
                 
                 if layer:

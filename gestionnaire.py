@@ -79,7 +79,8 @@ class SimpleConfigManager:
             return False
     
     def add_table_config(self, table_name: str, source_file: str, calculated_fields: Dict[str, str], 
-                        filter_config: Optional[Dict[str, Any]] = None, target_crs: Optional[str] = None, force_replace: bool = False):
+                        filter_config: Optional[Dict[str, Any]] = None, target_crs: Optional[str] = None, 
+                        geometry_expression: Optional[str] = None, force_replace: bool = False):
         """Add or update table configuration with filter support
         
         Args:
@@ -127,7 +128,8 @@ class SimpleConfigManager:
             "source_file": source_file,
             "calculated_fields": calculated_fields.copy(),
             "filter": filter_config,
-            "target_crs": target_crs
+            "target_crs": target_crs,
+            "geometry_expression": geometry_expression
         }
         
         filter_info = ""

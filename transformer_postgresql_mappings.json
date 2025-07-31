@@ -1,7 +1,7 @@
 [
   {
-    "transformed": "ZAPBO_transformed",
+    "transformed": "FTTH_CABLE_2FO_transformed",
     "schema": "_controles",
-    "table": "zab"
+    "table": "cb20"
   }
 ]

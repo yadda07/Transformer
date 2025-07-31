@@ -120,7 +120,6 @@ except ImportError as e:
     ExportManager = None
     ExportFormat = None
     EXPORT_CLASSES_AVAILABLE = False
-    print(f"Export module import failed in dialog: {e}")
 
 # Import of the PostgreSQL integration module
 try:
@@ -270,6 +269,7 @@ class AdvancedExpressionWidget(QWidget):
         self.layer = layer
         self.expression_history = []
         self.current_history_index = -1
+        self._original_expression = ""  # Sauvegarde de l'expression originale
         
         self.setup_ui()
         self.setup_connections()
@@ -381,12 +381,34 @@ class AdvancedExpressionWidget(QWidget):
     
     def set_expression(self, expression):
         """Set the expression"""
+        # DEBUG: Log l'expression reçue
+        QgsMessageLog.logMessage(f"DEBUG: AdvancedExpressionWidget.set_expression() received: '{expression}' (length: {len(expression)})", "Transformer", Qgis.Info)
+        
+        # CORRECTION: Sauvegarder l'expression originale
+        self._original_expression = expression
+        
         self.expression_builder.setExpressionText(expression)
+        
+        # DEBUG: Vérifier ce que le widget a réellement stocké
+        stored_expression = self.expression_builder.expressionText()
+        QgsMessageLog.logMessage(f"DEBUG: After setExpressionText(), widget contains: '{stored_expression}' (length: {len(stored_expression)})", "Transformer", Qgis.Info)
+        
         self.validate_expression()
     
     def get_expression(self):
         """Get the current expression"""
-        return self.expression_builder.expressionText()
+        expression = self.expression_builder.expressionText()
+        
+        # CORRECTION: Si l'expression a été tronquée, retourner l'originale
+        if hasattr(self, '_original_expression') and self._original_expression and len(expression) < len(self._original_expression):
+            # Vérifier si c'est une troncature de paramètres (même début)
+            if self._original_expression.startswith(expression.rstrip(')')):
+                QgsMessageLog.logMessage(f"DEBUG: Expression was truncated, returning original: '{self._original_expression}'", "Transformer", Qgis.Info)
+                return self._original_expression
+        
+        # DEBUG: Log l'expression retournée
+        QgsMessageLog.logMessage(f"DEBUG: AdvancedExpressionWidget.get_expression() returning: '{expression}' (length: {len(expression)})", "Transformer", Qgis.Info)
+        return expression
     
     def validate_expression(self):
         """Validate the current expression"""
@@ -896,8 +918,8 @@ Filter is valid and ready to use!"""
         }
 
 
-class SmartFieldWidget(QWidget):
-    """Smart widget for managing calculated fields"""
+class FieldWidget(QWidget):
+    """Widget for managing calculated fields"""
     
     field_added = pyqtSignal(str, str)  # name, expression
     field_removed = pyqtSignal(str)
@@ -1034,6 +1056,20 @@ class SmartFieldWidget(QWidget):
         self.add_field_btn.clicked.connect(self.add_field)
         self.edit_field_btn.clicked.connect(self.edit_selected_field)
         self.remove_field_btn.clicked.connect(self.remove_selected_field)
+        
+        # Connect expression widget changes 
+        if self.expression_widget:
+            # Try to connect to the expression changed signal
+            try:
+                self.expression_widget.expression_changed.connect(self.on_expression_changed)
+            except AttributeError:
+                try:
+                    self.expression_widget.textChanged.connect(self.on_expression_changed)
+                except AttributeError:
+                    try:
+                        self.expression_widget.expressionChanged.connect(self.on_expression_changed)
+                    except AttributeError:
+                        pass  # No suitable signal found
     
     def add_field(self):
         """Add a new calculated field"""
@@ -1094,6 +1130,25 @@ class SmartFieldWidget(QWidget):
         
         # Copy all fields
         fields_added = 0
+        
+        # Add geometry field first if layer has geometry
+        if current_layer.geometryType() != QgsWkbTypes.NullGeometry:
+            geometry_field_name = "geometry"
+            if geometry_field_name not in self.calculated_fields:
+                # Default geometry expression (preserves original geometry)
+                geometry_expression = "$geometry"
+                geometry_description = f"Geometry field ({QgsWkbTypes.displayString(current_layer.wkbType())})"
+                
+                self.calculated_fields[geometry_field_name] = {
+                    "expression": geometry_expression,
+                    "description": geometry_description,
+                    "is_geometry": True  # Mark as geometry field
+                }
+                
+                fields_added += 1
+                self.field_added.emit(geometry_field_name, geometry_expression)
+        
+        # Copy attribute fields
         for field in current_layer.fields():
             field_name = field.name()
             
@@ -1110,7 +1165,8 @@ class SmartFieldWidget(QWidget):
             
             self.calculated_fields[field_name] = {
                 "expression": expression,
-                "description": description
+                "description": description,
+                "is_geometry": False  # Mark as attribute field
             }
             
             fields_added += 1
@@ -1261,18 +1317,61 @@ class SmartFieldWidget(QWidget):
         has_selection = bool(self.fields_tree.currentItem())
         self.edit_field_btn.setEnabled(has_selection)
         self.remove_field_btn.setEnabled(has_selection)
+        
+        # Load selected field expression into calculator
+        if has_selection and self.expression_widget:
+            current_item = self.fields_tree.currentItem()
+            if current_item:
+                field_name = current_item.text(0)
+                if field_name in self.calculated_fields:
+                    expression = self.calculated_fields[field_name]["expression"]
+                    self.expression_widget.set_expression(expression)
     
     def get_calculated_fields(self):
         """Get all calculated fields"""
         return {name: info["expression"] for name, info in self.calculated_fields.items()}
     
-    def set_calculated_fields(self, fields_dict):
-        """Set calculated fields"""
+    def get_calculated_fields_with_geometry_info(self):
+        """Get calculated fields with geometry information for config saving"""
+        result = {}
+        geometry_field = None
+        
+        QgsMessageLog.logMessage(f"DEBUG: Processing {len(self.calculated_fields)} calculated fields", "Transformer", Qgis.Info)
+        
+        for name, info in self.calculated_fields.items():
+            # Check if it's a geometry field (by flag or by name)
+            is_geometry_flag = info.get("is_geometry", False)
+            is_geometry_name = (name == "geometry")
+            
+            QgsMessageLog.logMessage(f"DEBUG: Field '{name}': is_geometry={is_geometry_flag}, name_match={is_geometry_name}, expression='{info['expression']}'")
+            
+            if is_geometry_flag or is_geometry_name:
+                geometry_field = info["expression"]
+                QgsMessageLog.logMessage(f"DEBUG: Setting geometry_expression to '{geometry_field}'", "Transformer", Qgis.Info)
+            else:
+                result[name] = info["expression"]
+        
+        QgsMessageLog.logMessage(f"DEBUG: Final geometry_expression = '{geometry_field}'", "Transformer", Qgis.Info)
+        return result, geometry_field
+    
+    def set_calculated_fields(self, fields_dict, geometry_expression=None):
+        """Set calculated fields with optional geometry expression"""
         self.calculated_fields = {}
+        
+        # Add geometry field if provided
+        if geometry_expression:
+            self.calculated_fields["geometry"] = {
+                "expression": geometry_expression,
+                "description": "Geometry field",
+                "is_geometry": True
+            }
+        
+        # Add attribute fields
         for name, expression in fields_dict.items():
             self.calculated_fields[name] = {
                 "expression": expression,
-                "description": ""
+                "description": "",
+                "is_geometry": False
             }
         self.refresh_fields_list()
     
@@ -1280,6 +1379,44 @@ class SmartFieldWidget(QWidget):
         """Clear all fields"""
         self.calculated_fields.clear()
         self.refresh_fields_list()
+    
+    def on_expression_changed(self):
+        """Called when expression in calculator changes - update selected field"""
+        if not self.expression_widget:
+            return
+            
+        current_item = self.fields_tree.currentItem()
+        if not current_item:
+            return
+            
+        field_name = current_item.text(0)
+        new_expression = self.expression_widget.get_expression().strip()
+        
+        # DEBUG: Log the full expression received from widget
+        QgsMessageLog.logMessage(f"DEBUG: Expression widget returned: '{new_expression}' (length: {len(new_expression)})", "Transformer", Qgis.Info)
+        
+        if field_name in self.calculated_fields:
+            # DEBUG: Log before storing
+            QgsMessageLog.logMessage(f"DEBUG: About to store expression for '{field_name}': '{new_expression}'", "Transformer", Qgis.Info)
+            
+            self.calculated_fields[field_name]["expression"] = new_expression
+            
+            # DEBUG: Log after storing
+            stored_expression = self.calculated_fields[field_name]["expression"]
+            QgsMessageLog.logMessage(f"DEBUG: Stored expression for '{field_name}': '{stored_expression}' (length: {len(stored_expression)})", "Transformer", Qgis.Info)
+            
+            if field_name == "geometry":
+                self.calculated_fields[field_name]["is_geometry"] = True
+            
+            # Update tree display
+            current_item.setText(1, new_expression)
+            
+            # DEBUG: Log tree display
+            tree_expression = current_item.text(1)
+            QgsMessageLog.logMessage(f"DEBUG: Tree displays: '{tree_expression}' (length: {len(tree_expression)})", "Transformer", Qgis.Info)
+            
+            # Emit signal for ALL field changes (not just geometry)
+            self.field_modified.emit(field_name, field_name, new_expression)
 
 
 class FieldDefinitionDialog(QDialog):
@@ -1563,7 +1700,7 @@ class EnhancedTransformerDialog(QMainWindow):
         info_label.setStyleSheet("color: #1976D2; font-style: italic; margin-bottom: 5px;")
         fields_layout.addWidget(info_label)
         
-        self.smart_fields = SmartFieldWidget(self.advanced_expression)
+        self.smart_fields = FieldWidget(self.advanced_expression)
         fields_layout.addWidget(self.smart_fields)
         
         fields_group.setLayout(fields_layout)
@@ -2428,9 +2565,10 @@ Path: {data['path']}"""
                 if config:
                     self.table_name_edit.setText(first_table)
                     
-                    # Auto load calculated fields
+                    # Auto load calculated fields and geometry expression
                     calculated_fields = config.get('calculated_fields', {})
-                    self.smart_fields.set_calculated_fields(calculated_fields)
+                    geometry_expression = config.get('geometry_expression')
+                    self.smart_fields.set_calculated_fields(calculated_fields, geometry_expression)
                     
                     # Auto load filter configuration
                     filter_config = config.get('filter', {})
@@ -2499,7 +2637,14 @@ Path: {data['path']}"""
             if current_item:
                 source_file = current_item.data(0, Qt.UserRole)
             
-            calculated_fields = self.smart_fields.get_calculated_fields()
+            # Get calculated fields separated from geometry
+            QgsMessageLog.logMessage(f"DEBUG: About to call get_calculated_fields_with_geometry_info(), smart_fields exists: {hasattr(self, 'smart_fields')}", "Transformer", Qgis.Info)
+            if hasattr(self, 'smart_fields') and self.smart_fields:
+                calculated_fields, geometry_expression = self.smart_fields.get_calculated_fields_with_geometry_info()
+                QgsMessageLog.logMessage(f"DEBUG: After calling method, geometry_expression = '{geometry_expression}'", "Transformer", Qgis.Info)
+            else:
+                QgsMessageLog.logMessage(f"ERROR: smart_fields not available!", "Transformer", Qgis.Critical)
+                calculated_fields, geometry_expression = {}, None
             filter_config = self.smart_filter.get_filter_config()
             
             # add the CRS target if defined
@@ -2513,6 +2658,7 @@ Path: {data['path']}"""
                 "calculated_fields": calculated_fields,
                 "filter": filter_config,
                 "target_crs": target_crs_str,
+                "geometry_expression": geometry_expression,
                 "created": datetime.now().isoformat(),
                 "plugin_version": "1.0.0"
             }
@@ -2692,8 +2838,11 @@ Path: {data['path']}"""
             current_item = self.shp_tree.currentItem()
             filename = current_item.data(0, Qt.UserRole)
             
-            calculated_fields = self.smart_fields.get_calculated_fields()
+            # Get calculated fields separated from geometry expression
+            calculated_fields, geometry_expression = self.smart_fields.get_calculated_fields_with_geometry_info()
             filter_config = self.smart_filter.get_filter_config()
+            
+            QgsMessageLog.logMessage(f"DEBUG: About to save config with geometry_expression = '{geometry_expression}'", "Transformer", Qgis.Info)
             
             # Get target CRS if defined
             target_crs = None
@@ -2721,10 +2870,10 @@ Path: {data['path']}"""
                     return
                 
                 # Replace existing configuration
-                success = self.config_manager.add_table_config(table_name, filename, calculated_fields, filter_config, target_crs, force_replace=True)
+                success = self.config_manager.add_table_config(table_name, filename, calculated_fields, filter_config, target_crs, geometry_expression, force_replace=True)
             else:
                 # Add new configuration
-                success = self.config_manager.add_table_config(table_name, filename, calculated_fields, filter_config, target_crs)
+                success = self.config_manager.add_table_config(table_name, filename, calculated_fields, filter_config, target_crs, geometry_expression)
             
             if success and self.config_manager.save_config():
                 action = "updated" if self.config_manager.has_table_config(table_name) else "saved"
@@ -3965,7 +4114,7 @@ __all__ = [
     'MinimalTransformerDialog',
     'AdvancedExpressionWidget', 
     'SmartFilterWidget',
-    'SmartFieldWidget',
+    'FieldWidget',
     'ExpressionTesterDialog',
     'PreferencesDialog',
     'InterfaceSettings',
