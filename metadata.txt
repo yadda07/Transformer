@@ -1,0 +1,40 @@
+# QGIS Plugin Configuration
+[general]
+name=Transformer
+qgisMinimumVersion=3.10
+description=Transform shapefiles with calculated fields, coordinate reprojection, and export capabilities
+version=1.0.0
+author=YADDA
+email=yadda@ext.nge.fr
+
+about=Transform shapefiles using calculated fields with QGIS native expressions. 
+    Supports batch processing, coordinate reprojection, and export to multiple formats 
+    including PostgreSQL. Save configurations for reuse in repetitive workflows.
+
+# Tags separated by commas
+tags=shapefile,transformation,calculated fields,data processing,vector,export,postgresql
+
+# Plugin category
+category=Vector
+
+# Plugin icon (optional)
+icon=icon.png
+
+# Experimental version
+experimental=False
+
+# Deprecated plugin
+deprecated=False
+
+# Server status
+server=False
+
+# Changelog
+changelog=
+    1.0.0 - Initial release
+    - Shapefile transformation with calculated fields
+    - Native QGIS expression builder integration
+    - Batch processing and coordinate reprojection
+    - PostgreSQL export with field mapping
+    - Configuration templates for workflow reuse
+    - Real-time expression validation

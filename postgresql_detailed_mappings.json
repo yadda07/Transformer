@@ -1,0 +1,56 @@
+[
+  {
+    "layer_name": "ZAPBO_transformed",
+    "schema": "_controles",
+    "table": "zzz",
+    "field_mappings": {
+      "CODE": "CODE",
+      "NB_PRISES": "NB_PRISES"
+    },
+    "forced_types": {},
+    "custom_fields": {},
+    "timestamp": "2025-07-28T12:18:15.365344",
+    "auto_generated": true
+  },
+  {
+    "layer_name": "ZAPBO_transformed",
+    "schema": "_controles",
+    "table": "Hello",
+    "field_mappings": {
+      "CODE": "CODE",
+      "NB_PRISES": "NB_PRISES"
+    },
+    "forced_types": {},
+    "custom_fields": {},
+    "timestamp": "2025-07-28T13:12:11.915048",
+    "auto_generated": true
+  },
+  {
+    "layer_name": "CHAMBRE_A_CREER_transformed",
+    "schema": "_controles",
+    "table": "CHAC",
+    "field_mappings": {
+      "TYPE_CHAMB": "TYPE_CHAMB",
+      "COMMENTAIR": "Comment",
+      "STATUT_DPL": "STATUT_DPL",
+      "proj_numb": "Proj_number"
+    },
+    "forced_types": {},
+    "custom_fields": {},
+    "timestamp": "2025-07-29T09:38:18.821368",
+    "auto_generated": true
+  },
+  {
+    "layer_name": "ZAPBO_transformed",
+    "schema": "_controles",
+    "table": "zab",
+    "field_mappings": {
+      "prises": "prises",
+      "code": "code",
+      "prisecode": "prisecode"
+    },
+    "forced_types": {},
+    "custom_fields": {},
+    "timestamp": "2025-07-30T15:45:56.858258"
+  }
+]

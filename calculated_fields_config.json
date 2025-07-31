@@ -1,0 +1,33 @@
+{
+  "version": "1.1",
+  "last_modified": "2025-07-29T08:48:03.609893",
+  "tables": {
+    "ZAPBO_transformed": {
+      "source_file": "ZAPBO.shp",
+      "calculated_fields": {
+        "prises": "\"NB_PRISES\"",
+        "code": "\"CODE\"",
+        "prisecode": "\"CODE\""
+      },
+      "filter": {
+        "enabled": false,
+        "expression": ""
+      },
+      "target_crs": null
+    },
+    "CHAMBRE_A_CREER_transformed": {
+      "source_file": "CHAMBRE_A_CREER.shp",
+      "calculated_fields": {
+        "TYPE_CHAMB": "\"TYPE_CHAMB\"",
+        "COMMENTAIR": "\"COMMENTAIR\"",
+        "STATUT_DPL": "\"STATUT_DPL\"",
+        "proj_numb": "\"NUM_PROJET\""
+      },
+      "filter": {
+        "enabled": false,
+        "expression": ""
+      },
+      "target_crs": null
+    }
+  }
+}
