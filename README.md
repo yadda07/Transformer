@@ -79,7 +79,7 @@ The tool is suitable for organizations that need to:
 transformer/
 ├── __init__.py
 ├── main_plugin.py
-├── ui_dialog.py
+├── Transformer_dialog.py
 ├── gestionnaire.py
 ├── trans_calc.py
 ├── export_module.py

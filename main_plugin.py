@@ -22,14 +22,14 @@ from .trans_calc import SimpleTransformer
 
 # Robust import of the interface with error handling
 try:
-    from .ui_dialog import EnhancedTransformerDialog, MinimalTransformerDialog
+    from .Transformer_dialog import EnhancedTransformerDialog, MinimalTransformerDialog
     ENHANCED_INTERFACE_AVAILABLE = True
     QgsMessageLog.logMessage("Enhanced interface loaded successfully", "Transformer", Qgis.Info)
 except ImportError as e:
     QgsMessageLog.logMessage(f"Enhanced interface import failed: {str(e)}", "Transformer", Qgis.Warning)
     try:
         # Fallback to minimal interface
-        from .ui_dialog import MinimalTransformerDialog
+        from .Transformer_dialog import MinimalTransformerDialog
         EnhancedTransformerDialog = None
         ENHANCED_INTERFACE_AVAILABLE = False
         QgsMessageLog.logMessage("Using fallback interface", "Transformer", Qgis.Info)
