@@ -19,6 +19,7 @@ from qgis.core import QgsApplication, QgsMessageLog, Qgis, QgsProject
 from .gestionnaire import SimpleConfigManager
 from .trans_calc import SimpleTransformer
 
+
 # Robust import of the interface with error handling
 try:
     from .ui_dialog import EnhancedTransformerDialog, MinimalTransformerDialog
@@ -482,4 +483,3 @@ class TransformerPlugin:
 def classFactory(iface):
     """Function called by QGIS to create the plugin instance"""
     return TransformerPlugin(iface)
-    

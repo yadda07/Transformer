@@ -1747,7 +1747,11 @@ class EnhancedTransformerDialog(QMainWindow):
         layout = QVBoxLayout()
         layout.setContentsMargins(4, 4, 4, 4)
         
-        # Toolbar
+        # Toolbar avec case à cocher
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Toolbar avec boutons d'action
         toolbar = QToolBar()
         toolbar.setIconSize(QSize(16, 16))
         
@@ -1763,7 +1767,48 @@ class EnhancedTransformerDialog(QMainWindow):
         remove_action.triggered.connect(self.remove_selected_shapefile)
         toolbar.addAction(remove_action)
         
-        layout.addWidget(toolbar)
+        toolbar_layout.addWidget(toolbar)
+        
+        # Case à cocher pour afficher les couches QGIS
+        self.show_qgis_layers_checkbox = QCheckBox("Show QGIS Layers")
+        self.show_qgis_layers_checkbox.setToolTip("Toggle display of shapefiles already loaded in QGIS project")
+        self.show_qgis_layers_checkbox.setStyleSheet("""
+            QCheckBox {
+                font-size: 10px;
+                font-weight: normal;
+                color: #1976D2;
+                margin-left: 8px;
+                spacing: 4px;
+            }
+            QCheckBox::indicator {
+                width: 12px;
+                height: 12px;
+            }
+            QCheckBox::indicator:unchecked {
+                border: 1px solid #BDBDBD;
+                background-color: #FAFAFA;
+                border-radius: 2px;
+            }
+            QCheckBox::indicator:checked {
+                border: 1px solid #1976D2;
+                background-color: #1976D2;
+                border-radius: 2px;
+            }
+            QCheckBox::indicator:checked:hover {
+                background-color: #1565C0;
+                border-color: #1565C0;
+            }
+            QCheckBox::indicator:unchecked:hover {
+                border-color: #757575;
+                background-color: #F5F5F5;
+            }
+        """)
+        self.show_qgis_layers_checkbox.stateChanged.connect(self.on_show_qgis_layers_changed)
+        
+        toolbar_layout.addWidget(self.show_qgis_layers_checkbox)
+        toolbar_layout.addStretch()  # Pousse la checkbox vers la droite
+        
+        layout.addLayout(toolbar_layout)
         
         # Shapefiles list with detailed information
         self.shp_tree = QTreeWidget()
@@ -1779,6 +1824,42 @@ class EnhancedTransformerDialog(QMainWindow):
         header.setStretchLastSection(True)
         
         layout.addWidget(self.shp_tree)
+        
+        # Légende pour les couleurs
+        legend_layout = QHBoxLayout()
+        legend_layout.setContentsMargins(10, 2, 10, 2)
+        
+        # Légende QGIS layers
+        qgis_legend = QLabel("🟦 QGIS Layers")
+        qgis_legend.setStyleSheet("""
+            QLabel {
+                color: #1976D2;
+                font-weight: bold;
+                font-size: 10px;
+                padding: 2px 5px;
+                border-radius: 3px;
+                background-color: #E3F2FD;
+            }
+        """)
+        
+        # Légende External files
+        external_legend = QLabel("🟩 External Files")
+        external_legend.setStyleSheet("""
+            QLabel {
+                color: #2E7D32;
+                font-weight: bold;
+                font-size: 10px;
+                padding: 2px 5px;
+                border-radius: 3px;
+                background-color: #E8F5E8;
+            }
+        """)
+        
+        legend_layout.addWidget(qgis_legend)
+        legend_layout.addWidget(external_legend)
+        legend_layout.addStretch()
+        
+        layout.addLayout(legend_layout)
         
         # Selection information
         info_group = QGroupBox("Selection Info")
@@ -2472,19 +2553,40 @@ class EnhancedTransformerDialog(QMainWindow):
             item.setText(3, data.get('crs', 'Unknown'))
             item.setData(0, Qt.UserRole, filename)
             
-            # Icône selon le type de géométrie
+            # Vérifier si c'est une couche QGIS
+            is_qgis_layer = data.get('is_qgis_layer', False)
+            
+            # Icône selon le type de géométrie et la source
             geom_type = data.get('geometry_type', '').lower()
-            if 'point' in geom_type:
-                item.setIcon(0, QIcon(":/images/themes/default/mIconPointLayer.svg"))
-            elif 'line' in geom_type:
-                item.setIcon(0, QIcon(":/images/themes/default/mIconLineLayer.svg"))
-            elif 'polygon' in geom_type:
-                item.setIcon(0, QIcon(":/images/themes/default/mIconPolygonLayer.svg"))
+            if is_qgis_layer:
+                # Style spécial pour les couches QGIS
+                item.setForeground(0, QColor("#1976D2"))  # Bleu pour les couches QGIS
+                item.setFont(0, QFont("Arial", 9, QFont.Bold))
+                # Préfixe avec icône QGIS
+                if 'point' in geom_type:
+                    item.setIcon(0, QIcon(":/images/themes/default/mIconPointLayer.svg"))
+                elif 'line' in geom_type:
+                    item.setIcon(0, QIcon(":/images/themes/default/mIconLineLayer.svg"))
+                elif 'polygon' in geom_type:
+                    item.setIcon(0, QIcon(":/images/themes/default/mIconPolygonLayer.svg"))
+                else:
+                    item.setIcon(0, QIcon(":/images/themes/default/mIconTableLayer.svg"))
             else:
-                item.setIcon(0, QIcon(":/images/themes/default/mIconTableLayer.svg"))
+                # Style normal pour les fichiers externes
+                item.setForeground(0, QColor("#2E7D32"))  # Vert pour les fichiers externes
+                if 'point' in geom_type:
+                    item.setIcon(0, QIcon(":/images/themes/default/mIconPointLayer.svg"))
+                elif 'line' in geom_type:
+                    item.setIcon(0, QIcon(":/images/themes/default/mIconLineLayer.svg"))
+                elif 'polygon' in geom_type:
+                    item.setIcon(0, QIcon(":/images/themes/default/mIconPolygonLayer.svg"))
+                else:
+                    item.setIcon(0, QIcon(":/images/themes/default/mIconTableLayer.svg"))
             
             # Tooltip avec informations détaillées
-            tooltip = f"""Shapefile: {filename}
+            source_type = "QGIS Layer" if is_qgis_layer else "External File"
+            tooltip = f"""Source: {source_type}
+Name: {filename}
 Features: {data['feature_count']:,}
 Geometry: {data.get('geometry_type', 'Unknown')}
 CRS: {data.get('crs', 'Unknown')}
@@ -2507,9 +2609,19 @@ Path: {data['path']}"""
         
         filename = current_item.data(0, Qt.UserRole)
         
+        # Vérifier si c'est une couche QGIS
+        data = self.loaded_shapefiles.get(filename, {})
+        is_qgis_layer = data.get('is_qgis_layer', False)
+        
+        if is_qgis_layer:
+            message = f"Remove QGIS layer '{filename}' from the source files list?\n\nNote: This will only remove it from the Transformer list, not from the QGIS project."
+            title = "Remove QGIS Layer"
+        else:
+            message = f"Remove external file '{filename}' from the list?\n\nThis will not delete the file from disk."
+            title = "Remove External File"
+        
         reply = QMessageBox.question(
-            self, "Confirm Removal",
-            f"Remove '{filename}' from the list?\n\nThis will not delete the file from disk.",
+            self, title, message,
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
@@ -2518,7 +2630,11 @@ Path: {data['path']}"""
             if filename in self.loaded_shapefiles:
                 del self.loaded_shapefiles[filename]
                 self.refresh_shapefile_list()
-                self.log_message(f"Removed shapefile: {filename}", "Info")
+                
+                if is_qgis_layer:
+                    self.log_message(f"Removed QGIS layer from list: {filename}", "Info")
+                else:
+                    self.log_message(f"Removed external file from list: {filename}", "Info")
     
     def on_shapefile_selection_changed(self):
         """Handle shapefile selection change"""
@@ -2624,6 +2740,83 @@ Path: {data['path']}"""
         # Reset the CRS target
         self.target_crs = None
         self.update_configuration_preview()
+    
+    def on_show_qgis_layers_changed(self, state):
+        """Handle the toggle of QGIS layers display"""
+        try:
+            if state == Qt.Checked:
+                # Ajouter les couches QGIS à la liste
+                self.load_qgis_layers_to_list()
+                self.log_message("QGIS layers added to source files list", "Info")
+            else:
+                # Retirer les couches QGIS de la liste et garder seulement les fichiers externes
+                self.remove_qgis_layers_from_list()
+                self.log_message("QGIS layers removed from source files list", "Info")
+                
+            self.refresh_shapefile_list()
+            
+        except Exception as e:
+            self.log_message(f"Error toggling QGIS layers display: {str(e)}", "Warning")
+    
+    def load_qgis_layers_to_list(self):
+        """Load shapefile layers from QGIS project to the source files list"""
+        try:
+            project = QgsProject.instance()
+            for layer_id, layer in project.mapLayers().items():
+                # Only add vector layers (shapefiles, etc.)
+                if isinstance(layer, QgsVectorLayer) and layer.isValid():
+                    # Check if it's a shapefile or compatible vector format
+                    provider_type = layer.dataProvider().name().lower()
+                    source_path = layer.source()
+                    
+                    # Filter for shapefile-like layers
+                    if (provider_type in ['ogr', 'gdal'] and 
+                        (source_path.lower().endswith('.shp') or 
+                         source_path.lower().endswith('.geojson') or
+                         source_path.lower().endswith('.gml') or
+                         source_path.lower().endswith('.gpkg'))):
+                        
+                        layer_name = layer.name()
+                        
+                        # Avoid duplicates if layer is already in the list
+                        if layer_name not in self.loaded_shapefiles:
+                            # Gather layer information
+                            feature_count = layer.featureCount()
+                            geom_type = QgsWkbTypes.displayString(layer.wkbType())
+                            crs = layer.crs().authid() if layer.crs().isValid() else "Unknown"
+                            
+                            # Add to loaded shapefiles with special QGIS flag
+                            self.loaded_shapefiles[layer_name] = {
+                                'path': source_path,
+                                'feature_count': feature_count,
+                                'geometry_type': geom_type,
+                                'crs': crs,
+                                'layer': layer,
+                                'is_qgis_layer': True  # Special flag to identify QGIS layers
+                            }
+                            
+            self.log_message(f"Loaded {len([k for k, v in self.loaded_shapefiles.items() if v.get('is_qgis_layer', False)])} QGIS layers", "Info")
+                            
+        except Exception as e:
+            self.log_message(f"Error loading QGIS layers: {str(e)}", "Warning")
+    
+    def remove_qgis_layers_from_list(self):
+        """Remove QGIS layers from the source files list, keeping only external files"""
+        try:
+            # Create a new dictionary without QGIS layers
+            external_shapefiles = {}
+            for filename, data in self.loaded_shapefiles.items():
+                if not data.get('is_qgis_layer', False):
+                    external_shapefiles[filename] = data
+            
+            removed_count = len(self.loaded_shapefiles) - len(external_shapefiles)
+            self.loaded_shapefiles = external_shapefiles
+            
+            if removed_count > 0:
+                self.log_message(f"Removed {removed_count} QGIS layers from list", "Info")
+                
+        except Exception as e:
+            self.log_message(f"Error removing QGIS layers: {str(e)}", "Warning")
     
     # === CONFIGURATION MANAGEMENT METHODS ===
     

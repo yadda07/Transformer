@@ -665,3 +665,43 @@ class SimpleTransformer:
             
         except Exception as e:
             return False, f"Exception: {str(e)}"
+
+
+def transform_shapefile_to_memory_layers(shp_path, calculated_fields=None, geometry_expression=None, filter_config=None, feedback=None):
+    """
+    Processing-compatible function for shapefile transformation
+    """
+    if calculated_fields is None:
+        calculated_fields = {}
+    if geometry_expression is None:
+        geometry_expression = "$geometry"
+    if filter_config is None:
+        filter_config = {"enabled": False, "expression": ""}
+    
+    from .gestionnaire import SimpleConfigManager
+    
+    # Create temporary components
+    plugin_dir = os.path.dirname(__file__)
+    config_manager = SimpleConfigManager(plugin_dir)
+    transformer = SimpleTransformer(config_manager)
+    
+    # Create temporary table config
+    temp_table_name = f"temp_{os.path.splitext(os.path.basename(shp_path))[0]}"
+    config_manager.add_table_config(
+        temp_table_name,
+        os.path.basename(shp_path),
+        calculated_fields,
+        geometry_expression=geometry_expression,
+        filter_expression=filter_config.get("expression", "") if filter_config.get("enabled", False) else ""
+    )
+    
+    if feedback:
+        feedback.setProgressText(f"Processing {os.path.basename(shp_path)}")
+    
+    # Transform
+    layers = transformer.transform_shapefile_to_memory_layers(shp_path)
+    
+    # Clean up temporary config
+    config_manager.remove_table_config(temp_table_name)
+    
+    return layers

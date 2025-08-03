@@ -1,6 +1,6 @@
 {
   "version": "1.1",
-  "last_modified": "2025-07-31T13:04:14.428656",
+  "last_modified": "2025-08-03T09:25:17.663396",
   "tables": {
     "PM_transformed": {
       "source_file": "PM.shp",
@@ -180,7 +180,7 @@
         "expression": ""
       },
       "target_crs": null,
-      "geometry_expression": "buffer($geometry,20)"
+      "geometry_expression": "$geometry"
     }
   }
 }
