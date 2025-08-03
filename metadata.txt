@@ -1,4 +1,4 @@
-# QGIS Plugin Configuration
+; QGIS Plugin Configuration
 [general]
 name=Transformer
 qgisMinimumVersion=3.10
@@ -7,31 +7,36 @@ version=1.0.0
 author=YADDA
 email=yadda@ext.nge.fr
 
+; Bug tracker URL (required for publication)
+tracker=https://github.com/yadda07/transformer/issues
+
+; Repository URL (required for publication) 
+repository=https://github.com/yadda07/transformer
+
+; Homepage (optional)
+homepage=https://github.com/yadda07/transformer
+
 about=Transform shapefiles using calculated fields with QGIS native expressions. 
     Supports batch processing, coordinate reprojection, and export to multiple formats 
     including PostgreSQL. Save configurations for reuse in repetitive workflows.
 
-# Tags separated by commas
+; Tags separated by commas
 tags=shapefile,transformation,calculated fields,data processing,vector,export,postgresql
 
-# Plugin category
+; Plugin category
 category=Vector
 
-# Plugin icon (optional)
-icon=icon.png
-
-# Experimental version
+; Experimental version
 experimental=False
 
-# Deprecated plugin
+; Deprecated plugin
 deprecated=False
 
-# Server status
-server=False
+; Maximum QGIS version
+qgisMaximumVersion=3.99
 
-# Changelog
-changelog=
-    1.0.0 - Initial release
+; Changelog
+changelog=1.0.0 - Initial release
     - Shapefile transformation with calculated fields
     - Native QGIS expression builder integration
     - Batch processing and coordinate reprojection
