@@ -16,7 +16,7 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QSplitter,
     QFrame, QScrollArea, QTabWidget, QTreeWidget, QTreeWidgetItem, QGridLayout,
     QApplication, QDesktopWidget, QPlainTextEdit, QProgressBar, QSlider, QCompleter,
-    QInputDialog, QSizePolicy
+    QInputDialog, QSizePolicy, QStyle
 )
 from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal, QTimer, QStringListModel
 from qgis.PyQt.QtGui import QFont, QPixmap, QIcon, QTextCursor, QSyntaxHighlighter, QTextCharFormat, QColor
@@ -1641,10 +1641,46 @@ class PostgreSQLMappingWidget(QWidget):
         """Interface de mapping"""
         layout = QVBoxLayout()
         
-        # Titre
+        # Titre avec bouton d'aide
+        title_layout = QHBoxLayout()
         title = QLabel("Table Mapping")
         title.setStyleSheet("font-weight: bold; font-size: 14px;")
-        layout.addWidget(title)
+        title_layout.addWidget(title)
+        
+        # Bouton d'aide style QGIS
+        help_button = QPushButton("?")
+        help_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2E8B57;
+                color: white;
+                border: 1px solid #1E5F3F;
+                border-radius: 3px;
+                font-weight: bold;
+                font-size: 9px;
+                margin: 0px;
+                padding: 0px;
+                width: 12px;
+                height: 12px;
+                max-width: 12px;
+                max-height: 12px;
+                min-width: 12px;
+                min-height: 12px;
+            }
+            QPushButton:hover {
+                background-color: #228B22;
+                border: 1px solid #006400;
+            }
+            QPushButton:pressed {
+                background-color: #1E5F3F;
+            }
+        """)
+        help_button.setToolTip("Tip: Connect to PostgreSQL database first before setting up table mappings.\nUse 'Test Connection' to verify your database connection.")
+        help_button.setFixedSize(12, 12)
+        help_button.clicked.connect(self.show_mapping_help)
+        title_layout.addStretch()
+        title_layout.addWidget(help_button)
+        
+        layout.addLayout(title_layout)
         
         # Option de connexion automatique
         self.auto_connect_check = QCheckBox("Connexion et mapping automatiques")
@@ -1692,6 +1728,47 @@ class PostgreSQLMappingWidget(QWidget):
         self.save_mappings_btn.clicked.connect(self.save_mappings)
         self.load_mappings_btn.clicked.connect(self.load_mappings)
         self.export_btn.clicked.connect(self.export_to_postgresql)
+    
+    def show_mapping_help(self):
+        """Affiche l'aide pour le mapping des tables"""
+        from PyQt5.QtWidgets import QMessageBox
+        
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Table Mapping Help")
+        msg.setIcon(QMessageBox.Information)
+        
+        help_text = """
+<div style="font-weight: normal;">
+<h2 style="color: #2E8B57; margin-bottom: 15px; font-weight: bold;">PostgreSQL Table Mapping</h2>
+
+<h3 style="color: #4A90E2; margin: 15px 0 8px 0; font-weight: bold;">Prerequisites</h3>
+<ul style="margin: 0; padding-left: 20px; font-weight: normal;">
+<li style="font-weight: normal;">Fill in PostgreSQL connection details</li>
+<li style="font-weight: normal;">Click <span style="background: #2C3E50; color: white; padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 11px;">Test Connection</span> to verify access</li>
+<li style="font-weight: normal;">Use <span style="background: #2C3E50; color: white; padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 11px;">Refresh Schemas</span> to load database schemas</li>
+</ul>
+
+<h3 style="color: #4A90E2; margin: 15px 0 8px 0; font-weight: bold;">Mapping Configuration</h3>
+<ul style="margin: 0; padding-left: 20px; font-weight: normal;">
+<li style="font-weight: normal;">Transformed: QGIS layer name to export</li>
+<li style="font-weight: normal;">Schema: destination PostgreSQL schema</li>
+<li style="font-weight: normal;">Table: target table name</li>
+</ul>
+
+<h3 style="color: #4A90E2; margin: 15px 0 8px 0; font-weight: bold;">Workflow</h3>
+<ul style="margin: 0; padding-left: 20px; font-weight: normal;">
+<li style="font-weight: normal;">Use <span style="background: #27AE60; color: white; padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 11px;">Add Mapping</span> to create new mappings</li>
+<li style="font-weight: normal;">Use <span style="background: #E67E22; color: white; padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 11px;">Save Current</span> to store configurations</li>
+<li style="font-weight: normal;">Auto-mapping loads saved configurations automatically</li>
+</ul>
+</div>
+        """
+        
+        msg.setText(help_text)
+        msg.setTextFormat(Qt.RichText)
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.resize(500, 400)
+        msg.exec_()
     
     def add_mapping(self):
         """Ajoute une nouvelle ligne de mapping"""

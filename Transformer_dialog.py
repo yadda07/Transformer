@@ -478,33 +478,48 @@ class AdvancedExpressionWidget(QWidget):
     
     def show_help(self):
         """Show expression help"""
-        help_text = """
-QGIS Expression Help
+        help_html = """
+<h2 style="color: #2E8B57; margin-bottom: 15px;">QGIS Expression Help</h2>
 
-Common Functions:
-• Geometry: area($geometry), perimeter($geometry), centroid($geometry)
-• Math: round(value, decimals), abs(value), sqrt(value)
-• Text: upper(text), lower(text), concat(text1, text2)
-• Conditional: if(condition, true_value, false_value)
-• Fields: "field_name" or attribute('field_name')
+<h3 style="color: #4682B4; margin-top: 20px; margin-bottom: 10px;">Common Functions</h3>
+<ul style="margin-left: 10px;">
+<li><b>Geometry:</b> <code>area($geometry)</code>, <code>perimeter($geometry)</code>, <code>centroid($geometry)</code></li>
+<li><b>Math:</b> <code>round(value, decimals)</code>, <code>abs(value)</code>, <code>sqrt(value)</code></li>
+<li><b>Text:</b> <code>upper(text)</code>, <code>lower(text)</code>, <code>concat(text1, text2)</code></li>
+<li><b>Conditional:</b> <code>if(condition, true_value, false_value)</code></li>
+<li><b>Fields:</b> <code>"field_name"</code> or <code>attribute('field_name')</code></li>
+</ul>
 
-Examples:
-• Area in hectares: area($geometry) / 10000
-• Centroid coordinates: x(centroid($geometry))
-• Conditional text: if("TYPE" = 'Building', 'Bâtiment', 'Autre')
-• String formatting: concat("NAME", ' - ', "CODE")
+<h3 style="color: #4682B4; margin-top: 20px; margin-bottom: 10px;">Examples</h3>
+<ul style="margin-left: 10px;">
+<li><b>Area in hectares:</b> <code style="color: #8B4513;">area($geometry) / 10000</code></li>
+<li><b>Centroid coordinates:</b> <code style="color: #8B4513;">x(centroid($geometry))</code></li>
+<li><b>Conditional text:</b> <code style="color: #8B4513;">if("TYPE" = 'Building', 'Bâtiment', 'Autre')</code></li>
+<li><b>String formatting:</b> <code style="color: #8B4513;">concat("NAME", ' - ', "CODE")</code></li>
+</ul>
 
-Operators:
-• Arithmetic: +, -, *, /, %, ^
-• Comparison: =, !=, <>, <, >, <=, >=
-• Logical: AND, OR, NOT
-• Pattern: LIKE, ILIKE, ~, !~
+<h3 style="color: #4682B4; margin-top: 20px; margin-bottom: 10px;">Operators</h3>
+<ul style="margin-left: 10px;">
+<li><b>Arithmetic:</b> <code>+ - * / % ^</code></li>
+<li><b>Comparison:</b> <code>= != <> < > <= >=</code></li>
+<li><b>Logical:</b> <code>AND OR NOT</code></li>
+<li><b>Pattern:</b> <code>LIKE ILIKE ~ !~</code></li>
+</ul>
 
-For complete documentation, visit:
-https://docs.qgis.org/latest/en/docs/user_manual/working_with_vector/expression.html
+<p style="margin-top: 20px; font-size: 11px; color: #666;">
+<b>Complete documentation:</b><br/>
+<a href="https://docs.qgis.org/latest/en/docs/user_manual/working_with_vector/expression.html" style="color: #2E8B57;">https://docs.qgis.org/latest/en/docs/user_manual/working_with_vector/expression.html</a>
+</p>
         """
         
-        QMessageBox.information(self, "Expression Help", help_text)
+        # Créer une QMessageBox personnalisée avec formatage HTML
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Expression Help")
+        msg.setTextFormat(Qt.RichText)
+        msg.setText(help_html)
+        msg.setIcon(QMessageBox.Information)
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.exec_()
     
     def load_expression_history(self):
         """Load expression history"""
@@ -3901,48 +3916,218 @@ Errors: {len(errors)}
     
     def show_help(self):
         """Show help"""
-        help_text = """
-Transformer - Bash Edition
+        help_html = """
+<div style="font-family: 'Segoe UI', Arial, sans-serif; background: #0d1117; padding: 20px; border-radius: 10px; width: 100%; min-width: 850px; color: #e6edf3;">
 
-This plugin allows you to transform shapefiles using QGIS calculated fields with advanced filtering capabilities.
+<!-- Header Card -->
+<div style="background: #161b22; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); margin-bottom: 20px; overflow: hidden; border: 1px solid #30363d;">
+<div style="background: #238636; color: #e6edf3; padding: 25px; text-align: center;">
+<h1 style="margin: 0; font-size: 28px; font-weight: 600; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Transformer</h1>
+<p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.95; font-weight: 300;">Arrange your data once, and never rearrange.</p>
+</div>
 
-Key Features:
-• Filter system with templates and suggestions
-• Expression builder with syntax highlighting
-• Field management with quick templates
-• Real-time validation and testing
-• Enhanced export capabilities
+<!-- Core ETL Highlight -->
+<div style="background: linear-gradient(90deg, #0d2818 0%, #0c1c2b 100%); padding: 20px; border-bottom: 3px solid #238636;">
+<div style="text-align: center;">
+<h3 style="margin: 0 0 10px 0; color: #7ee787; font-size: 18px; font-weight: 600;">ETL Workflow</h3>
+<p style="margin: 0; color: #adbac7; font-size: 14px; font-weight: 500;">
+Provides the equivalent of <strong style="color: #238636;">Reader + AttributeManager + Reprojector + Writer</strong><br/>
+components found in commercial ETL solutions, with complete workflow persistence.
+</p>
+</div>
+</div>
+</div>
 
-Getting Started:
-1. Load shapefiles using the toolbar or File menu
-2. Select a shapefile from the list
-3. Configure filters and calculated fields
-4. Validate and test your configuration
-5. Transform to create new layers
-6. Export results in various formats
+<!-- Main Content Cards -->
+<div style="display: flex; gap: 20px; width: 100%; flex-wrap: wrap;">
 
-For detailed documentation, visit:
-https://github.com/yadda07/Transformer
+<!-- Left Column Card -->
+<div style="flex: 1; min-width: 350px; background: #161b22; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; border: 1px solid #30363d;">
+<div style="background: #238636; color: #e6edf3; padding: 15px; text-align: center;">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600;">Features & Getting Started</h2>
+</div>
+<div style="padding: 25px;">
+
+<div style="margin-bottom: 30px;">
+<h3 style="color: #7ee787; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; border-left: 4px solid #238636; padding-left: 12px;">Key Features</h3>
+<ul style="margin: 0; padding-left: 20px; color: #adbac7; font-size: 13px; line-height: 1.7;">
+<li><strong style="color: #7ee787;">Multi-format support:</strong> Shapefile, GeoJSON, GeoPackage, KML, and more</li>
+<li><strong style="color: #7ee787;">Expression builder:</strong> QGIS expressions with syntax validation and suggestions</li>
+<li><strong style="color: #7ee787;">Field management:</strong> Create, edit, and manage calculated fields</li>
+<li><strong style="color: #7ee787;">Filter system:</strong> Robust filtering with templates and suggestions</li>
+<li><strong style="color: #7ee787;">PostgreSQL integration:</strong> Direct export to PostgreSQL databases</li>
+<li><strong style="color: #7ee787;">Export capabilities:</strong> Multiple output formats and batch processing</li>
+<li><strong style="color: #7ee787;">Workflow persistence:</strong> Save complete transformation pipelines</li>
+<li><strong style="color: #7ee787;">Template system:</strong> Reusable configurations for standardized processing</li>
+</ul>
+</div>
+
+<div>
+<h3 style="color: #7ee787; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; border-left: 4px solid #238636; padding-left: 12px;">Getting Started</h3>
+<ol style="margin: 0; padding-left: 20px; color: #adbac7; font-size: 13px; line-height: 1.7;">
+<li><strong style="color: #7ee787;">Load vector files</strong> using the toolbar or from QGIS project layers</li>
+<li><strong style="color: #7ee787;">Select a source</strong> from the list (external files or QGIS layers)</li>
+<li><strong style="color: #7ee787;">Configure fields</strong> and expressions in the Configuration tab</li>
+<li><strong style="color: #7ee787;">Set up filters</strong> to process specific features only</li>
+<li><strong style="color: #7ee787;">Transform data</strong> to create new memory layers</li>
+<li><strong style="color: #7ee787;">Export results</strong> in various formats or to PostgreSQL</li>
+</ol>
+</div>
+
+</div>
+</div>
+
+<!-- Right Column Card -->
+<div style="flex: 1; min-width: 350px; background: #161b22; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; border: 1px solid #30363d;">
+<div style="background: #1f6feb; color: #e6edf3; padding: 15px; text-align: center;">
+<h2 style="margin: 0; font-size: 18px; font-weight: 600;">Technical Components</h2>
+</div>
+<div style="padding: 25px;">
+
+<div style="margin-bottom: 30px;">
+<h3 style="color: #79c0ff; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; border-left: 4px solid #1f6feb; padding-left: 12px;">ETL Components</h3>
+<ul style="margin: 0; padding-left: 20px; color: #adbac7; font-size: 13px; line-height: 1.7;">
+<li><strong style="color: #79c0ff;">Reader:</strong> Multi-format input support (15+ vector formats)</li>
+<li><strong style="color: #79c0ff;">Expressions:</strong> Robust calculation and filtering using QGIS expressions</li>
+<li><strong style="color: #79c0ff;">Coordinate Transformations:</strong> Reprojection and geometric operations</li>
+<li><strong style="color: #79c0ff;">Writer:</strong> Multiple output formats and database integration</li>
+<li><strong style="color: #79c0ff;">Workflow Persistence:</strong> Save complete processing pipelines for automation</li>
+<li><strong style="color: #79c0ff;">Batch Processing:</strong> Handle multiple datasets with same transformation logic</li>
+</ul>
+</div>
+
+<div>
+<h3 style="color: #79c0ff; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; border-left: 4px solid #1f6feb; padding-left: 12px;">Advanced Capabilities</h3>
+<ul style="margin: 0; padding-left: 20px; color: #adbac7; font-size: 13px; line-height: 1.7;">
+<li><strong style="color: #79c0ff;">Geometric transformations:</strong> Buffer, centroid, simplify operations</li>
+<li><strong style="color: #79c0ff;">Coordinate reprojection:</strong> Transform between different CRS</li>
+<li><strong style="color: #79c0ff;">Configuration templates:</strong> Save and reuse transformation settings</li>
+<li><strong style="color: #79c0ff;">Auto-mapping:</strong> PostgreSQL field correspondence</li>
+</ul>
+</div>
+
+</div>
+</div>
+
+</div>
+
+<!-- Developer Info Card -->
+<div style="background: #161b22; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); margin-top: 20px; overflow: hidden; border: 1px solid #30363d;">
+<div style="background: linear-gradient(90deg, #6e7681 0%, #484f58 100%); color: #e6edf3; padding: 15px; text-align: center;">
+<h3 style="margin: 0; font-size: 16px; font-weight: 600;">Developer Information</h3>
+</div>
+<div style="padding: 20px; text-align: center; background: #161b22;">
+<p style="margin: 0; font-size: 13px; color: #adbac7; line-height: 1.6;">
+<strong style="color: #7ee787;">Developed by:</strong> Yadda<br/>
+<strong style="color: #7ee787;">Contact:</strong> <span style="color: #79c0ff;">youcef.geodesien@gmail.com</span><br/>
+<strong style="color: #7ee787;">Portfolio:</strong> <a href="https://geodeci.xyz/" style="color: #79c0ff; text-decoration: none; font-weight: 500;">geodeci.xyz</a><br/>
+<strong style="color: #7ee787;">Documentation:</strong> <a href="https://github.com/yadda07/Transformer" style="color: #79c0ff; text-decoration: none; font-weight: 500;">github.com/yadda07/Transformer</a>
+</p>
+<p style="margin: 15px 0 0 0; font-size: 12px; color: #768390; font-style: italic;">
+Built with love for the QGIS community
+</p>
+</div>
+</div>
+
+</div>
         """
         
-        QMessageBox.information(self, "Help - Transformer", help_text)
+        # Créer un dialog personnalisé redimensionnable avec scroll
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Help - Transformer")
+        dialog.setModal(True)
+        dialog.resize(1000, 700)
+        dialog.setMinimumSize(800, 600)
+        dialog.setStyleSheet("QDialog { background-color: #0d1117; color: #e6edf3; }")
+        
+        # Layout principal
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Zone de scroll
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        # Widget de contenu HTML
+        content_widget = QLabel()
+        content_widget.setText(help_html)
+        content_widget.setTextFormat(Qt.RichText)
+        content_widget.setWordWrap(True)
+        content_widget.setAlignment(Qt.AlignTop)
+        content_widget.setMargin(10)
+        content_widget.setOpenExternalLinks(True)
+        
+        # Appliquer le CSS responsive
+        responsive_css = """
+        QLabel {
+            background-color: #0d1117;
+            color: #e6edf3;
+        }
+        QScrollArea {
+            border: none;
+            background-color: #0d1117;
+        }
+        QDialog {
+            background-color: #0d1117;
+        }
+        """
+        content_widget.setStyleSheet(responsive_css)
+        
+        scroll_area.setWidget(content_widget)
+        layout.addWidget(scroll_area)
+        
+        # Bouton OK
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+        ok_button = QPushButton("OK")
+        ok_button.setDefault(True)
+        ok_button.clicked.connect(dialog.accept)
+        button_layout.addWidget(ok_button)
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+        
+        dialog.exec_()
     
     def show_about(self):
         """Show about information"""
-        about_text = """
-<h2>Transformer</h2>
-<h3>Bash Edition v1.0.0</h3>
+        about_html = """
+<h2 style="color: #2E8B57; text-align: center; margin-bottom: 10px;">Transformer</h2>
+<h3 style="color: #4682B4; text-align: center; margin-bottom: 20px;">Shape Edition v1.1.0</h3>
 
-<p><b>Developed by NGEDEV TEAM</b></p>
-<p>QGIS plugin for shapefile transformation with calculated fields and filtering.</p>
+<p style="text-align: center; margin-bottom: 15px; color: #444;">
+<b style="color: #2E8B57;">Developed by Yadda</b>
+</p>
 
-<p>Built with <i>love</i> using QGIS API 3.10+, PyQt5/6, Python 3.6+, and the native QGIS Expression Engine.</p>
+<p style="text-align: center; margin-bottom: 15px; color: #555; font-style: italic;">
+QGIS plugin for vector data transformation<br/>with calculated fields, geometric operations and filtering capabilities
+</p>
 
-<p><b>Contact:</b> yadda@ext.nge.fr</p>
-<p><b>License:</b> GPL v2+</p>
+<hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;"/>
+
+<table style="margin: 0 auto; border-collapse: collapse;">
+<tr><td style="padding: 5px 15px; color: #666;"><b>Built with:</b></td><td style="padding: 5px 15px; color: #444;">QGIS API 3.10+ • PyQt5/6 • Python 3.6+</td></tr>
+<tr><td style="padding: 5px 15px; color: #666;"><b>Engine:</b></td><td style="padding: 5px 15px; color: #444;">Native QGIS Expression Engine</td></tr>
+<tr><td style="padding: 5px 15px; color: #666;"><b>Formats:</b></td><td style="padding: 5px 15px; color: #444;">Shapefile • GeoJSON • GeoPackage • KML • and more</td></tr>
+<tr><td style="padding: 5px 15px; color: #666;"><b>Contact:</b></td><td style="padding: 5px 15px;"><span style="color: #2E8B57;">youcef.geodesien@gmail.com</span></td></tr>
+<tr><td style="padding: 5px 15px; color: #666;"><b>License:</b></td><td style="padding: 5px 15px; color: #444;">GPL v2+</td></tr>
+</table>
+
+<p style="text-align: center; margin-top: 20px; font-size: 11px; color: #888;">
+Built with ❤️ for the QGIS community
+</p>
         """
         
-        QMessageBox.about(self, "About Transformer", about_text)
+        # Créer une QMessageBox personnalisée avec formatage HTML
+        msg = QMessageBox(self)
+        msg.setWindowTitle("About Transformer")
+        msg.setTextFormat(Qt.RichText)
+        msg.setText(about_html)
+        msg.setIcon(QMessageBox.Information)
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.resize(450, 350)
+        msg.exec_()
     
     # === CLOSE METHODS ===
     

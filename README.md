@@ -4,7 +4,19 @@ A QGIS plugin for transforming vector files with calculated fields, coordinate r
 
 ## Overview
 
-This plugin helps transform geospatial data by applying calculated fields, filters, and coordinate transformations to vector files. Supports 15+ vector formats including Shapefile, GeoJSON, GeoPackage, KML, DXF, GPX, and more. It can export results to multiple formats and provides database integration for PostgreSQL. The tool is designed to save and reuse transformation configurations for repetitive tasks.
+This plugin provides essential ETL (Extract, Transform, Load) components within QGIS for vector data transformation workflows. It offers the equivalent of **Reader + AttributeManager + Reprojector + Writer** components found in commercial ETL solutions, with workflow persistence capabilities.
+
+Supports 15+ vector formats including Shapefile, GeoJSON, GeoPackage, KML, DXF, GPX, and more. The tool is designed to save and reuse complete transformation configurations for repetitive tasks, making it ideal for standardized data processing workflows.
+
+## ETL Components
+
+### Core Components Integration
+- **Reader**: Multi-format input support (15+ vector formats)
+- **AttributeManager**: Advanced field calculations and expressions
+- **Reprojector**: Coordinate system transformations and geometric operations
+- **Writer**: Multiple output formats and database integration
+- **Workflow Persistence**: Save complete processing pipelines for automation
+- **Batch Processing**: Handle multiple datasets with same transformation logic
 
 ## Features
 
