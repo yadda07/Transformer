@@ -34,7 +34,7 @@ experimental=False
 deprecated=False
 
 ; Maximum QGIS version
-qgisMaximumVersion=3.99
+qgisMaximumVersion=3.45
 
 ; Changelog
 changelog=

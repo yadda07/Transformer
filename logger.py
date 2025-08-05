@@ -67,12 +67,12 @@ class TransformerLogger(QObject):
         try:
             timestamp = datetime.now().strftime("%H:%M:%S")
             level_prefix = {
-                "Info": "ℹ",
-                "Warning": "⚠",
-                "Error": "✗",
-                "Success": "✓",
-                "Critical": "🔥"
-            }.get(level, "•")
+                "Info": "INFO",
+                "Warning": "WARN",
+                "Error": "ERROR",
+                "Success": "OK",
+                "Critical": "CRITICAL"
+            }.get(level, "LOG")
             
             log_entry = f"[{timestamp}] {level_prefix} {message}"
             
