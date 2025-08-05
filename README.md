@@ -1,16 +1,16 @@
 # Transformer Plugin - QGIS
 
-A QGIS plugin for transforming shapefiles with calculated fields, coordinate reprojection, and export capabilities. Supports batch processing and PostgreSQL database integration.
+A QGIS plugin for transforming vector files with calculated fields, coordinate reprojection, and export capabilities. Supports all QGIS-compatible vector formats, batch processing, and PostgreSQL database integration.
 
 ## Overview
 
-This plugin helps transform geospatial data by applying calculated fields, filters, and coordinate transformations to shapefiles. It can export results to multiple formats and provides database integration for PostgreSQL. The tool is designed to save and reuse transformation configurations for repetitive tasks.
+This plugin helps transform geospatial data by applying calculated fields, filters, and coordinate transformations to vector files. Supports 15+ vector formats including Shapefile, GeoJSON, GeoPackage, KML, DXF, GPX, and more. It can export results to multiple formats and provides database integration for PostgreSQL. The tool is designed to save and reuse transformation configurations for repetitive tasks.
 
 ## Features
 
 ### Data Transformation
 
-* Transform multiple shapefiles in batch mode
+* Transform multiple vector files in batch mode (15+ formats supported)
 * Apply coordinate system reprojection
 * Calculate geometric properties (area, perimeter, centroid)
 * Transform and map field data types
@@ -305,9 +305,9 @@ Example saved configuration:
 
 ## Technical Support
 
-**Developed by**: NGEDEV TEAM
-**Contact**: yadda@ext.nge.fr
-**Version**: 1.0.0
+**Developed by**: Yadda
+**Contact**: youcef.geodesien@gmail.com
+**Version**: 1.1.0
 **License**: Open Source
 
 For technical support, please include:

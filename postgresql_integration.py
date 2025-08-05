@@ -1205,6 +1205,37 @@ class PostgreSQLConfigWidget(QWidget):
         config_layout.addRow("Username:", self.username_edit)
         config_layout.addRow("Password:", self.password_edit)
         
+        # Connection status indicator
+        status_layout = QHBoxLayout()
+        self.status_indicator = QLabel("●")
+        self.status_indicator.setFixedSize(12, 12)
+        self.status_indicator.setAlignment(Qt.AlignCenter)
+        self.status_indicator.setStyleSheet("""
+            QLabel {
+                font-size: 12px;
+                font-weight: bold;
+                color: #999999;
+                border-radius: 8px;
+                background-color: rgba(153, 153, 153, 0.1);
+            }
+        """)
+        
+        self.status_label = QLabel("Not tested")
+        self.status_label.setStyleSheet("""
+            QLabel {
+                font-size: 11px;
+                color: #666666;
+                font-style: italic;
+                padding-left: 5px;
+            }
+        """)
+        
+        status_layout.addWidget(self.status_indicator)
+        status_layout.addWidget(self.status_label)
+        status_layout.addStretch()
+        
+        config_layout.addRow("Status:", status_layout)
+        
         # Boutons
         buttons_layout = QHBoxLayout()
         self.test_connection_btn = QPushButton("Test Connection")
@@ -1226,10 +1257,89 @@ class PostgreSQLConfigWidget(QWidget):
         self.test_connection_btn.clicked.connect(self.test_connection)
         self.save_config_btn.clicked.connect(self.save_config)
         self.load_config_btn.clicked.connect(self.load_config)
+        
+        # Initialize status
+        self.update_connection_status("not_tested")
+    
+    def update_connection_status(self, status):
+        """Update connection status indicator
+        
+        Args:
+            status (str): 'connected' (green), 'error' (orange), 'failed' (red), 'not_tested' (gray)
+        """
+        if status == "connected":
+            self.status_indicator.setStyleSheet("""
+                QLabel {
+                    font-size: 12px;
+                    font-weight: bold;
+                    color: #28a745;
+                }
+            """)
+            self.status_label.setText("Connected")
+            self.status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 11px;
+                    color: #28a745;
+                    font-weight: bold;
+                    padding-left: 5px;
+                }
+            """)
+        elif status == "error":
+            self.status_indicator.setStyleSheet("""
+                QLabel {
+                    font-size: 12px;
+                    font-weight: bold;
+                    color: #ff8c00;
+                }
+            """)
+            self.status_label.setText("Connection issue")
+            self.status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 11px;
+                    color: #ff8c00;
+                    font-weight: bold;
+                    padding-left: 5px;
+                }
+            """)
+        elif status == "failed":
+            self.status_indicator.setStyleSheet("""
+                QLabel {
+                    font-size: 12px;
+                    font-weight: bold;
+                    color: #dc3545;
+                }
+            """)
+            self.status_label.setText("Invalid credentials")
+            self.status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 11px;
+                    color: #dc3545;
+                    font-weight: bold;
+                    padding-left: 5px;
+                }
+            """)
+        else:  # not_tested
+            self.status_indicator.setStyleSheet("""
+                QLabel {
+                    font-size: 12px;
+                    font-weight: bold;
+                    color: #999999;
+                }
+            """)
+            self.status_label.setText("Not tested")
+            self.status_label.setStyleSheet("""
+                QLabel {
+                    font-size: 11px;
+                    color: #666666;
+                    font-style: italic;
+                    padding-left: 5px;
+                }
+            """)
     
     def test_connection(self):
         """Quick PostgreSQL connection test with visual feedback"""
         if not POSTGRESQL_AVAILABLE:
+            self.update_connection_status("failed")
             QgsMessageLog.logMessage("psycopg2 is not installed", "Transformer", Qgis.Warning)
             return False
         
@@ -1246,12 +1356,16 @@ class PostgreSQLConfigWidget(QWidget):
             
             # Required fields validation
             if not conn_params['database'] or not conn_params['user']:
+                self.update_connection_status("failed")
                 QgsMessageLog.logMessage("Database name and username are required", "Transformer", Qgis.Warning)
                 return False
             
             # Quick connection test - just open/close
             conn = psycopg2.connect(**conn_params)
             conn.close()
+            
+            # Update status to connected
+            self.update_connection_status("connected")
             
             # Success log & minimal visual feedback
             QgsMessageLog.logMessage(f"PostgreSQL connection successful to {conn_params['database']}@{conn_params['host']}:{conn_params['port']}", "Transformer", Qgis.Success)
@@ -1267,6 +1381,13 @@ class PostgreSQLConfigWidget(QWidget):
             return True
             
         except psycopg2.Error as e:
+            # Check if it's an authentication/credentials error or connection issue
+            error_str = str(e).lower()
+            if any(keyword in error_str for keyword in ['authentication', 'password', 'role', 'does not exist', 'permission denied']):
+                self.update_connection_status("failed")
+            else:
+                self.update_connection_status("error")
+            
             QgsMessageLog.logMessage(f"PostgreSQL connection failed: {str(e)}", "Transformer", Qgis.Critical)
             # Visual feedback for error
             from qgis.utils import iface
@@ -1274,6 +1395,7 @@ class PostgreSQLConfigWidget(QWidget):
                 iface.messageBar().pushMessage("PostgreSQL", f"Connection failed: {str(e)}", level=Qgis.Critical, duration=5)
             return False
         except Exception as e:
+            self.update_connection_status("error")
             QgsMessageLog.logMessage(f"Connection error: {str(e)}", "Transformer", Qgis.Critical)
             from qgis.utils import iface
             if iface:

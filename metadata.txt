@@ -2,10 +2,10 @@
 [general]
 name=Transformer
 qgisMinimumVersion=3.10
-description=Transform shapefiles with calculated fields, coordinate reprojection, and export capabilities
-version=1.0.0
-author=YADDA
-email=yadda@ext.nge.fr
+description=Transform vector files with calculated fields, coordinate reprojection, and export capabilities
+version=1.1.0
+author=Yadda
+email=youcef.geodesien@gmail.com
 
 ; Bug tracker URL (required for publication)
 tracker=https://github.com/yadda07/transformer/issues
@@ -16,12 +16,12 @@ repository=https://github.com/yadda07/transformer
 ; Homepage (optional)
 homepage=https://github.com/yadda07/transformer
 
-about=Transform shapefiles using calculated fields with QGIS native expressions. 
-    Supports batch processing, coordinate reprojection, and export to multiple formats 
+about=Transform vector files (Shapefile, GeoJSON, GeoPackage, KML, etc.) using calculated fields with QGIS native expressions. 
+    Supports all QGIS-compatible vector formats, batch processing, coordinate reprojection, and export to multiple formats 
     including PostgreSQL. Save configurations for reuse in repetitive workflows.
 
 ; Tags separated by commas
-tags=shapefile,transformation,calculated fields,data processing,vector,export,postgresql
+tags=vector,transformation,calculated fields,data processing,geojson,geopackage,kml,shapefile,export,postgresql
 
 ; Plugin category
 category=Vector
@@ -37,9 +37,26 @@ qgisMaximumVersion=3.99
 
 ; Changelog
 changelog=1.0.0 - Initial release
-    - Shapefile transformation with calculated fields
-    - Native QGIS expression builder integration
+    - Universal vector file transformation (15+ formats supported)
+    - All QGIS-compatible formats: Shapefile, GeoJSON, GeoPackage, KML, DXF, GPX, etc.
+    - Calculated fields with native QGIS expression builder
     - Batch processing and coordinate reprojection
-    - PostgreSQL export with field mapping
+    - PostgreSQL export with intelligent field mapping
     - Configuration templates for workflow reuse
-    - Real-time expression validation
+    - Real-time expression validation and format detection
+
+; Changelog
+changelog=
+    Version 1.1.0 (2025-08-05):
+    - Added support for QGIS project layers (process loaded layers directly)
+    - Added universal vector format support (15+ formats instead of Shapefile only)
+    - Added intelligent format detection with native QGIS validation
+    - Enhanced PostgreSQL integration with connection status
+    - Improved metadata collection for all vector sources
+    - Improved interface with format-specific tooltips
+    
+    Version 1.0.0 (2025-07-15):
+    - Initial release with Shapefile transformation capabilities
+    - Calculated fields with QGIS expressions
+    - PostgreSQL export functionality
+    - Configuration management and templates

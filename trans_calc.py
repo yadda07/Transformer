@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Shapefile transformer using QGIS calculated fields with filter support
+Vector file transformer using QGIS calculated fields with filter support
 Fixed filter problem
 """
 
@@ -13,13 +13,13 @@ from qgis.core import (
     QgsExpression, QgsExpressionContext, QgsExpressionContextUtils,
     QgsProject, QgsWkbTypes, QgsCoordinateReferenceSystem,
     QgsMessageLog, Qgis, QgsMemoryProviderUtils, QgsFeatureRequest,
-    QgsCoordinateTransform
+    QgsCoordinateTransform, edit
 )
 from qgis.PyQt.QtCore import QVariant
 
 
 class SimpleTransformer:
-    """Transforms shapefiles using QGIS calculated fields with filter support"""
+    """Transforms vector files using QGIS calculated fields with filter support"""
     
     def __init__(self, config_manager):
         self.config_manager = config_manager
@@ -173,6 +173,13 @@ class SimpleTransformer:
             QgsMessageLog.logMessage(f"Filter application error: {str(e)}", "Transformer", Qgis.Warning)
             return QgsFeatureRequest()  # Return request without filter
     
+    def create_feature_request_with_filter(self, source_layer: QgsVectorLayer, filter_expression: Optional[str] = None) -> QgsFeatureRequest:
+        """Create a QgsFeatureRequest with optional filter expression"""
+        if filter_expression and filter_expression.strip():
+            return self.apply_filter_to_layer(source_layer, filter_expression)
+        else:
+            return QgsFeatureRequest()  # Return request without filter
+    
     def count_filtered_features(self, source_layer: QgsVectorLayer, filter_expression: str) -> Tuple[int, int]:
         """Count total and filtered features"""
         total_count = source_layer.featureCount()
@@ -313,7 +320,7 @@ class SimpleTransformer:
                                          filter_config: Optional[Dict[str, Any]] = None,
                                          target_crs: Optional[QgsCoordinateReferenceSystem] = None,
                                          geometry_expression: Optional[str] = None) -> Optional[QgsVectorLayer]:
-        """Create memory layer from shapefile with calculated fields and optional filter"""
+        """Create memory layer from vector file with calculated fields and optional filter"""
         try:
             source_layer = QgsVectorLayer(shp_path, "temp_source", "ogr")
             if not source_layer.isValid():
@@ -563,8 +570,18 @@ class SimpleTransformer:
         
         return calculated_values
     
+    def calculate_field_values(self, source_feature: QgsFeature, field_configs: List[Tuple[QgsField, str]], source_layer: QgsVectorLayer) -> Dict[str, Any]:
+        """Calculate field values from field configs (compatibility wrapper)"""
+        # Convert field_configs to calculated_fields format
+        calculated_fields = {}
+        for field, expression in field_configs:
+            calculated_fields[field.name()] = expression
+        
+        # Use existing calculate_fields method
+        return self.calculate_fields(source_feature, source_layer, calculated_fields)
+    
     def transform_shapefile_to_memory_layers(self, shp_path: str, target_crs: QgsCoordinateReferenceSystem = None) -> List[QgsVectorLayer]:
-        """Transform shapefile to memory layers based on configuration with filter support and optional reprojection"""
+        """Transform vector file to memory layers based on configuration with filter support and optional reprojection"""
         layers_created = []
         
         try:
@@ -612,8 +629,218 @@ class SimpleTransformer:
             return layers_created
             
         except Exception as e:
-            QgsMessageLog.logMessage(f"Transformation error: {str(e)}", "Transformer", Qgis.Critical)
+            import traceback
+            error_msg = f"QGIS layer transformation error for {layer_name}: {str(e)}"
+            stack_trace = traceback.format_exc()
+            QgsMessageLog.logMessage(error_msg, "Transformer", Qgis.Critical)
+            QgsMessageLog.logMessage(f"Stack trace: {stack_trace}", "Transformer", Qgis.Critical)
+            print(f"PRINT: Exception in transform_qgis_layer_to_memory_layers: {error_msg}")
+            print(f"PRINT: Stack trace: {stack_trace}")
             return layers_created
+    
+    def transform_qgis_layer_to_memory_layers(self, source_layer: QgsVectorLayer, layer_name: str, target_crs: QgsCoordinateReferenceSystem = None) -> List[QgsVectorLayer]:
+        """Transform QGIS layer object to memory layers based on configuration with filter support and optional reprojection"""
+        layers_created = []
+        
+        try:
+            if not source_layer or not source_layer.isValid():
+                QgsMessageLog.logMessage(f"Invalid QGIS source layer: {layer_name}", "Transformer", Qgis.Warning)
+                return layers_created
+                
+            # Use the layer name to find table configurations
+            table_names = self.config_manager.get_tables_for_source(layer_name)
+            
+            if not table_names:
+                QgsMessageLog.logMessage(f"No configuration found for QGIS layer: {layer_name}", "Transformer", Qgis.Warning)
+                return layers_created
+            
+            for table_name in table_names:
+                config = self.config_manager.get_table_config(table_name)
+                if not config:
+                    continue
+                
+                calculated_fields = config.get("calculated_fields", {})
+                if not calculated_fields:
+                    QgsMessageLog.logMessage(f"No calculated fields found for {table_name}", "Transformer", Qgis.Warning)
+                    continue
+                
+                # Get filter configuration
+                filter_config = config.get("filter", {"enabled": False, "expression": ""})
+                
+                # Get geometry expression configuration
+                geometry_expression = config.get("geometry_expression")
+                
+                # Reset error flags
+                for field_name in calculated_fields.keys():
+                    if hasattr(self, f'_logged_error_{field_name}'):
+                        delattr(self, f'_logged_error_{field_name}')
+                    if hasattr(self, f'_logged_exception_{field_name}'):
+                        delattr(self, f'_logged_exception_{field_name}')
+                
+                layer = self.create_memory_layer_from_qgis_layer(
+                    source_layer, table_name, calculated_fields, filter_config, target_crs, geometry_expression
+                )
+                
+                if layer:
+                    layers_created.append(layer)
+                    QgsMessageLog.logMessage(f"Layer created from QGIS layer: {table_name}", "Transformer", Qgis.Info)
+                else:
+                    QgsMessageLog.logMessage(f"Layer creation from QGIS layer failed: {table_name}", "Transformer", Qgis.Warning)
+            
+            return layers_created
+            
+        except Exception as e:
+            import traceback
+            error_msg = f"QGIS layer transformation error for {layer_name}: {str(e)}"
+            stack_trace = traceback.format_exc()
+            QgsMessageLog.logMessage(error_msg, "Transformer", Qgis.Critical)
+            QgsMessageLog.logMessage(f"Stack trace: {stack_trace}", "Transformer", Qgis.Critical)
+            print(f"PRINT: Exception in transform_qgis_layer_to_memory_layers: {error_msg}")
+            print(f"PRINT: Stack trace: {stack_trace}")
+            return layers_created
+    
+    def create_memory_layer_from_qgis_layer(self, source_layer: QgsVectorLayer, table_name: str, 
+                                           calculated_fields: Dict[str, str],
+                                           filter_config: Optional[Dict[str, Any]] = None,
+                                           target_crs: Optional[QgsCoordinateReferenceSystem] = None,
+                                           geometry_expression: Optional[str] = None) -> Optional[QgsVectorLayer]:
+        """Create memory layer from QGIS layer object with calculated fields and optional filter"""
+        
+        try:
+            if not source_layer or not source_layer.isValid():
+                QgsMessageLog.logMessage(f"Invalid QGIS source layer for {table_name}", "Transformer", Qgis.Warning)
+                return None
+                
+            # Determine geometry type from source layer or expression
+            source_geom_type = source_layer.geometryType()
+            output_geom_type = source_geom_type
+            
+            # If there's a geometry expression, we might need to adjust the geometry type
+            if geometry_expression and geometry_expression != "$geometry":
+                # For complex expressions, we'll keep the original type and let QGIS handle it
+                # Advanced users can create specific geometry types if needed
+                pass
+            
+            # Determine CRS
+            dest_crs = target_crs if target_crs and target_crs.isValid() else source_layer.crs()
+            
+            # Create memory layer URI
+            geom_type_map = {
+                QgsWkbTypes.PointGeometry: "Point",
+                QgsWkbTypes.LineGeometry: "LineString", 
+                QgsWkbTypes.PolygonGeometry: "Polygon",
+                QgsWkbTypes.UnknownGeometry: "NoGeometry",
+                QgsWkbTypes.NullGeometry: "NoGeometry"
+            }
+            
+            geom_type_name = geom_type_map.get(output_geom_type, "Point")
+            uri = f"{geom_type_name}?crs={dest_crs.authid()}&index=yes"
+            
+            dest_layer = QgsVectorLayer(uri, table_name, "memory")
+            if not dest_layer.isValid():
+                QgsMessageLog.logMessage(f"Failed to create memory layer: {table_name}", "Transformer", Qgis.Warning)
+                return None
+            
+            # Add fields to destination layer
+            field_configs = []
+            
+            for field_name, expression in calculated_fields.items():
+                field = QgsField(field_name, QVariant.String)
+                field_configs.append((field, expression))
+            
+            # Use edit context to add fields
+            with edit(dest_layer):
+                for field, _ in field_configs:
+                    if not dest_layer.addAttribute(field):
+                        QgsMessageLog.logMessage(f"Failed to add field: {field.name()}", "Transformer", Qgis.Warning)
+                        return None
+            
+            # Set up coordinate transformation if needed
+            transform = None
+            if target_crs and target_crs.isValid() and source_layer.crs() != target_crs:
+                transform = QgsCoordinateTransform(source_layer.crs(), target_crs, QgsProject.instance())
+            
+            # Create feature request with filter if specified
+            feature_request = self.create_feature_request_with_filter(
+                source_layer, 
+                filter_config.get("expression", "") if filter_config and filter_config.get("enabled", False) else None
+            )
+            
+            # Get total feature count for progress tracking
+            total_source_features = source_layer.featureCount()
+            
+            # Count filtered features if filter is applied
+            if filter_config and filter_config.get("enabled", False) and filter_config.get("expression", ""):
+                filtered_count, _ = self.count_filtered_features(source_layer, filter_config.get("expression", ""))
+                features_to_process = filtered_count
+            else:
+                features_to_process = total_source_features
+            
+            # Process features
+            processed = 0
+            errors = 0
+            
+            for source_feature in source_layer.getFeatures(feature_request):
+                dest_feature = QgsFeature(dest_layer.fields())
+                dest_feature.setId(source_feature.id())
+                
+                # Calculate field values
+                calculated_values = self.calculate_field_values(source_feature, field_configs, source_layer)
+                
+                # Set calculated field values
+                for field_name, value in calculated_values.items():
+                    if field_name in dest_layer.fields().names():
+                        dest_feature.setAttribute(field_name, value)
+                
+                # Handle geometry
+                source_geometry = source_feature.geometry()
+                if source_geometry and not source_geometry.isNull():
+                    try:
+                        # Apply coordinate transformation if needed
+                        if transform:
+                            source_geometry.transform(transform)
+                        
+                        # Apply geometry expression if specified
+                        final_geometry = source_geometry
+                        if geometry_expression and geometry_expression != "$geometry":
+                            # Create expression context
+                            context = QgsExpressionContext()
+                            context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(source_layer))
+                            context.setFeature(source_feature)
+                            
+                            # Evaluate geometry expression
+                            expr = QgsExpression(geometry_expression)
+                            if expr.hasParserError():
+                                QgsMessageLog.logMessage(f"Geometry expression parse error: {expr.parserErrorString()}", "Transformer", Qgis.Warning)
+                            else:
+                                result = expr.evaluate(context)
+                                if expr.hasEvalError():
+                                    QgsMessageLog.logMessage(f"Geometry expression eval error: {expr.evalErrorString()}", "Transformer", Qgis.Warning)
+                                elif isinstance(result, QgsGeometry):
+                                    final_geometry = result
+                                    QgsMessageLog.logMessage(f"Geometry expression applied successfully", "Transformer", Qgis.Info)
+                                elif result is not None:
+                                    QgsMessageLog.logMessage(f"Geometry expression returned non-geometry result: {type(result)}", "Transformer", Qgis.Warning)
+                        
+                        dest_feature.setGeometry(final_geometry)
+                        
+                    except Exception as e:
+                        QgsMessageLog.logMessage(f"Geometry processing error: {str(e)}", "Transformer", Qgis.Warning)
+                        errors += 1
+                        continue
+                
+                # Add feature to destination layer
+                with edit(dest_layer):
+                    dest_layer.addFeature(dest_feature)
+                
+                processed += 1
+            
+            QgsMessageLog.logMessage(f"QGIS Layer {table_name}: {processed} features processed", "Transformer", Qgis.Info)
+            return dest_layer
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Error creating layer from QGIS layer {table_name}: {str(e)}", "Transformer", Qgis.Warning)
+            return None
     
     def add_layers_to_project(self, layers: List[QgsVectorLayer], group_name: str = "Transformed Layers"):
         """Add layers to QGIS project in a group"""

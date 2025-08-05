@@ -314,15 +314,15 @@ class ExportWidget(QWidget):
         # Management buttons
         buttons_layout = QHBoxLayout()
         
-        refresh_btn = QPushButton("Actualiser")
+        refresh_btn = QPushButton("Refresh")
         refresh_btn.clicked.connect(self.refresh_layers)
         buttons_layout.addWidget(refresh_btn)
         
-        select_all_btn = QPushButton("Tout sélectionner")
+        select_all_btn = QPushButton("Select All")
         select_all_btn.clicked.connect(lambda: self.layers_tree.selectAll())
         buttons_layout.addWidget(select_all_btn)
         
-        deselect_all_btn = QPushButton("Désélectionner tout")
+        deselect_all_btn = QPushButton("Deselect All")
         deselect_all_btn.clicked.connect(lambda: self.layers_tree.clearSelection())
         buttons_layout.addWidget(deselect_all_btn)
         
@@ -344,7 +344,7 @@ class ExportWidget(QWidget):
         format_layout.addWidget(QLabel("Format:"))
         
         self.format_combo = QComboBox()
-        self.format_combo.setMinimumWidth(250)  # Légèrement plus large
+        self.format_combo.setMinimumWidth(250)  # Slightly wider
         
         # Group formats by category
         self.format_combo.addItem("=== Spatial formats ===", None)
@@ -353,12 +353,12 @@ class ExportWidget(QWidget):
         for fmt in spatial_formats:
             self.format_combo.addItem(f"{fmt.value} (*{self.export_manager.format_extensions[fmt]})", fmt)
         
-        self.format_combo.addItem("=== Formats CAD ===", None)
+        self.format_combo.addItem("=== CAD Formats ===", None)
         cad_formats = [ExportFormat.DXF, ExportFormat.TAB]
         for fmt in cad_formats:
             self.format_combo.addItem(f"{fmt.value} (*{self.export_manager.format_extensions[fmt]})", fmt)
         
-        self.format_combo.addItem("=== Formats Tabulaires ===", None)
+        self.format_combo.addItem("=== Tabular Formats ===", None)
         table_formats = [ExportFormat.CSV, ExportFormat.XLSX, ExportFormat.SQLITE]
         for fmt in table_formats:
             self.format_combo.addItem(f"{fmt.value} (*{self.export_manager.format_extensions[fmt]})", fmt)
@@ -374,7 +374,7 @@ class ExportWidget(QWidget):
         format_layout.addWidget(QLabel("Encoding:"))
         
         self.encoding_combo = QComboBox()
-        self.encoding_combo.setMinimumWidth(150)  # Plus compact
+        self.encoding_combo.setMinimumWidth(150)  # More compact
         
         # Common encodings for export
         encodings = [

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """QGIS Transformer Plugin
 
-Shapefile transform w/ calc fields.
+Vector file transformation w/ calculated fields.
 """
 
 import os
@@ -28,7 +28,7 @@ def classFactory(iface):
 
 
 # Plugin meta
-__version__ = "1.0.0"
-__author__ = "NGEDEV TEAM"
-__email__ = "yadda@ext.nge.fr"
-__description__ = "Shapefile transform w/ calc fields"
+__version__ = "1.1.0"
+__author__ = "yadda"
+__email__ = "youcef.geodesien@gmail.com"
+__description__ = "Vector file transformation w/ calculated fields"

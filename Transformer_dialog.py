@@ -963,7 +963,7 @@ class FieldWidget(QWidget):
                 background-color: #BBDEFB;
             }
         """)
-        self.copy_all_btn.setToolTip("Copy all existing fields from the selected shapefile")
+        self.copy_all_btn.setToolTip("Copy all existing fields from the selected vector file")
         
         self.add_field_btn = QPushButton("➕ Add Column")
         self.add_field_btn.setMinimumWidth(100)
@@ -1087,7 +1087,7 @@ class FieldWidget(QWidget):
             self.add_calculated_field(name, expression, description)
     
     def copy_all_fields(self):
-        """Copy all fields from the selected shapefile"""
+        """Copy all fields from the selected vector file"""
         # Get the active layer from the parent interface
         current_layer = None
         
@@ -1095,7 +1095,7 @@ class FieldWidget(QWidget):
         parent_widget = self.parent()
         while parent_widget:
             if hasattr(parent_widget, 'shp_tree') and hasattr(parent_widget, 'loaded_shapefiles'):
-                # Get the selected shapefile from the tree
+                # Get the selected vector file from the tree
                 current_item = parent_widget.shp_tree.currentItem()
                 if current_item:
                     filename = current_item.data(0, Qt.UserRole)
@@ -1105,7 +1105,7 @@ class FieldWidget(QWidget):
             parent_widget = parent_widget.parent()
         
         if not current_layer:
-            QMessageBox.warning(self, "Warning", "No shapefile selected. Please select a shapefile first.")
+            QMessageBox.warning(self, "Warning", "No vector file selected. Please select a vector file first.")
             return
         
         # Check if the layer has fields
@@ -1174,13 +1174,6 @@ class FieldWidget(QWidget):
         
         # Refresh the display
         self.refresh_fields_list()
-        
-        # Show a confirmation message
-        QMessageBox.information(
-            self, "Fields Copied",
-            f"Successfully copied {fields_added} field(s) from the selected layer.\n"
-            f"Total calculated fields: {len(self.calculated_fields)}"
-        )
     
     def add_quick_field(self, name, expression):
         """Add a quick field"""
@@ -1755,7 +1748,7 @@ class EnhancedTransformerDialog(QMainWindow):
         toolbar = QToolBar()
         toolbar.setIconSize(QSize(16, 16))
         
-        load_action = QAction(QIcon(":/images/themes/default/mActionAdd.svg"), "Load Shapefiles", self)
+        load_action = QAction(QIcon(":/images/themes/default/mActionAdd.svg"), "Load Vector Files", self)
         load_action.triggered.connect(self.load_shapefile)
         toolbar.addAction(load_action)
         
@@ -1771,7 +1764,7 @@ class EnhancedTransformerDialog(QMainWindow):
         
         # Case à cocher pour afficher les couches QGIS
         self.show_qgis_layers_checkbox = QCheckBox("Show QGIS Layers")
-        self.show_qgis_layers_checkbox.setToolTip("Toggle display of shapefiles already loaded in QGIS project")
+        self.show_qgis_layers_checkbox.setToolTip("Toggle display of vector files already loaded in QGIS project")
         self.show_qgis_layers_checkbox.setStyleSheet("""
             QCheckBox {
                 font-size: 10px;
@@ -2125,8 +2118,8 @@ class EnhancedTransformerDialog(QMainWindow):
         toolbar.setIconSize(QSize(24, 24))
         
         # Main actions
-        load_action = QAction(QIcon(":/images/themes/default/mActionAdd.svg"), "Load\nShapefiles", self)
-        load_action.setToolTip("Load shapefiles for transformation")
+        load_action = QAction(QIcon(":/images/themes/default/mActionAdd.svg"), "Load\nVector Files", self)
+        load_action.setToolTip("Load vector files for transformation (Shapefile, GeoJSON, GeoPackage, KML, etc.)")
         load_action.triggered.connect(self.load_shapefile)
         toolbar.addAction(load_action)
         
@@ -2145,12 +2138,12 @@ class EnhancedTransformerDialog(QMainWindow):
         toolbar.addSeparator()
         
         transform_action = QAction(QIcon(":/images/themes/default/mActionStart.svg"), "Transform\nSelected", self)
-        transform_action.setToolTip("Transform selected shapefile")
+        transform_action.setToolTip("Transform selected vector file")
         transform_action.triggered.connect(self.transform_selected_shapefile)
         toolbar.addAction(transform_action)
         
         batch_action = QAction(QIcon(":/images/themes/default/mActionBatch.svg"), "Transform\nAll", self)
-        batch_action.setToolTip("Transform all loaded shapefiles")
+        batch_action.setToolTip("Transform all loaded vector files")
         batch_action.triggered.connect(self.transform_all_shapefiles)
         toolbar.addAction(batch_action)
         
@@ -2177,7 +2170,7 @@ class EnhancedTransformerDialog(QMainWindow):
         self.status_bar.addPermanentWidget(self.progress_bar)
         
         # Statistics
-        self.stats_label = QLabel("0 tables | 0 shapefiles")
+        self.stats_label = QLabel("0 tables | 0 vector files")
         self.status_bar.addPermanentWidget(self.stats_label)
         
         # Current mode
@@ -2488,58 +2481,221 @@ class EnhancedTransformerDialog(QMainWindow):
             self.refresh_shapefile_list()
             
             if loaded_count > 0:
-                self.log_message(f"Auto-loaded {loaded_count} shapefiles with existing configurations", "Info")
+                self.log_message(f"Auto-loaded {loaded_count} vector files with existing configurations", "Info")
                 
         except Exception as e:
             self.log_message(f"Error auto-loading configurations: {str(e)}", "Warning")
     
-    # === SHAPEFILES MANAGEMENT METHODS ===
+    # === VECTOR FILES MANAGEMENT METHODS ===
+    
+    def _build_vector_file_filter(self) -> str:
+        """Build comprehensive file filter for all QGIS-supported vector formats"""
+        # Core vector formats supported by QGIS
+        filters = [
+            "All Vector Files (*.shp *.geojson *.json *.gpkg *.sqlite *.gml *.kml *.kmz *.csv *.txt *.tab *.mif *.mid *.dxf *.dgn *.gdb *.gpx)",
+            "Shapefile (*.shp)",
+            "GeoJSON (*.geojson *.json)", 
+            "GeoPackage (*.gpkg)",
+            "SQLite/SpatiaLite (*.sqlite *.db)",
+            "Geography Markup Language (*.gml)",
+            "Keyhole Markup Language (*.kml *.kmz)",
+            "Comma Separated Values (*.csv *.txt)",
+            "MapInfo TAB (*.tab)",
+            "MapInfo MIF/MID (*.mif *.mid)",
+            "AutoCAD DXF (*.dxf)",
+            "MicroStation DGN (*.dgn)",
+            "ESRI File Geodatabase (*.gdb)",
+            "GPS Exchange Format (*.gpx)",
+            "ESRI Personal Geodatabase (*.mdb)",
+            "Open Street Map (*.osm *.pbf)",
+            "PostGIS Database Layers",
+            "All Files (*.*)"
+        ]
+        return ";;".join(filters)
+    
+    def _is_supported_vector_format(self, file_path: str) -> bool:
+        """Check if file format is supported by QGIS vector layer provider"""
+        try:
+            # Use QGIS to test if the file can be opened as a vector layer
+            test_layer = QgsVectorLayer(file_path, "test", "ogr")
+            is_valid = test_layer.isValid()
+            
+            # Additional check for common extensions
+            file_ext = os.path.splitext(file_path)[1].lower()
+            supported_extensions = {
+                '.shp', '.geojson', '.json', '.gpkg', '.sqlite', '.db',
+                '.gml', '.kml', '.kmz', '.csv', '.txt', '.tab', 
+                '.mif', '.mid', '.dxf', '.dgn', '.gdb', '.gpx', 
+                '.mdb', '.osm', '.pbf'
+            }
+            
+            # If QGIS validation fails, check if it's a known extension
+            if not is_valid and file_ext in supported_extensions:
+                self.log_message(f"File {os.path.basename(file_path)} has supported extension but failed QGIS validation", "Warning")
+            
+            return is_valid
+            
+        except Exception as e:
+            self.log_message(f"Error validating format for {os.path.basename(file_path)}: {str(e)}", "Warning")
+            return False
+    
+    def _detect_vector_format(self, file_path: str) -> str:
+        """Detect vector file format and return human-readable name"""
+        try:
+            layer = QgsVectorLayer(file_path, "temp", "ogr")
+            if layer.isValid():
+                provider = layer.dataProvider()
+                storage_type = provider.storageType()
+                
+                # Map storage types to user-friendly names
+                format_mapping = {
+                    'ESRI Shapefile': 'Shapefile',
+                    'GeoJSON': 'GeoJSON',
+                    'GPKG': 'GeoPackage', 
+                    'SQLite/SpatiaLite': 'SQLite',
+                    'GML': 'Geography Markup Language',
+                    'KML': 'Keyhole Markup Language',
+                    'CSV': 'Comma Separated Values',
+                    'MapInfo File': 'MapInfo TAB',
+                    'DXF': 'AutoCAD DXF'
+                }
+                
+                return format_mapping.get(storage_type, storage_type)
+        except:
+            pass
+        
+        # Fallback to file extension
+        ext = os.path.splitext(file_path)[1].lower()
+        ext_mapping = {
+            '.shp': 'Shapefile',
+            '.geojson': 'GeoJSON', 
+            '.json': 'GeoJSON',
+            '.gpkg': 'GeoPackage',
+            '.sqlite': 'SQLite',
+            '.gml': 'GML',
+            '.kml': 'KML',
+            '.csv': 'CSV',
+            '.tab': 'MapInfo TAB',
+            '.dxf': 'AutoCAD DXF'
+        }
+        return ext_mapping.get(ext, 'Unknown')
     
     def load_shapefile(self):
-        """Load one or multiple shapefiles"""
+        """Load one or multiple vector files (supports all QGIS-compatible formats)"""
+        # Get supported vector formats from QGIS
+        file_filter = self._build_vector_file_filter()
+        
         files, _ = QFileDialog.getOpenFileNames(
-            self, "Load Shapefiles", "", "Shapefiles (*.shp);;All Files (*.*)"
+            self, "Load Vector Files", "", file_filter
         )
         
         if files:
             loaded_count = 0
+            failed_count = 0
+            
             for file_path in files:
-                if self.add_shapefile(file_path):
-                    loaded_count += 1
+                # Validate file format before loading
+                if self._is_supported_vector_format(file_path):
+                    if self.add_vector_file(file_path):
+                        loaded_count += 1
+                    else:
+                        failed_count += 1
+                else:
+                    self.log_message(f"Unsupported format: {os.path.basename(file_path)}", "Warning")
+                    failed_count += 1
             
             self.refresh_shapefile_list()
-            self.log_message(f"Loaded {loaded_count} shapefile(s)", "Info")
+            
+            # Enhanced status message
+            if loaded_count > 0:
+                self.log_message(f"✅ Successfully loaded {loaded_count} vector file(s)", "Info")
+            if failed_count > 0:
+                self.log_message(f"⚠️ Failed to load {failed_count} file(s)", "Warning")
     
-    def add_shapefile(self, file_path: str) -> bool:
-        """Add a shapefile"""
+    def add_vector_file(self, file_path: str) -> bool:
+        """Add a vector file (supports all QGIS-compatible formats)"""
         try:
+            # Detect format first
+            file_format = self._detect_vector_format(file_path)
+            
+            # Create layer with appropriate provider
             layer = QgsVectorLayer(file_path, os.path.basename(file_path), "ogr")
+            
             if layer.isValid():
                 filename = os.path.basename(file_path)
                 
-                # Éviter les doublons
+                # Avoid duplicates
                 if filename in self.loaded_shapefiles:
-                    self.log_message(f"Shapefile {filename} already loaded", "Warning")
+                    self.log_message(f"Vector file {filename} already loaded", "Warning")
                     return False
                 
+                # Enhanced metadata collection
+                provider = layer.dataProvider()
+                encoding = provider.encoding()
+                
+                # Get field information
+                fields = layer.fields()
+                field_count = len(fields)
+                field_types = [field.typeName() for field in fields]
+                
+                # Store comprehensive information
                 self.loaded_shapefiles[filename] = {
                     'layer': layer,
                     'path': file_path,
+                    'format': file_format,
+                    'provider': 'ogr',
+                    'encoding': encoding,
                     'feature_count': layer.featureCount(),
+                    'field_count': field_count,
+                    'field_types': field_types,
                     'geometry_type': QgsWkbTypes.displayString(layer.wkbType()),
+                    'geometry_dimension': QgsWkbTypes.coordDimensions(layer.wkbType()),
                     'crs': layer.crs().authid(),
-                    'extent': layer.extent()
+                    'crs_description': layer.crs().description(),
+                    'extent': layer.extent(),
+                    'storage_type': provider.storageType(),
+                    'capabilities': provider.capabilities()
                 }
                 
-                self.log_message(f"Added shapefile: {filename} ({layer.featureCount()} features)", "Info")
+                # Enhanced logging with format information
+                geometry_info = f"{layer.featureCount()} features, {field_count} fields"
+                crs_info = layer.crs().authid() if layer.crs().isValid() else "No CRS"
+                
+                self.log_message(
+                    f"✅ Added {file_format}: {filename} ({geometry_info}, {crs_info})", 
+                    "Info"
+                )
+                
+                # Log additional details for complex formats
+                if file_format not in ['Shapefile', 'GeoJSON']:
+                    self.log_message(
+                        f"📋 Format details: {provider.storageType()}, encoding: {encoding}",
+                        "Info"
+                    )
+                
                 return True
             else:
-                self.log_message(f"Invalid shapefile: {file_path}", "Error")
+                # Enhanced error reporting
+                error_msg = "Unknown error"
+                if hasattr(layer, 'error') and layer.error().message():
+                    error_msg = layer.error().message()
+                
+                self.log_message(
+                    f"❌ Invalid vector file: {os.path.basename(file_path)} ({file_format}) - {error_msg}", 
+                    "Error"
+                )
                 return False
                 
         except Exception as e:
-            self.log_message(f"Error loading shapefile {file_path}: {str(e)}", "Error")
+            self.log_message(
+                f"💥 Error loading vector file {os.path.basename(file_path)}: {str(e)}", 
+                "Error"
+            )
             return False
+    
+    def add_shapefile(self, file_path: str) -> bool:
+        """Legacy method - redirects to add_vector_file for backward compatibility"""
+        return self.add_vector_file(file_path)
     
     def refresh_shapefile_list(self):
         """Refresh the shapefile list"""
@@ -2583,14 +2739,23 @@ class EnhancedTransformerDialog(QMainWindow):
                 else:
                     item.setIcon(0, QIcon(":/images/themes/default/mIconTableLayer.svg"))
             
-            # Tooltip avec informations détaillées
+            # Enhanced tooltip with format information
             source_type = "QGIS Layer" if is_qgis_layer else "External File"
-            tooltip = f"""Source: {source_type}
-Name: {filename}
-Features: {data['feature_count']:,}
-Geometry: {data.get('geometry_type', 'Unknown')}
-CRS: {data.get('crs', 'Unknown')}
-Path: {data['path']}"""
+            file_format = data.get('format', 'Unknown')
+            field_count = data.get('field_count', 0)
+            encoding = data.get('encoding', 'Unknown')
+            storage_type = data.get('storage_type', 'Unknown')
+            
+            tooltip = f"""📁 Source: {source_type}
+🏷️ Format: {file_format}
+📄 Name: {filename}
+📊 Features: {data['feature_count']:,}
+📝 Fields: {field_count}
+🔷 Geometry: {data.get('geometry_type', 'Unknown')}
+🗺️ CRS: {data.get('crs', 'Unknown')}
+💾 Encoding: {encoding}
+📂 Storage: {storage_type}
+📍 Path: {data['path']}"""
             item.setToolTip(0, tooltip)
         
         # Redimensionner les colonnes
@@ -2759,43 +2924,70 @@ Path: {data['path']}"""
             self.log_message(f"Error toggling QGIS layers display: {str(e)}", "Warning")
     
     def load_qgis_layers_to_list(self):
-        """Load shapefile layers from QGIS project to the source files list"""
+        """Load vector layers from QGIS project to the source files list (supports all formats)"""
         try:
             project = QgsProject.instance()
+            loaded_qgis_count = 0
+            
             for layer_id, layer in project.mapLayers().items():
-                # Only add vector layers (shapefiles, etc.)
+                # Only add vector layers
                 if isinstance(layer, QgsVectorLayer) and layer.isValid():
-                    # Check if it's a shapefile or compatible vector format
+                    # Use enhanced format detection
                     provider_type = layer.dataProvider().name().lower()
                     source_path = layer.source()
                     
-                    # Filter for shapefile-like layers
-                    if (provider_type in ['ogr', 'gdal'] and 
-                        (source_path.lower().endswith('.shp') or 
-                         source_path.lower().endswith('.geojson') or
-                         source_path.lower().endswith('.gml') or
-                         source_path.lower().endswith('.gpkg'))):
+                    # Support all OGR-compatible vector formats
+                    if provider_type in ['ogr', 'gdal']:
+                        # Detect format using our enhanced method
+                        file_format = self._detect_vector_format(source_path)
                         
                         layer_name = layer.name()
                         
                         # Avoid duplicates if layer is already in the list
                         if layer_name not in self.loaded_shapefiles:
-                            # Gather layer information
-                            feature_count = layer.featureCount()
-                            geom_type = QgsWkbTypes.displayString(layer.wkbType())
-                            crs = layer.crs().authid() if layer.crs().isValid() else "Unknown"
+                            # Enhanced metadata collection
+                            provider = layer.dataProvider()
+                            encoding = provider.encoding()
+                            fields = layer.fields()
+                            field_count = len(fields)
+                            field_types = [field.typeName() for field in fields]
                             
-                            # Add to loaded shapefiles with special QGIS flag
+                            # Store comprehensive information (same as add_vector_file)
                             self.loaded_shapefiles[layer_name] = {
-                                'path': source_path,
-                                'feature_count': feature_count,
-                                'geometry_type': geom_type,
-                                'crs': crs,
                                 'layer': layer,
+                                'path': source_path,
+                                'format': file_format,
+                                'provider': provider_type,
+                                'encoding': encoding,
+                                'feature_count': layer.featureCount(),
+                                'field_count': field_count,
+                                'field_types': field_types,
+                                'geometry_type': QgsWkbTypes.displayString(layer.wkbType()),
+                                'geometry_dimension': QgsWkbTypes.coordDimensions(layer.wkbType()),
+                                'crs': layer.crs().authid(),
+                                'crs_description': layer.crs().description(),
+                                'extent': layer.extent(),
+                                'storage_type': provider.storageType(),
+                                'capabilities': provider.capabilities(),
                                 'is_qgis_layer': True  # Special flag to identify QGIS layers
                             }
                             
-            self.log_message(f"Loaded {len([k for k, v in self.loaded_shapefiles.items() if v.get('is_qgis_layer', False)])} QGIS layers", "Info")
+                            loaded_qgis_count += 1
+                            
+                            # Log each loaded layer with format info
+                            self.log_message(
+                                f"📥 Added from QGIS: {file_format} - {layer_name} ({layer.featureCount()} features)",
+                                "Info"
+                            )
+            
+            # Summary message
+            if loaded_qgis_count > 0:
+                self.log_message(
+                    f"✅ Loaded {loaded_qgis_count} vector layer(s) from QGIS project", 
+                    "Info"
+                )
+            else:
+                self.log_message("ℹ️ No compatible vector layers found in QGIS project", "Info")
                             
         except Exception as e:
             self.log_message(f"Error loading QGIS layers: {str(e)}", "Warning")
@@ -2937,32 +3129,22 @@ Path: {data['path']}"""
                 else:
                     errors.append(f"FIELD '{field_name}': {message}")
             
-            # Display results
-            result_text = f"Configuration Validation for '{table_name}'\n"
-            result_text += "=" * 60 + "\n\n"
-            
-            if successes:
-                result_text += "VALID CONFIGURATIONS:\n"
-                for success in successes:
-                    result_text += f"  {success}\n"
-                result_text += "\n"
-            
+            # Only display results if there are errors
             if errors:
+                result_text = f"Configuration Validation Errors for '{table_name}'\n"
+                result_text += "=" * 60 + "\n\n"
                 result_text += "ERRORS DETECTED:\n"
                 for error in errors:
                     result_text += f"  {error}\n"
-                result_text += "\n"
-            
-            if not errors:
-                result_text += "Configuration is valid and ready for transformation!"
-                QMessageBox.information(self, "Validation Results", result_text)
-                self.log_message(f"Configuration validated successfully: {table_name}", "Info")
-                return True
-            else:
-                result_text += "Please fix the errors before proceeding."
-                QMessageBox.warning(self, "Validation Results", result_text)
+                result_text += "\nPlease fix the errors before proceeding."
+                
+                QMessageBox.warning(self, "Validation Errors", result_text)
                 self.log_message(f"Configuration validation failed: {len(errors)} errors", "Warning")
                 return False
+            else:
+                # No errors - validation passed silently
+                self.log_message(f"Configuration validated successfully: {table_name} ({len(successes)} fields validated)", "Info")
+                return True
                 
         except Exception as e:
             error_msg = f"Validation error: {str(e)}"
@@ -3021,10 +3203,10 @@ Path: {data['path']}"""
             QMessageBox.critical(self, "Initialization Error", error_msg)
             self.log_message(error_msg, "Error")
     
-    def save_current_table_config(self):
+    def save_current_table_config(self, skip_validation=False):
         """Save the current table configuration with duplicate check"""
         try:
-            if not self.validate_configuration():
+            if not skip_validation and not self.validate_configuration():
                 return
             
             table_name = self.table_name_edit.text().strip()
@@ -3199,14 +3381,14 @@ The configuration is working correctly and ready for full transformation."""
                 return
             
             filename = current_item.data(0, Qt.UserRole)
-            shp_path = self.loaded_shapefiles[filename]['path']
+            shapefile_info = self.loaded_shapefiles[filename]
             
             self.status_label.setText("Transforming...")
             self.progress_bar.setVisible(True)
             self.progress_bar.setRange(0, 0)
             
             # Save the configuration before transformation
-            self.save_current_table_config()
+            self.save_current_table_config(skip_validation=True)
             
             # Get the target CRS if selected
             target_crs = None
@@ -3214,15 +3396,30 @@ The configuration is working correctly and ready for full transformation."""
                 target_crs = self.target_crs
                 self.log_message(f"Reprojection to {target_crs.authid()} will be applied", "Info")
             
-            # Perform the transformation with reprojection
-            layers = self.transformer.transform_shapefile_to_memory_layers(shp_path, target_crs)
+            # Detect source type and use appropriate transformation method
+            if shapefile_info.get('is_qgis_layer', False):
+                # Transform QGIS layer directly from layer object
+                layer_obj = shapefile_info['layer']
+                self.log_message(f"🔄 Transforming QGIS layer: {filename}", "Info")
+                
+                layers = self.transformer.transform_qgis_layer_to_memory_layers(
+                    layer_obj, 
+                    filename,
+                    target_crs
+                )
+            else:
+                # Transform external shapefile from file path
+                shp_path = shapefile_info['path']
+                self.log_message(f"🔄 Transforming external shapefile: {filename}", "Info")
+                layers = self.transformer.transform_shapefile_to_memory_layers(shp_path, target_crs)
             
             if layers:
                 self.transformer.add_layers_to_project(layers, "Transformed Layers")
                 self.status_label.setText(f"{len(layers)} layer(s) created")
                 
-                # Emit the transformation completed signal
-                self.transformation_requested.emit(shp_path)
+                # Emit the transformation completed signal - use consistent identifier
+                source_identifier = shapefile_info['path'] if not shapefile_info.get('is_qgis_layer', False) else filename
+                self.transformation_requested.emit(source_identifier)
                 
                 # Log transformation completion without dialog popup
                 self.log_message(f"Transformation completed successfully: {len(layers)} layers created from {filename}", "Success")
@@ -3363,8 +3560,8 @@ Errors: {len(errors)}
                            if isinstance(layer, QgsVectorLayer) and layer.isValid()]
             qgis_layer_count = len(vector_layers)
             
-            # Count the shapefiles loaded in the interface
-            shapefile_count = len(self.loaded_shapefiles)
+            # Count the vector files loaded in the interface
+            vector_file_count = len(self.loaded_shapefiles)
             
             # Count the PostgreSQL tables available if the PostgreSQL tab is active
             postgresql_table_count = 0
@@ -3380,7 +3577,7 @@ Errors: {len(errors)}
                         # Display with PostgreSQL tables
                         if postgresql_table_count > 0:
                             self.stats_label.setText(
-                                f"{qgis_layer_count} QGIS layers | {postgresql_table_count} PG tables | {shapefile_count} loaded files"
+                                f"{qgis_layer_count} QGIS layers | {postgresql_table_count} PG tables | {vector_file_count} vector files"
                             )
                             return
             except (AttributeError, Exception):
@@ -3388,7 +3585,7 @@ Errors: {len(errors)}
                 pass
             
             # Display standard without PostgreSQL
-            self.stats_label.setText(f"{qgis_layer_count} QGIS layers | {shapefile_count} loaded files")
+            self.stats_label.setText(f"{qgis_layer_count} QGIS layers | {vector_file_count} vector files")
             
             # Update the Statistics panel with real data
             self._update_statistics_panel(qgis_layer_count, postgresql_table_count)
