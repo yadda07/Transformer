@@ -1789,8 +1789,9 @@ class PostgreSQLMappingWidget(QWidget):
             layer_combo.addItems(layer_names)
             self.mapping_table.setCellWidget(row, 0, layer_combo)
             
-            # Colonne 1: ComboBox avec les schémas PostgreSQL (Recherchable)
-            schema_combo = SearchableComboBox()
+            # Colonne 1: ComboBox avec les schémas PostgreSQL
+            schema_combo = QComboBox()
+            schema_combo.setEditable(True)
             
             # Charger les schémas si possible
             if not self.available_schemas and self.config_widget:
@@ -1799,7 +1800,7 @@ class PostgreSQLMappingWidget(QWidget):
                 except Exception:
                     pass  # Ignore les erreurs de connexion
             
-            # Remplir la combobox des schémas avec modèle de recherche
+            # Remplir la combobox des schémas
             schema_items = [""]
             if self.available_schemas:
                 schema_items.extend(self.available_schemas)
@@ -1807,20 +1808,19 @@ class PostgreSQLMappingWidget(QWidget):
                 schema_items.append("public")
             
             schema_combo.addItems(schema_items)
-            model = QStringListModel(schema_items)
-            schema_combo.completer.setModel(model)
             self.mapping_table.setCellWidget(row, 1, schema_combo)
             
-            # Colonne 2: ComboBox avec les tables (Recherchable et avec option de création)
-            table_combo = TableCreationComboBox()
-            table_combo.addItems([""])
+            # Colonne 2: ComboBox avec les tables (avec option de création)
+            table_combo = QComboBox()
+            table_combo.setEditable(True)
+            table_combo.addItems(["", "+ Nouvelle table..."])
             self.mapping_table.setCellWidget(row, 2, table_combo)
             
             # Connecter les signaux
             # 1. Signal de changement de schéma pour mettre à jour les tables
             schema_combo.currentTextChanged.connect(lambda text, r=row: self.update_table_combo_simple(r, text))
             # 2. Signal de création de nouvelle table
-            table_combo.table_creation_requested.connect(self.handle_table_creation)
+            table_combo.currentTextChanged.connect(lambda text, r=row: self.handle_table_selection(r, text))
             
             QgsMessageLog.logMessage(f"Nouveau mapping ajouté à la ligne {row}", "Transformer", Qgis.Info)
             
@@ -1833,6 +1833,39 @@ class PostgreSQLMappingWidget(QWidget):
         current_row = self.mapping_table.currentRow()
         if current_row >= 0:
             self.mapping_table.removeRow(current_row)
+    
+    def handle_table_selection(self, row, text):
+        """Gère la sélection de table, incluant la création de nouvelles tables"""
+        if text == "+ Nouvelle table...":
+            table_name, ok = QInputDialog.getText(
+                self, 
+                "Nouvelle table", 
+                "Nom de la nouvelle table:",
+                text=""
+            )
+            
+            if ok and table_name.strip():
+                table_name = table_name.strip()
+                
+                # Mettre à jour la combobox avec le nom de la nouvelle table
+                table_combo = self.mapping_table.cellWidget(row, 2)
+                if table_combo:
+                    # Sauvegarder l'état actuel
+                    current_items = [table_combo.itemText(i) for i in range(table_combo.count())]
+                    
+                    # Ajouter la nouvelle table si elle n'existe pas
+                    if table_name not in current_items:
+                        table_combo.insertItem(table_combo.count() - 1, table_name)  # Insérer avant "+ Nouvelle table..."
+                    
+                    # Sélectionner la nouvelle table
+                    table_combo.setCurrentText(table_name)
+                    
+                    QgsMessageLog.logMessage(f"Nouvelle table '{table_name}' ajoutée au mapping ligne {row}", "Transformer", Qgis.Info)
+            else:
+                # Annuler - remettre à vide
+                table_combo = self.mapping_table.cellWidget(row, 2)
+                if table_combo:
+                    table_combo.setCurrentIndex(0)  # Remettre à l'index vide
     
 
     
@@ -2000,43 +2033,18 @@ class PostgreSQLMappingWidget(QWidget):
         
         # If tables for this schema are already available, use them
         if schema in self.available_tables:
-            if isinstance(table_combo, TableCreationComboBox):
-                table_combo.set_tables(self.available_tables[schema])
-                # Connect table creation signal (always, just in case)
-                try:
-                    table_combo.table_creation_requested.disconnect()
-                except TypeError:
-                    pass  # No existing connection
-                table_combo.table_creation_requested.connect(self.handle_table_creation)
-            elif isinstance(table_combo, SearchableComboBox):
-                # ComboBox with advanced search
-                current_text = table_combo.currentText()
-                table_combo.clear()
-                tables_for_combo = [""]
-                tables_for_combo.extend(self.available_tables[schema])
-                table_combo.addItems(tables_for_combo)
-                
-                # Restaurer la sélection précédente si possible
-                if current_text in tables_for_combo:
-                    table_combo.setCurrentText(current_text)
-                
-                # Configure completer model
-                if hasattr(table_combo, 'completer'):
-                    model = QStringListModel(tables_for_combo)
-                    table_combo.completer.setModel(model)
-                        
-                    # Pour TableCreationComboBox, connecter le signal de création
-                    if isinstance(table_combo, TableCreationComboBox):
-                        if hasattr(self, 'handle_table_creation') and not table_combo.receivers(table_combo.table_creation_requested.signal):
-                            table_combo.table_creation_requested.connect(self.handle_table_creation)
-            else:
-                # Standard ComboBox
-                current_text = table_combo.currentText()
-                table_combo.clear()
-                table_combo.addItem("")
-                table_combo.addItems(self.available_tables[schema])
-                if current_text in self.available_tables[schema]:
-                    table_combo.setCurrentText(current_text)
+            # Update the combo with existing tables (all are standard QComboBox now)
+            current_text = table_combo.currentText()
+            table_combo.clear()
+            table_combo.addItem("")
+            table_combo.addItems(self.available_tables[schema])
+            table_combo.addItem("+ Nouvelle table...")  # Add new table option
+            
+            # Restore previous selection if possible
+            if current_text in self.available_tables[schema] or current_text == "":
+                table_combo.setCurrentText(current_text)
+            elif current_text == "+ Nouvelle table...":
+                table_combo.setCurrentText("+ Nouvelle table...")
             
             QgsMessageLog.logMessage(
                 f"Tables updated for schema {schema}: {len(self.available_tables[schema])} tables available", 
@@ -2232,6 +2240,7 @@ class PostgreSQLMappingWidget(QWidget):
             # Analyser la compatibilité de chaque mapping
             QgsMessageLog.logMessage("Analyse de compatibilité en cours...", "Transformer", Qgis.Info)
             compatibility_info = []
+            failed_mappings = []
             
             for mapping in mappings:
                 layer_name = mapping['transformed']
@@ -2242,9 +2251,24 @@ class PostgreSQLMappingWidget(QWidget):
                 table_compatibility = self._analyze_table_compatibility(layer_name, schema, table)
                 if table_compatibility:
                     compatibility_info.append(table_compatibility)
+                    QgsMessageLog.logMessage(f"✅ Table {schema}.{table} ready for integration", "Transformer", Qgis.Info)
+                else:
+                    failed_mappings.append(f"{schema}.{table} (layer: {layer_name})")
+                    QgsMessageLog.logMessage(f"❌ Failed to prepare table {schema}.{table} for layer {layer_name}", "Transformer", Qgis.Warning)
                     
             if not compatibility_info:
-                QMessageBox.warning(self, "Avertissement", "Aucune table compatible trouvée pour l'intégration")
+                # Fournir des détails sur les échecs
+                if failed_mappings:
+                    error_details = "\n".join([f"• {mapping}" for mapping in failed_mappings])
+                    QMessageBox.warning(self, "Integration Error", 
+                                      f"Failed to prepare tables for integration:\n\n{error_details}\n\n"
+                                      "Possible causes:\n"
+                                      "• Layer not found in QGIS project\n"
+                                      "• PostgreSQL connection failed\n"
+                                      "• Insufficient database permissions\n"
+                                      "• Invalid schema/table names")
+                else:
+                    QMessageBox.warning(self, "No Mappings", "No table mappings are configured for export.")
                 return
                 
             # Vérifier les préférences utilisateur pour la fenêtre de confirmation
@@ -2378,8 +2402,12 @@ class PostgreSQLMappingWidget(QWidget):
                     source_layer = layer
                     break
                     
-            if not source_layer or not isinstance(source_layer, QgsVectorLayer):
-                QgsMessageLog.logMessage(f"Couche '{layer_name}' introuvable ou non vectorielle", "Transformer", Qgis.Warning)
+            if not source_layer:
+                QgsMessageLog.logMessage(f"❌ Layer '{layer_name}' not found in QGIS project", "Transformer", Qgis.Warning)
+                return None
+                
+            if not isinstance(source_layer, QgsVectorLayer):
+                QgsMessageLog.logMessage(f"❌ Layer '{layer_name}' is not a vector layer (type: {type(source_layer).__name__})", "Transformer", Qgis.Warning)
                 return None
                 
             # Informations de base
@@ -2408,20 +2436,20 @@ class PostgreSQLMappingWidget(QWidget):
             
             # If the table does not exist, it's a new table to create
             if not target_info:
-                QgsMessageLog.logMessage(f"Table {schema}.{table} does not exist - automatic creation", "Transformer", Qgis.Info)
+                QgsMessageLog.logMessage(f"🔨 Table {schema}.{table} does not exist - creating automatically for layer '{layer_name}'", "Transformer", Qgis.Info)
                 
                 # Create the table based on the source layer structure
                 if self._create_postgresql_table(schema, table, source_layer):
-                    QgsMessageLog.logMessage(f"Table {schema}.{table} created successfully", "Transformer", Qgis.Success)
+                    QgsMessageLog.logMessage(f"✅ Table {schema}.{table} created successfully", "Transformer", Qgis.Success)
                     
                     # Now retrieve the information of the newly created table
                     target_info = self._get_postgresql_table_info(schema, table)
                     
                     if not target_info:
-                        QgsMessageLog.logMessage(f"Impossible de récupérer les infos de la table créée {schema}.{table}", "Transformer", Qgis.Critical)
+                        QgsMessageLog.logMessage(f"❌ Failed to retrieve info for newly created table {schema}.{table}", "Transformer", Qgis.Critical)
                         return None
                 else:
-                    QgsMessageLog.logMessage(f"Échec de la création de la table {schema}.{table}", "Transformer", Qgis.Critical)
+                    QgsMessageLog.logMessage(f"❌ Failed to create table {schema}.{table} - check permissions and connection", "Transformer", Qgis.Critical)
                     return None
             
             if target_info:
@@ -2516,8 +2544,56 @@ class PostgreSQLMappingWidget(QWidget):
             return table_info
             
         except Exception as e:
-            QgsMessageLog.logMessage(f"Erreur analyse compatibilité {layer_name}: {str(e)}", "Transformer", Qgis.Critical)
+            import traceback
+            QgsMessageLog.logMessage(f"Compatibility analysis failed for layer '{layer_name}' -> {schema}.{table}: {str(e)}", "Transformer", Qgis.Critical)
+            QgsMessageLog.logMessage(f"Full error trace: {traceback.format_exc()}", "Transformer", Qgis.Critical)
             return None
+            
+    def test_mapping_compatibility(self):
+        """Test method to help diagnose PostgreSQL mapping issues"""
+        try:
+            mappings = self.get_current_mappings()
+            QgsMessageLog.logMessage(f"Testing {len(mappings)} configured mappings", "Transformer", Qgis.Info)
+            
+            if not mappings:
+                QgsMessageLog.logMessage("No mappings configured", "Transformer", Qgis.Warning)
+                return
+                
+            project = QgsProject.instance()
+            all_layers = {layer.name(): layer for layer in project.mapLayers().values()}
+            QgsMessageLog.logMessage(f"Available layers in project: {', '.join(all_layers.keys())}", "Transformer", Qgis.Info)
+            
+            for i, mapping in enumerate(mappings, 1):
+                layer_name = mapping['transformed']
+                schema = mapping['schema']
+                table = mapping['table']
+                
+                QgsMessageLog.logMessage(f"[{i}] Testing mapping: '{layer_name}' -> {schema}.{table}", "Transformer", Qgis.Info)
+                
+                # Check if layer exists
+                if layer_name in all_layers:
+                    layer = all_layers[layer_name]
+                    QgsMessageLog.logMessage(f"Layer found: {type(layer).__name__}", "Transformer", Qgis.Info)
+                    
+                    if isinstance(layer, QgsVectorLayer):
+                        QgsMessageLog.logMessage(f"Valid vector layer: {layer.featureCount()} features, {layer.fields().count()} fields", "Transformer", Qgis.Info)
+                    else:
+                        QgsMessageLog.logMessage(f"Not a vector layer: {type(layer).__name__}", "Transformer", Qgis.Warning)
+                else:
+                    QgsMessageLog.logMessage(f"Layer '{layer_name}' not found in project", "Transformer", Qgis.Warning)
+                    
+                # Test PostgreSQL connection
+                try:
+                    table_info = self._get_postgresql_table_info(schema, table)
+                    if table_info:
+                        QgsMessageLog.logMessage(f"PostgreSQL table {schema}.{table} accessible", "Transformer", Qgis.Info)
+                    else:
+                        QgsMessageLog.logMessage(f"Table {schema}.{table} doesn't exist (will be created)", "Transformer", Qgis.Info)
+                except Exception as conn_error:
+                    QgsMessageLog.logMessage(f"PostgreSQL connection failed: {str(conn_error)}", "Transformer", Qgis.Critical)
+                    
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Test failed: {str(e)}", "Transformer", Qgis.Critical)
             
     def _get_postgresql_table_info(self, schema, table):
         """Récupère les informations d'une table PostgreSQL"""
@@ -3312,7 +3388,7 @@ class PostgreSQLMappingWidget(QWidget):
         
         if detailed_mapping:
             QgsMessageLog.logMessage(
-                f"✨ Detailed mapping found for {layer_name} → {schema}.{table}",
+                f"Detailed mapping found for {layer_name} → {schema}.{table}",
                 "Transformer", Qgis.Info
             )
             
@@ -3334,7 +3410,7 @@ class PostgreSQLMappingWidget(QWidget):
             custom_fields = detailed_mapping.get('custom_fields', {})
             
             QgsMessageLog.logMessage(
-                f"🔄 APPLICATION MAPPING: {len(field_mappings)} champs, {len(forced_types)} types forcés, {len(custom_fields)} champs personnalisés",
+                f"APPLICATION MAPPING: {len(field_mappings)} champs, {len(forced_types)} types forcés, {len(custom_fields)} champs personnalisés",
                 "Transformer", Qgis.Info
             )
             
@@ -3591,10 +3667,10 @@ class PostgreSQLMappingWidget(QWidget):
             from qgis.utils import iface
             if iface:
                 if mappings_loaded > 0:
-                    message = f"🔗 {mappings_loaded} mapping(s) PostgreSQL chargé(s) automatiquement"
+                    message = f"{mappings_loaded} mapping(s) PostgreSQL chargé(s) automatiquement"
                     iface.messageBar().pushMessage("PostgreSQL Auto-Load", message, level=Qgis.Success, duration=8)
                 else:
-                    message = f"⚠️ {mappings_found} mapping(s) trouvé(s) mais aucun chargé"
+                    message = f"{mappings_found} mapping(s) trouvé(s) mais aucun chargé"
                     iface.messageBar().pushMessage("PostgreSQL Auto-Load", message, level=Qgis.Warning, duration=5)
                     
         return mappings_loaded

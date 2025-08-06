@@ -657,12 +657,16 @@ class ExportWidget(QWidget):
             removed_count = 0
             
             for layer in selected_layers:
+                # Store layer name before deletion to avoid RuntimeError
+                layer_name = layer.name()
+                layer_id = layer.id()
+                
                 try:
-                    project.removeMapLayer(layer.id())
+                    project.removeMapLayer(layer_id)
                     removed_count += 1
-                    QgsMessageLog.logMessage(f"Layer removed: {layer.name()}", "Transformer", Qgis.Info)
+                    QgsMessageLog.logMessage(f"Layer removed: {layer_name}", "Transformer", Qgis.Info)
                 except Exception as e:
-                    QgsMessageLog.logMessage(f"Error removing layer {layer.name()}: {str(e)}", "Transformer", Qgis.Warning)
+                    QgsMessageLog.logMessage(f"Error removing layer {layer_name}: {str(e)}", "Transformer", Qgis.Warning)
             
             # Refresh the list
             self.refresh_layers()
