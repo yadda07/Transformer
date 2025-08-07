@@ -41,29 +41,26 @@ class SimpleTransformer:
                     
                     if not expression.hasEvalError() and result is not None:
                         if isinstance(result, bool):
-                            field = QgsField("temp", QVariant.Bool)
-                            field.setTypeName('boolean')
+                            field = QgsField("temp", QVariant.Bool, "boolean")
                             return field
                         elif isinstance(result, int):
-                            field = QgsField("temp", QVariant.Int)
-                            field.setTypeName('integer')
+                            field = QgsField("temp", QVariant.Int, "integer")
                             field.setLength(10)
                             return field
                         elif isinstance(result, float):
-                            field = QgsField("temp", QVariant.Double)
-                            field.setTypeName('double')
+                            field = QgsField("temp", QVariant.Double, "double")
                             field.setLength(20)
                             field.setPrecision(6)
                             return field
                         elif hasattr(result, 'date'):
-                            field = QgsField("temp", QVariant.DateTime)
-                            field.setTypeName('datetime')
+                            field = QgsField("temp", QVariant.DateTime, "datetime")
                             return field
         
         except Exception:
             pass
         
-        field = QgsField("temp", QVariant.String, "string", 255)
+        field = QgsField("temp", QVariant.String, "string")
+        field.setLength(255)
         return field
     
     def test_filter_expression(self, filter_expression: str, source_layer: QgsVectorLayer) -> Tuple[bool, str, int]:

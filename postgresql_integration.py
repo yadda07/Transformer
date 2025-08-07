@@ -33,6 +33,7 @@ import json
 import os
 import logging
 from datetime import datetime
+from .logger import log_info, log_success, log_warning, log_error, log_critical
 
 # Import PostgreSQL dependencies
 try:
@@ -852,10 +853,7 @@ class IntegrationConfirmationDialog(QDialog):
         # Update stats
         self._update_stats()
         
-        QMessageBox.information(self, "Field added", 
-            f"Custom field '{field_name}' added successfully!\n"
-            f"Default value: '{default_value}'\n"
-            f"Type: {pg_type}")
+        QgsMessageLog.logMessage(f"Custom field '{field_name}' added successfully with type {pg_type}", "Transformer", Qgis.Success)
     
     def _delete_field_mapping(self, row):
         """Supprime un mapping de champ"""
@@ -1044,7 +1042,7 @@ class IntegrationConfirmationDialog(QDialog):
             
             # Geometry compatibility
             geom_compatible = table_info.get('geometry_compatible', False)
-            geom_icon = "✅" if geom_compatible else "❌"
+            geom_icon = "OK" if geom_compatible else "ERROR"
             html += f"<div class='status-row'>"
             html += f"<span class='status-icon'>{geom_icon}</span>"
             html += f"<span class='status-label'>Geometry:</span>"
@@ -1053,7 +1051,7 @@ class IntegrationConfirmationDialog(QDialog):
             
             # CRS compatibility
             crs_compatible = table_info.get('crs_compatible', False)
-            crs_icon = "✅" if crs_compatible else "⚠️"
+            crs_icon = "OK" if crs_compatible else "WARNING"
             html += f"<div class='status-row'>"
             html += f"<span class='status-icon'>{crs_icon}</span>"
             html += f"<span class='status-label'>CRS:</span>"
@@ -1066,11 +1064,11 @@ class IntegrationConfirmationDialog(QDialog):
             field_percentage = (matching_fields / total_fields * 100) if total_fields > 0 else 0
             
             if field_percentage >= 80:
-                field_icon = "✅"
+                field_icon = "OK"
             elif field_percentage >= 50:
-                field_icon = "⚠️"
+                field_icon = "WARNING"
             else:
-                field_icon = "❌"
+                field_icon = "ERROR"
                 
             html += f"<div class='status-row'>"
             html += f"<span class='status-icon'>{field_icon}</span>"
@@ -1085,7 +1083,7 @@ class IntegrationConfirmationDialog(QDialog):
                 html += "<strong style='color: #2c3e50;'>📋 Détails des champs:</strong>"
                 html += "<ul class='field-list'>"
                 for field in field_details:
-                    status_icon = "✅" if field.get('compatible', False) else "❌"
+                    status_icon = "OK" if field.get('compatible', False) else "ERROR"
                     html += f"<li><span class='status-icon'>{status_icon}</span><strong>{field.get('source_name', '')}:</strong> {field.get('status', '')}</li>"
                 html += "</ul></div>"
                 
@@ -1367,8 +1365,9 @@ class PostgreSQLConfigWidget(QWidget):
             # Update status to connected
             self.update_connection_status("connected")
             
-            # Success log & minimal visual feedback
-            QgsMessageLog.logMessage(f"PostgreSQL connection successful to {conn_params['database']}@{conn_params['host']}:{conn_params['port']}", "Transformer", Qgis.Success)
+            # Success log with detailed connection info
+            connection_details = f"{conn_params['database']}@{conn_params['host']}:{conn_params['port']} (user: {conn_params['user']})"
+            log_success(f"PostgreSQL connection established: {connection_details}")
             
             # Quick visual feedback in QGIS status bar
             from qgis.utils import iface
@@ -1388,7 +1387,7 @@ class PostgreSQLConfigWidget(QWidget):
             else:
                 self.update_connection_status("error")
             
-            QgsMessageLog.logMessage(f"PostgreSQL connection failed: {str(e)}", "Transformer", Qgis.Critical)
+            log_critical(f"PostgreSQL connection failed: {str(e)}")
             # Visual feedback for error
             from qgis.utils import iface
             if iface:
@@ -1396,7 +1395,7 @@ class PostgreSQLConfigWidget(QWidget):
             return False
         except Exception as e:
             self.update_connection_status("error")
-            QgsMessageLog.logMessage(f"Connection error: {str(e)}", "Transformer", Qgis.Critical)
+            log_critical(f"Connection error: {str(e)}")
             from qgis.utils import iface
             if iface:
                 iface.messageBar().pushMessage("PostgreSQL", f"Error: {str(e)}", level=Qgis.Critical, duration=5)
@@ -1429,7 +1428,7 @@ class PostgreSQLConfigWidget(QWidget):
             config_path = os.path.join(plugin_dir, "transformer_postgresql.json")
             with open(config_path, 'w') as f:
                 json.dump(config, f, indent=2)
-            QMessageBox.information(self, "Success", "Configuration saved successfully")
+            QgsMessageLog.logMessage("PostgreSQL configuration saved successfully", "Transformer", Qgis.Success)
         except Exception as e:
             QMessageBox.critical(self, "Save Error", f"Failed to save config: {str(e)}")
     
@@ -1448,7 +1447,7 @@ class PostgreSQLConfigWidget(QWidget):
                 self.username_edit.setText(config.get("username", ""))
                 self.password_edit.setText(config.get("password", ""))
                 
-                QMessageBox.information(self, "Success", "Config loaded successfully")
+                QgsMessageLog.logMessage("PostgreSQL configuration loaded successfully", "Transformer", Qgis.Success)
             else:
                 QMessageBox.warning(self, "Warning", "No saved conf found")
         except Exception as e:
@@ -1946,12 +1945,12 @@ class PostgreSQLMappingWidget(QWidget):
             self.available_schemas = schemas
             self.available_tables = tables_by_schema
             
-            # Log du résultat
-            QgsMessageLog.logMessage(
-                f"PostgreSQL schemas loaded: {len(schemas)} schemas available", 
-                "Transformer", 
-                Qgis.Success
-            )
+            # Log détaillé des résultats
+            schemas_info = f"Connected to {conn_params['database']}@{conn_params['host']} - Loaded {len(schemas)} schemas"
+            if 'public' in schemas:
+                tables_count = len(tables_by_schema.get('public', []))
+                schemas_info += f" (public: {tables_count} tables)"
+            log_success(schemas_info)
             
             # Mettre à jour les ComboBox dans le tableau si nécessaire
             self.update_all_schema_combos()
@@ -1967,9 +1966,9 @@ class PostgreSQLMappingWidget(QWidget):
                 pass  # Ignore notification errors
                 
         except psycopg2.Error as e:
-            QgsMessageLog.logMessage(f"Failed to refresh schemas: {str(e)}", "Transformer", Qgis.Critical)
+            log_critical(f"Failed to refresh schemas: {str(e)}")
         except Exception as e:
-            QgsMessageLog.logMessage(f"Schema refresh error: {str(e)}", "Transformer", Qgis.Critical)
+            log_critical(f"Schema refresh error: {str(e)}")
     
     def update_all_schema_combos(self):
         """Update all schema ComboBoxes in table w/ complete schema list"""
@@ -2251,10 +2250,10 @@ class PostgreSQLMappingWidget(QWidget):
                 table_compatibility = self._analyze_table_compatibility(layer_name, schema, table)
                 if table_compatibility:
                     compatibility_info.append(table_compatibility)
-                    QgsMessageLog.logMessage(f"✅ Table {schema}.{table} ready for integration", "Transformer", Qgis.Info)
+                    QgsMessageLog.logMessage(f"Table {schema}.{table} ready for integration", "Transformer", Qgis.Success)
                 else:
                     failed_mappings.append(f"{schema}.{table} (layer: {layer_name})")
-                    QgsMessageLog.logMessage(f"❌ Failed to prepare table {schema}.{table} for layer {layer_name}", "Transformer", Qgis.Warning)
+                    QgsMessageLog.logMessage(f"Failed to prepare table {schema}.{table} for layer {layer_name}", "Transformer", Qgis.Warning)
                     
             if not compatibility_info:
                 # Fournir des détails sur les échecs
@@ -2382,13 +2381,146 @@ class PostgreSQLMappingWidget(QWidget):
                 if error_count > 0:
                     message += f"\n {error_count} error(s)"
                     
-                QMessageBox.information(self, "Integration completed", message)
+                QgsMessageLog.logMessage(f"PostgreSQL integration completed: {message}", "Transformer", Qgis.Success)
             else:
                 QMessageBox.warning(self, "Warning", "No integration performed")
             
         except Exception as e:
             QgsMessageLog.logMessage(f"General error during export: {str(e)}", "Transformer", Qgis.Critical)
             QMessageBox.critical(self, "Export error", f"Export failed: {str(e)}")
+    
+    def _perform_integration(self, table_info):
+        """Perform the actual table integration with detailed ETL logging"""
+        try:
+            layer_name = table_info['layer']
+            schema = table_info['schema']
+            table = table_info['table']
+            
+            # Start integration logging
+            log_info(f"Starting integration: {layer_name} → {schema}.{table}")
+            
+            # Get the QGIS source layer
+            project = QgsProject.instance()
+            source_layer = None
+            
+            for layer in project.mapLayers().values():
+                if layer.name() == layer_name:
+                    source_layer = layer
+                    break
+                    
+            if not source_layer:
+                log_critical(f"Source layer '{layer_name}' not found in project")
+                return False
+                
+            if not isinstance(source_layer, QgsVectorLayer):
+                log_critical(f"Layer '{layer_name}' is not a vector layer")
+                return False
+            
+            # Log source layer details
+            feature_count = source_layer.featureCount()
+            field_count = len(source_layer.fields())
+            geom_type = QgsWkbTypes.geometryDisplayString(source_layer.geometryType())
+            
+            log_info(f"Source layer analysis: {feature_count} features, {field_count} fields, geometry: {geom_type}")
+            
+            # Connect to PostgreSQL
+            if not self.config_widget:
+                log_critical("PostgreSQL configuration not available")
+                return False
+                
+            conn_params = {
+                'host': self.config_widget.host_edit.text() or 'localhost',
+                'port': self.config_widget.port_edit.value(),
+                'database': self.config_widget.database_edit.text(),
+                'user': self.config_widget.username_edit.text(),
+                'password': self.config_widget.password_edit.text()
+            }
+            
+            # Test connection before integration
+            try:
+                conn = psycopg2.connect(**conn_params)
+                cursor = conn.cursor()
+                log_info(f"Database connection established for integration")
+            except psycopg2.Error as e:
+                log_critical(f"Database connection failed: {str(e)}")
+                return False
+            
+            # Check if table exists and prepare for data insertion
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = %s AND table_name = %s", (schema, table))
+                table_exists = cursor.fetchone()[0] > 0
+                
+                if table_exists:
+                    # Check current row count
+                    cursor.execute(f'SELECT COUNT(*) FROM "{schema}"."{table}"')
+                    existing_count = cursor.fetchone()[0]
+                    log_info(f"Target table {schema}.{table} exists with {existing_count} existing records")
+                else:
+                    log_warning(f"Target table {schema}.{table} does not exist - will be created")
+                    cursor.close()
+                    conn.close()
+                    return False
+                    
+            except psycopg2.Error as e:
+                log_critical(f"Failed to check target table: {str(e)}")
+                cursor.close()
+                conn.close()
+                return False
+            
+            # Begin data transfer
+            log_info(f"Starting data transfer: {feature_count} features to copy")
+            
+            # Use QgsVectorLayerExporter for efficient bulk data transfer
+            provider_uri = QgsDataSourceUri()
+            provider_uri.setConnection(conn_params['host'], str(conn_params['port']), conn_params['database'], 
+                                     conn_params['user'], conn_params['password'])
+            provider_uri.setDataSource(schema, table, "geom")
+            
+            # Configure export options
+            options = QgsVectorFileWriter.SaveVectorOptions()
+            options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerNoNewFields
+            options.layerName = table
+            options.overrideGeometryType = source_layer.geometryType()
+            options.forceMulti = False
+            
+            # Execute the export
+            error, error_string = QgsVectorLayerExporter.exportLayer(
+                source_layer,
+                provider_uri.uri(),
+                "postgres",
+                source_layer.crs(),
+                False,  # onlySelected
+                options
+            )
+            
+            if error == QgsVectorLayerExporter.NoError:
+                # Verify the transfer by counting records
+                try:
+                    cursor.execute(f'SELECT COUNT(*) FROM "{schema}"."{table}"')
+                    final_count = cursor.fetchone()[0]
+                    transferred_count = final_count - (existing_count if table_exists else 0)
+                    
+                    log_success(f"Data transfer completed: {transferred_count} records transferred to {schema}.{table} (total: {final_count})")
+                    
+                    cursor.close()
+                    conn.close()
+                    return True
+                    
+                except psycopg2.Error as e:
+                    log_warning(f"Failed to verify transfer results: {str(e)}")
+                    cursor.close()
+                    conn.close()
+                    return True  # Transfer probably succeeded even if verification failed
+                    
+            else:
+                log_critical(f"Data export failed: {error_string}")
+                cursor.close()
+                conn.close()
+                return False
+                
+        except Exception as e:
+            log_critical(f"Integration error for {layer_name}: {str(e)}")
+            return False
     
     def _analyze_table_compatibility(self, layer_name, schema, table):
         """Analyse the compatibility between a QGIS layer and a PostgreSQL table"""
@@ -2440,7 +2572,7 @@ class PostgreSQLMappingWidget(QWidget):
                 
                 # Create the table based on the source layer structure
                 if self._create_postgresql_table(schema, table, source_layer):
-                    QgsMessageLog.logMessage(f"✅ Table {schema}.{table} created successfully", "Transformer", Qgis.Success)
+                    QgsMessageLog.logMessage(f"Table {schema}.{table} created successfully", "Transformer", Qgis.Success)
                     
                     # Now retrieve the information of the newly created table
                     target_info = self._get_postgresql_table_info(schema, table)
@@ -3340,13 +3472,7 @@ class PostgreSQLMappingWidget(QWidget):
             saved_count = len(basic_mappings)
             detailed_count = len(detailed_mappings)
             
-            QgsMessageLog.logMessage(f"{saved_count} base mappings + {detailed_count} detailed mappings saved", "Transformer", Qgis.Success)
-            QMessageBox.information(self, "Mappings saved", 
-                                  f"{saved_count} base mappings and {detailed_count} detailed mappings saved successfully.\n\n"
-                                  "Detailed mappings include:\n"
-                                  "• Field correspondences\n"
-                                  "• Forced types\n"
-                                  "• Champs personnalisés")
+            QgsMessageLog.logMessage(f"PostgreSQL mappings saved: {saved_count} base mappings and {detailed_count} detailed mappings saved successfully", "Transformer", Qgis.Success)
             
             return True
         except Exception as e:
@@ -3789,10 +3915,7 @@ class PostgreSQLMappingWidget(QWidget):
                 f"Mapping loaded successfully: {layer_name} → {schema_name}.{table_name}",
                 "Transformer", Qgis.Success
             )
-            QMessageBox.information(
-                self, "Mapping loaded", 
-                f"The following mapping has been loaded:\n\n{layer_name} → {schema_name}.{table_name}"
-            )
+            QgsMessageLog.logMessage(f"PostgreSQL mapping loaded: {layer_name} → {schema_name}.{table_name}", "Transformer", Qgis.Success)
             
         except Exception as e:
             QgsMessageLog.logMessage(f"Error loading mappings: {str(e)}", "Transformer", Qgis.Critical)

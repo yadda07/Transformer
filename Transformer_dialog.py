@@ -20,7 +20,7 @@ from enum import Enum
 from .logger import logger as plugin_logger, log_info, log_warning, log_error, log_success
 
 from qgis.PyQt.QtCore import (
-    Qt, pyqtSignal, QTimer, QSettings, QSize
+    Qt, pyqtSignal, QTimer, QSettings, QSize, QEvent, QRect
 )
 
 from qgis.PyQt.QtWidgets import (
@@ -137,6 +137,8 @@ except Exception as e:
 # Global variables from the main module will be imported in the methods that need them
 # to avoid circular imports
 
+
+# Classe complexe supprimée - on utilise le système Qt natif
 
 class InterfaceTheme(Enum):
     """Available interface themes"""
@@ -638,15 +640,32 @@ class SmartFilterWidget(QWidget):
         
         header_layout.addStretch()
         
-        # Action buttons
+        # Info filtre intégrée - apparaît seulement quand nécessaire
+        self.filter_status_label = QLabel()
+        self.filter_status_label.setFont(QFont("Segoe UI", 8))
+        self.filter_status_label.setVisible(False)
+        header_layout.addWidget(self.filter_status_label)
+        
+        self.filter_count_label = QLabel()
+        self.filter_count_label.setFont(QFont("Segoe UI", 8))
+        self.filter_count_label.setVisible(False)
+        self.filter_count_label.setStyleSheet("color: #666; margin-left: 8px;")
+        header_layout.addWidget(self.filter_count_label)
+        
+        # Espacement avant les boutons
+        header_layout.addSpacing(10)
+        
+        # Action buttons - version compacte
         self.test_filter_btn = QPushButton("Test")
-        self.test_filter_btn.setMaximumWidth(60)
-        self.test_filter_btn.setMaximumHeight(28)
+        self.test_filter_btn.setMaximumWidth(50)  # Réduit de 60 à 50
+        self.test_filter_btn.setMaximumHeight(22)  # Réduit de 28 à 22
+        self.test_filter_btn.setFont(QFont("Segoe UI", 8))  # Police plus petite
         self.test_filter_btn.setEnabled(False)
         
         self.builder_btn = QPushButton("Builder")
-        self.builder_btn.setMaximumWidth(70)
-        self.builder_btn.setMaximumHeight(28)
+        self.builder_btn.setMaximumWidth(60)  # Réduit de 70 à 60
+        self.builder_btn.setMaximumHeight(22)  # Réduit de 28 à 22
+        self.builder_btn.setFont(QFont("Segoe UI", 8))  # Police plus petite
         self.builder_btn.setEnabled(False)
         
         header_layout.addWidget(self.test_filter_btn)
@@ -693,23 +712,8 @@ class SmartFilterWidget(QWidget):
         templates_layout.addStretch()
         layout.addLayout(templates_layout)
         
-        # Filter info panel
-        self.filter_info_panel = QFrame()
-        self.filter_info_panel.setFrameStyle(QFrame.StyledPanel)
-        self.filter_info_panel.setMaximumHeight(40)
-        self.filter_info_panel.setVisible(False)
-        
-        info_layout = QHBoxLayout(self.filter_info_panel)
-        info_layout.setContentsMargins(6, 4, 6, 4)
-        
-        self.filter_status_label = QLabel()
-        self.filter_count_label = QLabel()
-        
-        info_layout.addWidget(self.filter_status_label)
-        info_layout.addStretch()
-        info_layout.addWidget(self.filter_count_label)
-        
-        layout.addWidget(self.filter_info_panel)
+        # Les labels de statut/compteur sont maintenant dans le header
+        # Plus besoin du panel séparé - économise de l'espace !
         
         self.setLayout(layout)
     
@@ -743,14 +747,20 @@ class SmartFilterWidget(QWidget):
         if len(self.template_buttons) >= 4:
             if type_fields:
                 self.template_buttons[3].setText(f'By {type_fields[0][:6]}')
-                self.template_buttons[3].clicked.disconnect()
+                try:
+                    self.template_buttons[3].clicked.disconnect()
+                except TypeError:
+                    pass  # No connections to disconnect
                 self.template_buttons[3].clicked.connect(
                     lambda: self.apply_template(f'"{type_fields[0]}" = \'VALUE\'')
                 )
             
             if date_fields:
                 self.template_buttons[4].setText(f'{date_fields[0][:6]} >')
-                self.template_buttons[4].clicked.disconnect()
+                try:
+                    self.template_buttons[4].clicked.disconnect()
+                except TypeError:
+                    pass  # No connections to disconnect
                 self.template_buttons[4].clicked.connect(
                     lambda: self.apply_template(f'"{date_fields[0]}" >= \'2023-01-01\'')
                 )
@@ -764,7 +774,9 @@ class SmartFilterWidget(QWidget):
         for btn in self.template_buttons:
             btn.setEnabled(enabled)
         
-        self.filter_info_panel.setVisible(enabled)
+        # Filter info panel visibility handled in update_filter_info()
+        if hasattr(self, 'filter_info_panel'):
+            self.filter_info_panel.setVisible(enabled)
         
         if not enabled:
             self.filter_expression.clear()
@@ -883,28 +895,40 @@ Filter is valid and ready to use!"""
         self.filter_applied.emit(config.get("expression", ""), config.get("enabled", False))
     
     def update_filter_info(self):
-        """Update filter information"""
+        """Update filter information - affichage intégré dans le header"""
         if not self.enable_filter_cb.isChecked():
+            # Masquer les informations si le filtre est désactivé
+            self.filter_status_label.setVisible(False)
+            self.filter_count_label.setVisible(False)
             return
         
         filter_expr = self.get_filter_expression()
         if filter_expr:
-            self.filter_status_label.setText("Filter active")
+            self.filter_status_label.setText("Active")
             self.filter_status_label.setStyleSheet("color: #ff9800; font-weight: bold;")
+            self.filter_status_label.setVisible(True)
         else:
-            self.filter_status_label.setText("Filter enabled - no expression")
-            self.filter_status_label.setStyleSheet("color: #f44336;")
+            self.filter_status_label.setText("No expression")
+            self.filter_status_label.setStyleSheet("color: #f44336; font-weight: bold;")
+            self.filter_status_label.setVisible(True)
+            self.filter_count_label.setVisible(False)
     
     def update_filter_status(self, valid, filtered_count, total_count):
-        """Update filter status"""
+        """Update filter status - affichage intégré dans le header"""
         if valid:
-            self.filter_status_label.setText("✓ Filter valid")
-            self.filter_status_label.setStyleSheet("color: #4caf50; font-weight: bold;")
-            self.filter_count_label.setText(f"{filtered_count:,} / {total_count:,} features")
+            self.filter_status_label.setText("Valid")
+            self.filter_status_label.setStyleSheet("color: #22C55E; font-weight: bold;")
+            self.filter_count_label.setText(f"({filtered_count:,}/{total_count:,})")
+            # Rendre visible les informations
+            self.filter_status_label.setVisible(True)
+            self.filter_count_label.setVisible(True)
         else:
-            self.filter_status_label.setText("✗ Filter invalid")
-            self.filter_status_label.setStyleSheet("color: #f44336; font-weight: bold;")
+            self.filter_status_label.setText("Invalid")
+            self.filter_status_label.setStyleSheet("color: #EF4444; font-weight: bold;")
             self.filter_count_label.clear()
+            # Rendre visible l'erreur, masquer le compteur
+            self.filter_status_label.setVisible(True)
+            self.filter_count_label.setVisible(False)
     
     def load_filter_templates(self):
         """Load filter templates"""
@@ -1532,12 +1556,43 @@ class EnhancedTransformerDialog(QMainWindow):
         # Application icon
         self.setWindowIcon(QIcon(":/images/themes/default/mActionTransform.svg"))
         
-        # Autoriser l'ancrage
-        self.setDockOptions(
-            QMainWindow.AllowNestedDocks |
-            QMainWindow.AllowTabbedDocks |
-            QMainWindow.AnimatedDocks
-        )
+        # Configuration avancée pour repositionnement et redimensionnement fluide
+        try:
+            # Configuration Qt native EXACTE comme QGIS pour zones de drop visibles
+            dock_options = (
+                QMainWindow.AllowNestedDocks |      # Permet docks imbriqués
+                QMainWindow.AllowTabbedDocks |      # Permet tabification
+                QMainWindow.AnimatedDocks |         # Animations smooth
+                QMainWindow.GroupedDragging         # Drag groupé (SANS ForceTabbedDocks !)
+            )
+            
+            # VerticalTabs si disponible 
+            if hasattr(QMainWindow, 'VerticalTabs'):
+                dock_options |= QMainWindow.VerticalTabs
+                
+            # Appliquer les options Qt natives
+            self.setDockOptions(dock_options)
+            
+            # Configuration des onglets (position en haut)
+            self.setTabPosition(Qt.AllDockWidgetAreas, QTabWidget.North)
+            
+            # Activer l'imbrication native si disponible
+            if hasattr(self, 'setDockNestingEnabled'):
+                self.setDockNestingEnabled(True)
+            
+            # CRUCIAL : S'assurer qu'aucun style ne bloque les drop zones natives
+            self.setAttribute(Qt.WA_TranslucentBackground, False)
+            
+            log_info("Native Qt dock drop zones activated (like QGIS)")
+            
+        except Exception as e:
+            log_error(f"Error setting dock options: {str(e)}")
+            # Fallback aux options de base
+            self.setDockOptions(
+                QMainWindow.AllowNestedDocks |
+                QMainWindow.AllowTabbedDocks |
+                QMainWindow.AnimatedDocks
+            )
     
     def setup_central_widget(self):
         """Configure the central widget"""
@@ -1646,46 +1701,112 @@ class EnhancedTransformerDialog(QMainWindow):
         return tab_widget
     
     def create_expression_panel(self):
-        """Create main expression panel"""
+        """Create main expression panel with dynamic resizing and toggleable components"""
         panel = QFrame()
         panel.setFrameStyle(QFrame.NoFrame)
-        layout = QVBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)
+        main_layout = QVBoxLayout()
+        main_layout.setContentsMargins(4, 4, 4, 4)
         
-        # Table configuration
-        config_group = QGroupBox("Table Configuration")
+        # Components visibility toolbar
+        visibility_toolbar = QToolBar("Components Visibility")
+        visibility_toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        visibility_toolbar.setIconSize(QSize(16, 16))
+        visibility_toolbar.setFloatable(False)
+        visibility_toolbar.setMovable(False)
+        
+        # Visibility toggle actions  
+        self.table_config_action = QAction(QIcon(), "Table Configuration", self)
+        self.table_config_action.setCheckable(True)
+        self.table_config_action.setChecked(True)
+        self.table_config_action.setToolTip("Toggle Table Configuration visibility")
+        self.table_config_action.toggled.connect(lambda checked: self.toggle_component_visibility('table_config', checked))
+        
+        self.filter_action = QAction(QIcon(), "Smart Filter", self)
+        self.filter_action.setCheckable(True)
+        self.filter_action.setChecked(True)
+        self.filter_action.setToolTip("Toggle Smart Filter visibility")
+        self.filter_action.toggled.connect(lambda checked: self.toggle_component_visibility('smart_filter', checked))
+        
+        self.expression_action = QAction(QIcon(":/images/themes/default/mActionExpression.svg"), "Expression Builder", self)
+        self.expression_action.setCheckable(True)
+        self.expression_action.setChecked(True)
+        self.expression_action.setToolTip("Toggle Expression Builder visibility")
+        self.expression_action.toggled.connect(lambda checked: self.toggle_component_visibility('expression_builder', checked))
+        
+        self.fields_action = QAction(QIcon(":/images/themes/default/mActionManageColumns.svg"), "Field Management", self)
+        self.fields_action.setCheckable(True)
+        self.fields_action.setChecked(True)
+        self.fields_action.setToolTip("Toggle Field Management visibility")
+        self.fields_action.toggled.connect(lambda checked: self.toggle_component_visibility('field_management', checked))
+        
+        visibility_toolbar.addAction(self.table_config_action)
+        visibility_toolbar.addAction(self.filter_action)
+        visibility_toolbar.addAction(self.expression_action)
+        visibility_toolbar.addAction(self.fields_action)
+        
+        # Separator and reset button
+        visibility_toolbar.addSeparator()
+        reset_visibility_action = QAction(QIcon(), "Show All", self)
+        reset_visibility_action.setToolTip("Show all components")
+        reset_visibility_action.triggered.connect(self.show_all_components)
+        visibility_toolbar.addAction(reset_visibility_action)
+        
+        # Apply blue color only to checked/selected buttons
+        visibility_toolbar.setStyleSheet("QToolButton:checked { background-color: #3584e4; color: white; }")
+        
+        main_layout.addWidget(visibility_toolbar)
+        
+        # Create vertical splitter for dynamic resizing between components
+        self.config_splitter = QSplitter(Qt.Vertical)
+        self.config_splitter.setChildrenCollapsible(False)  # Prevent complete collapse
+        
+        # Store component references for visibility management
+        self.config_components = {}
+        
+        # Table configuration - compact version
+        self.config_components['table_config'] = QGroupBox("Table Configuration")
         config_layout = QFormLayout()
+        config_layout.setVerticalSpacing(8)  # Espacement vertical confortable
+        config_layout.setContentsMargins(10, 12, 10, 8)  # Marges améliorées (haut augmenté)
         
         self.table_name_edit = QLineEdit()
         self.table_name_edit.setPlaceholderText("Enter output table name...")
+        self.table_name_edit.setMaximumHeight(24)  # Hauteur fixe pour le champ
         config_layout.addRow("Table Name:", self.table_name_edit)
         
-        config_group.setLayout(config_layout)
-        layout.addWidget(config_group)
+        self.config_components['table_config'].setLayout(config_layout)
+        self.config_components['table_config'].setMinimumHeight(55)  # Minimum suffisant pour éviter l'écrasement
+        self.config_components['table_config'].setMaximumHeight(85)  # Hauteur max légèrement augmentée
+        # Définir une hauteur par défaut confortable
+        self.config_components['table_config'].resize(self.config_components['table_config'].width(), 75)
+        self.config_components['table_config'].setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+        self.config_splitter.addWidget(self.config_components['table_config'])
         
         # Smart filter widget
-        filter_group = QGroupBox("Smart Filter")
+        self.config_components['smart_filter'] = QGroupBox("Smart Filter")
         filter_layout = QVBoxLayout()
         
         self.smart_filter = SmartFilterWidget()
         filter_layout.addWidget(self.smart_filter)
         
-        filter_group.setLayout(filter_layout)
-        layout.addWidget(filter_group)
+        self.config_components['smart_filter'].setLayout(filter_layout)
+        self.config_components['smart_filter'].setMinimumHeight(120)
+        self.config_splitter.addWidget(self.config_components['smart_filter'])
         
         # Advanced expression builder
-        expr_group = QGroupBox("Expression Builder")
+        self.config_components['expression_builder'] = QGroupBox("Expression Builder")
         expr_layout = QVBoxLayout()
         
         self.advanced_expression = AdvancedExpressionWidget()
         expr_layout.addWidget(self.advanced_expression)
         
-        expr_group.setLayout(expr_layout)
-        layout.addWidget(expr_group)
+        self.config_components['expression_builder'].setLayout(expr_layout)
+        self.config_components['expression_builder'].setMinimumHeight(200)
+        self.config_splitter.addWidget(self.config_components['expression_builder'])
         
-        # Smart fields widget - Improved visibility
-        fields_group = QGroupBox("Field Management (Column Configuration)")
-        fields_group.setStyleSheet("""
+        # Smart fields widget
+        self.config_components['field_management'] = QGroupBox("Field Management (Column Configuration)")
+        self.config_components['field_management'].setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
                 font-size: 12px;
@@ -1711,43 +1832,1334 @@ class EnhancedTransformerDialog(QMainWindow):
         self.smart_fields = FieldWidget(self.advanced_expression)
         fields_layout.addWidget(self.smart_fields)
         
-        fields_group.setLayout(fields_layout)
-        layout.addWidget(fields_group)
+        self.config_components['field_management'].setLayout(fields_layout)
+        self.config_components['field_management'].setMinimumHeight(150)
+        self.config_splitter.addWidget(self.config_components['field_management'])
         
-        panel.setLayout(layout)
+        # Set proportional sizes (table=1, filter=2, expression=3, fields=2)
+        self.config_splitter.setStretchFactor(0, 1)  # Table Configuration
+        self.config_splitter.setStretchFactor(1, 2)  # Smart Filter  
+        self.config_splitter.setStretchFactor(2, 3)  # Expression Builder (plus large)
+        self.config_splitter.setStretchFactor(3, 2)  # Field Management
+        
+        main_layout.addWidget(self.config_splitter)
+        panel.setLayout(main_layout)
+        
+        # Load saved component visibility states
+        QTimer.singleShot(100, self.restore_component_visibility)
+        
         return panel
     
+    def toggle_component_visibility(self, component_name, visible):
+        """Toggle visibility of a configuration component"""
+        try:
+            if component_name in self.config_components:
+                component = self.config_components[component_name]
+                component.setVisible(visible)
+                
+                # Update corresponding toolbar action
+                if hasattr(self, 'config_toolbar_actions'):
+                    action = self.config_toolbar_actions.get(component_name)
+                    if action:
+                        action.setChecked(visible)
+                
+                # Update corresponding menu action
+                if hasattr(self, 'component_menu_actions'):
+                    menu_action = self.component_menu_actions.get(component_name)
+                    if menu_action:
+                        # Temporarily block signals to prevent recursive calls
+                        menu_action.blockSignals(True)
+                        menu_action.setChecked(visible)
+                        menu_action.blockSignals(False)
+                
+                # Save visibility state
+                self.save_component_visibility_state(component_name, visible)
+                
+                # Log the action
+                display_names = {
+                    'table_config': 'Table Configuration',
+                    'smart_filter': 'Smart Filter', 
+                    'expression_builder': 'Expression Builder',
+                    'field_management': 'Field Management'
+                }
+                display_name = display_names.get(component_name, component_name)
+                status = "shown" if visible else "hidden"
+                self.log_message(f"Component '{display_name}' {status}", "Info")
+                
+        except Exception as e:
+            self.log_message(f"Error toggling component visibility: {str(e)}", "Error")
+    
+    def show_all_components(self):
+        """Show all configuration components"""
+        try:
+            for component_name in self.config_components.keys():
+                self.toggle_component_visibility(component_name, True)
+            self.log_message("All configuration components shown", "Info")
+        except Exception as e:
+            self.log_message(f"Error showing all components: {str(e)}", "Warning")
+    
+    def save_component_visibility_state(self, component_name, visible):
+        """Save component visibility state to settings"""
+        try:
+            settings = QSettings()
+            settings.setValue(f"Transformer/component_{component_name}_visible", visible)
+        except Exception as e:
+            self.log_message(f"Error saving component visibility state: {str(e)}", "Warning")
+    
+    def restore_component_visibility(self):
+        """Restore saved component visibility states from QSettings"""
+        try:
+            settings = QSettings()
+            for component_name in self.config_components.keys():
+                # Default to True (visible) if no setting exists
+                visible = settings.value(f"Transformer/component_{component_name}_visible", True, type=bool)
+                
+                # Set component visibility without triggering menu synchronization
+                # (to avoid recursive calls during initialization)
+                component = self.config_components[component_name]
+                component.setVisible(visible)
+                
+                # Update menu action state if available
+                if hasattr(self, 'component_menu_actions'):
+                    menu_action = self.component_menu_actions.get(component_name)
+                    if menu_action:
+                        menu_action.setChecked(visible)
+                        
+                # Update toolbar action state if available
+                if hasattr(self, 'config_toolbar_actions'):
+                    action = self.config_toolbar_actions.get(component_name)
+                    if action:
+                        action.setChecked(visible)
+            
+            self.log_message("Component visibility states restored", "Info")
+        except Exception as e:
+            self.log_message(f"Error restoring component visibility: {str(e)}", "Warning")
+    
     def setup_dockwidgets(self):
-        """Configure the dock widgets"""
-        # Shapefiles panel
-        self.shapefiles_dock = QDockWidget("Source Files", self)
-        self.shapefiles_dock.setWidget(self.create_shapefiles_widget())
-        self.shapefiles_dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
-        self.addDockWidget(Qt.LeftDockWidgetArea, self.shapefiles_dock)
+        """Configure modern fluid dock widgets with enhanced UX"""
+        try:
+            # Dock options are already set in setup_main_window()
+            # Just ensure they are properly configured
+            if not (self.dockOptions() & QMainWindow.GroupedDragging):
+                self.setDockOptions(
+                    QMainWindow.AnimatedDocks | 
+                    QMainWindow.AllowNestedDocks | 
+                    QMainWindow.AllowTabbedDocks |
+                    QMainWindow.GroupedDragging
+                )
+            
+            # === PRIMARY DOCKS (existants) ===
+            
+            # Vector Sources (Left)
+            self.source_dock = self._create_modern_dock(
+                "Vector Sources", 
+                "source_dock",
+                self.create_shapefiles_widget()
+            )
+            
+            # Configuration Preview (Right)
+            self.config_dock = self._create_modern_dock(
+                "Configuration Preview", 
+                "config_dock",
+                self.create_config_preview_widget()
+            )
+            
+            # Activity Monitor (Bottom Right)
+            self.log_dock = self._create_modern_dock(
+                "Activity Monitor", 
+                "log_dock",
+                self.create_logs_widget()
+            )
+            
+            # Quick Help (Tabbed with Config)
+            self.help_dock = self._create_modern_dock(
+                "Quick Help", 
+                "help_dock",
+                self.create_help_widget()
+            )
+            
+            # === NOUVEAUX DOCKS MODULAIRES (ex-blocs centraux) ===
+            
+            # Note: Table Configuration reste intégrée dans le bloc central Configuration
+            
+            # Note: Smart Filter reste intégré dans le bloc central Configuration
+            
+            # Note: Expression Builder reste intégré dans le bloc central Configuration
+            
+            # Note: Field Management reste intégré dans le bloc central Configuration
+            
+            # === DOCK LAYOUT ===
+            self._arrange_fluid_layout()
+            
+            # === ENHANCED FEATURES ===
+            self._setup_dock_signals()
+            self._setup_dock_styling()
+            self._setup_layout_presets()
+            
+            # === FINALIZE SETUP ===
+            # Le système Qt natif gère déjà parfaitement le drag & drop
+            # Il suffit de s'assurer que tout est correctement configuré
+            QTimer.singleShot(100, self._finalize_dock_setup)
+            
+        except Exception as e:
+            log_error(f"Error setting up modern dock widgets: {str(e)}")
+            self._setup_fallback_docks()
+    
+    def _setup_layout_presets(self):
+        """Setup quick layout presets for different workflows"""
+        try:
+            # Add layout dropdown to toolbar if it exists
+            if hasattr(self, 'toolbar'):
+                # Create layout menu button
+                layout_menu = QMenu("Layouts", self)
+                layout_menu.setIcon(QIcon(":/images/themes/default/mActionOptions.svg"))
+                
+                # Add layout actions
+                default_action = QAction("Default Layout", self)
+                default_action.triggered.connect(self._layout_default)
+                layout_menu.addAction(default_action)
+                
+                vertical_action = QAction("Vertical Split", self)
+                vertical_action.triggered.connect(self._layout_vertical)
+                layout_menu.addAction(vertical_action)
+                
+                horizontal_action = QAction("Horizontal Layout", self)
+                horizontal_action.triggered.connect(self._layout_horizontal)
+                layout_menu.addAction(horizontal_action)
+                
+                layout_menu.addSeparator()
+                
+                focus_config_action = QAction("Focus Configuration", self)
+                focus_config_action.triggered.connect(self._layout_focus_config)
+                layout_menu.addAction(focus_config_action)
+                
+                focus_monitor_action = QAction("Focus Activity Monitor", self)
+                focus_monitor_action.triggered.connect(self._layout_focus_monitor)
+                layout_menu.addAction(focus_monitor_action)
+                
+                # Add menu to toolbar
+                layout_button = QToolButton()
+                layout_button.setMenu(layout_menu)
+                layout_button.setPopupMode(QToolButton.InstantPopup)
+                layout_button.setIcon(QIcon(":/images/themes/default/mActionOptions.svg"))
+                layout_button.setText("Layouts")
+                layout_button.setToolTip("Quick layout presets for different workflows")
+                self.toolbar.addWidget(layout_button)
+                
+        except Exception as e:
+            log_error(f"Error setting up layout presets: {str(e)}")
+    
+    def _setup_dock_signals(self):
+        """Setup enhanced dock signals for user feedback"""
+        try:
+            docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
+            for dock in docks:
+                if dock:
+                    dock.dockLocationChanged.connect(lambda area, d=dock: self._on_dock_moved(d, area))
+                    dock.visibilityChanged.connect(lambda visible, d=dock: self._on_dock_visibility_changed(d, visible))
+                    dock.topLevelChanged.connect(lambda floating, d=dock: self._on_dock_floating_changed(d, floating))
+        except Exception as e:
+            log_error(f"Error setting up dock signals: {str(e)}")
+    
+    def _on_dock_moved(self, dock, area):
+        """Handle dock movement with user feedback"""
+        try:
+            dock_name = dock.windowTitle()
+            area_names = {
+                Qt.LeftDockWidgetArea: "left",
+                Qt.RightDockWidgetArea: "right", 
+                Qt.TopDockWidgetArea: "top",
+                Qt.BottomDockWidgetArea: "bottom"
+            }
+            area_name = area_names.get(area, "unknown")
+            self.log_message(f"Moved '{dock_name}' to {area_name} area")
+        except Exception as e:
+            log_error(f"Error handling dock movement: {str(e)}")
+    
+    def _on_dock_visibility_changed(self, dock, visible):
+        """Handle dock visibility changes"""
+        try:
+            dock_name = dock.windowTitle()
+            status = "visible" if visible else "hidden"
+            self.log_message(f"'{dock_name}' is now {status}")
+        except Exception as e:
+            log_error(f"Error handling dock visibility: {str(e)}")
+    
+    def _on_dock_floating_changed(self, dock, floating):
+        """Handle dock floating state changes"""
+        try:
+            dock_name = dock.windowTitle()
+            status = "floating" if floating else "docked"
+            self.log_message(f"'{dock_name}' is now {status}")
+        except Exception as e:
+            log_error(f"Error handling dock floating: {str(e)}")
+    
+    def _layout_default(self):
+        """Default layout: Sources left, Config+Monitor right, Help tabbed"""
+        try:
+            # Reset all docks
+            self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+            self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+            self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
+            
+            # Split config and log vertically on the right
+            self.splitDockWidget(self.config_dock, self.log_dock, Qt.Vertical)
+            
+            # Tab help with config
+            self.tabifyDockWidget(self.config_dock, self.help_dock)
+            self.config_dock.raise_()
+            
+            # Show all docks
+            for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
+                dock.setVisible(True)
+                
+            self.log_message("Applied default layout")
+        except Exception as e:
+            log_error(f"Error applying default layout: {str(e)}")
+    
+    def _layout_vertical(self):
+        """Vertical layout: Config top, Monitor bottom"""
+        try:
+            # Left: Sources
+            self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+            
+            # Right top: Config
+            self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+            
+            # Right bottom: Log
+            self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
+            self.splitDockWidget(self.config_dock, self.log_dock, Qt.Vertical)
+            
+            # Tab help with config
+            self.tabifyDockWidget(self.config_dock, self.help_dock)
+            self.config_dock.raise_()
+            
+            # Adjust sizes - Config larger than log
+            self.resizeDocks([self.config_dock], [300], Qt.Vertical)
+            
+            self.log_message("Applied vertical layout")
+        except Exception as e:
+            log_error(f"Error applying vertical layout: {str(e)}")
+    
+    def _layout_horizontal(self):
+        """Horizontal layout: All panels side by side"""
+        try:
+            # Arrange all docks horizontally
+            self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+            self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+            self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
+            
+            # Split horizontally
+            self.splitDockWidget(self.config_dock, self.log_dock, Qt.Horizontal)
+            
+            # Add help at bottom
+            self.addDockWidget(Qt.BottomDockWidgetArea, self.help_dock)
+            
+            self.log_message("Applied horizontal layout")
+        except Exception as e:
+            log_error(f"Error applying horizontal layout: {str(e)}")
+    
+    def _layout_focus_config(self):
+        """Focus on configuration: Large config panel"""
+        try:
+            # Config takes most space
+            self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+            
+            # Sources on left
+            self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+            
+            # Log and help tabbed at bottom
+            self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
+            self.tabifyDockWidget(self.log_dock, self.help_dock)
+            self.log_dock.raise_()
+            
+            # Resize to focus on config
+            self.resizeDocks([self.config_dock], [500], Qt.Horizontal)
+            
+            self.log_message("Applied configuration focus layout")
+        except Exception as e:
+            log_error(f"Error applying config focus layout: {str(e)}")
+    
+    def _layout_focus_monitor(self):
+        """Focus on monitoring: Large activity monitor"""
+        try:
+            # Monitor takes most space
+            self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
+            
+            # Sources on left
+            self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+            
+            # Config and help tabbed at bottom
+            self.addDockWidget(Qt.BottomDockWidgetArea, self.config_dock)
+            self.tabifyDockWidget(self.config_dock, self.help_dock)
+            self.config_dock.raise_()
+            
+            # Resize to focus on monitor
+            self.resizeDocks([self.log_dock], [500], Qt.Horizontal)
+            
+            self.log_message("Applied activity monitor focus layout")
+        except Exception as e:
+            log_error(f"Error applying monitor focus layout: {str(e)}")
+    
+    def _setup_dock_styling(self):
+        """Apply modern styling to dock widgets"""
+        try:
+            dock_style = """
+            QDockWidget {
+                titlebar-close-icon: url(:/images/themes/default/mIconClose.svg);
+                titlebar-normal-icon: url(:/images/themes/default/mActionUndock.svg);
+                border: 1px solid #CCCCCC;
+                background-color: #FAFAFA;
+            }
+            
+            QDockWidget::title {
+                background-color: #E3F2FD;
+                color: #1976D2;
+                font-weight: bold;
+                font-size: 11px;
+                padding: 4px;
+                border: 1px solid #BBDEFB;
+            }
+            
+            QDockWidget::title:hover {
+                background-color: #BBDEFB;
+            }
+            
+            QDockWidget::close-button, QDockWidget::float-button {
+                background: transparent;
+                border: none;
+                icon-size: 14px;
+                padding: 2px;
+            }
+            
+            QDockWidget::close-button:hover, QDockWidget::float-button:hover {
+                background-color: #2196F3;
+                border-radius: 2px;
+            }
+            
+            /* Floating dock widget styling */
+            QDockWidget[floating="true"] {
+                border: 2px solid #1976D2;
+                background-color: #FFFFFF;
+                border-radius: 4px;
+            }
+            
+            QDockWidget[floating="true"]::title {
+                background-color: #1976D2;
+                color: white;
+            }
+            """
+            
+            self.setStyleSheet(self.styleSheet() + dock_style)
+            
+        except Exception as e:
+            log_error(f"Error applying dock styling: {str(e)}")
+    
+    def _create_modern_dock(self, title, object_name, widget):
+        """Create a modern dock widget with enhanced repositioning and resizing"""
+        try:
+            dock = QDockWidget(title, self)
+            dock.setObjectName(object_name)
+            
+            # Ensure widget is valid
+            if widget is None:
+                widget = QLabel(f"Error: No widget for {title}")
+                
+            dock.setWidget(widget)
+            
+            # Features EXACTES comme les docks QGIS natifs (pas de VerticalTitleBar !)
+            dock.setFeatures(
+                QDockWidget.DockWidgetMovable |        # Déplaçable
+                QDockWidget.DockWidgetFloatable |      # Flottant  
+                QDockWidget.DockWidgetClosable         # Fermable
+            )
+            
+            # Zones autorisées : TOUTES pour flexibilité maximale comme QGIS
+            dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+            
+            # PAS d'attributs custom qui peuvent bloquer les drop zones natives
+            # dock.setProperty("dragEnabled", True)  # <- Inutile, Qt le fait déjà
+            # dock.setAttribute(Qt.WA_DeleteOnClose, False)  # <- Peut interférer
+            
+            # Tailles optimales pour redimensionnement
+            dock.setMinimumSize(250, 180)  # Taille minimum plus généreuse
+            dock.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+            
+            # Tailles par défaut selon le type de dock
+            if 'source' in object_name.lower():
+                dock.resize(350, 400)  # Sources plus larges
+            elif 'config' in object_name.lower():
+                dock.resize(400, 300)  # Config plus carrée
+            elif 'log' in object_name.lower():
+                dock.resize(450, 250)  # Log plus large
+            else:
+                dock.resize(300, 200)  # Taille par défaut
+            
+            # SIMPLE : Laisser Qt gérer les animations nativement
+            # dock.setProperty("animated", True)  # <- Inutile, Qt le fait déjà
+            
+            # Visible et actif (nécessaire)
+            dock.setVisible(True)
+            dock.setEnabled(True)
+            
+            return dock
+            
+        except Exception as e:
+            log_error(f"Error creating modern dock '{title}': {str(e)}")
+            # Fallback: create basic dock with all features
+            dock = QDockWidget(title, self)
+            dock.setWidget(widget if widget else QLabel(f"Error loading {title}"))
+            dock.setFeatures(QDockWidget.AllDockWidgetFeatures)  # Enable all features
+            dock.setAllowedAreas(Qt.AllDockWidgetAreas)  # Allow all areas
+            return dock
+    
+    def _arrange_fluid_layout(self):
+        """Arrange docks with intelligent positioning and resizing"""
+        try:
+            # === POSITIONNEMENT INTELLIGENT ===
+            
+            # Gauche: Vector Sources (zone principale pour les fichiers)
+            self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+            
+            # Droite: Configuration Preview (zone de travail principale)
+            self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+            
+            # Droite: Activity Monitor (monitoring en continu)
+            self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
+            
+            # === SPLITS INTELLIGENTS ===
+            # Split vertical pour séparer config (haut) et log (bas)
+            self.splitDockWidget(self.config_dock, self.log_dock, Qt.Vertical)
+            
+            # Tabifier Help avec Config pour économiser l'espace
+            self.tabifyDockWidget(self.config_dock, self.help_dock)
+            
+            # Mettre Config en avant par défaut
+            self.config_dock.raise_()
+            
+            # === REDIMENSIONNEMENT INTELLIGENT ===
+            
+            # Calculer les tailles optimales selon la taille de fenêtre
+            window_width = self.width()
+            window_height = self.height()
+            
+            # Proportions optimales
+            source_width = int(window_width * 0.25)      # 25% pour sources
+            config_height = int(window_height * 0.55)    # 55% pour config
+            log_height = int(window_height * 0.35)       # 35% pour log
+            
+            # Appliquer les tailles avec gestion d'erreur
+            QTimer.singleShot(50, lambda: self._apply_intelligent_sizing(
+                source_width, config_height, log_height))
+            
+            # === VISIBILITÉ ET ACTIVATION ===
+            for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
+                if dock:
+                    dock.setVisible(True)
+                    dock.activateWindow()  # S'assurer que le dock est actif
+            
+            # === CONFIGURATION FINALE ===
+            # Activer la sauvegarde automatique des positions
+            self.setDockNestingEnabled(True) if hasattr(self, 'setDockNestingEnabled') else None
+            
+            log_info("Dock layout configured with intelligent positioning")
+                
+        except Exception as e:
+            log_error(f"Error arranging fluid layout: {str(e)}")
+    
+    def _apply_intelligent_sizing(self, source_width, config_height, log_height):
+        """Apply intelligent sizing to dock widgets with error handling"""
+        try:
+            # === REDIMENSIONNEMENT HORIZONTAL ===
+            # Réduire la largeur du panneau source pour plus d'espace central
+            if self.source_dock and self.source_dock.isVisible():
+                try:
+                    self.resizeDocks([self.source_dock], [source_width], Qt.Horizontal)
+                except Exception as e:
+                    log_error(f"Error resizing source dock horizontally: {str(e)}")
+            
+            # === REDIMENSIONNEMENT VERTICAL ===
+            # Optimiser la répartition config/log
+            docks_to_resize = []
+            heights = []
+            
+            if self.config_dock and self.config_dock.isVisible():
+                docks_to_resize.append(self.config_dock)
+                heights.append(config_height)
+            
+            if self.log_dock and self.log_dock.isVisible():
+                docks_to_resize.append(self.log_dock)
+                heights.append(log_height)
+            
+            if docks_to_resize:
+                try:
+                    self.resizeDocks(docks_to_resize, heights, Qt.Vertical)
+                except Exception as e:
+                    log_error(f"Error resizing docks vertically: {str(e)}")
+            
+            # === OPTIMISATIONS SUPPLÉMENTAIRES ===
+            
+            # S'assurer que les splitters sont visibles et redimensionnables
+            for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
+                if dock and dock.isVisible():
+                    try:
+                        # Optimiser la politique de taille
+                        dock.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+                        
+                        # S'assurer que le widget interne peut se redimensionner
+                        widget = dock.widget()
+                        if widget:
+                            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                            
+                    except Exception as e:
+                        log_error(f"Error optimizing dock {dock.objectName()}: {str(e)}")
+            
+            log_info(f"Applied intelligent sizing - Source: {source_width}px, Config: {config_height}px, Log: {log_height}px")
+            
+        except Exception as e:
+            log_error(f"Error applying intelligent sizing: {str(e)}")
+    
+    def _finalize_dock_setup(self):
+        """Finalize dock setup with QGIS-native features and repositioning enhancements"""
+        try:
+            # === VÉRIFICATIONS FINALES ===
+            all_docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
+            
+            for dock in all_docks:
+                if dock:
+                    # S'assurer que toutes les fonctionnalités sont activées
+                    dock.setFeatures(QDockWidget.AllDockWidgetFeatures)
+                    dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+                    
+                    # Vérifier la visibilité et l'état actif
+                    if not dock.isVisible():
+                        dock.setVisible(True)
+                    if not dock.isEnabled():
+                        dock.setEnabled(True)
+                    
+                    # PAS de propriétés custom qui bloquent les drop zones natives !
+                    # dock.setProperty("dragEnabled", True)  # <- Qt le fait déjà
+                    # dock.setAttribute(Qt.WA_Hover, True)   # <- Peut interférer
+            
+            # === CONFIGURATION NATIVE QT COMME QGIS ===
+            
+            # S'assurer que les options sont exactement comme QGIS (PAS ForceTabbedDocks !)
+            current_options = self.dockOptions()
+            if not (current_options & QMainWindow.GroupedDragging):
+                self.setDockOptions(
+                    QMainWindow.AnimatedDocks | 
+                    QMainWindow.AllowNestedDocks | 
+                    QMainWindow.AllowTabbedDocks |
+                    QMainWindow.GroupedDragging     # SANS ForceTabbedDocks !
+                )
+            
+            # Activer les fonctionnalités de redimensionnement avancé
+            if hasattr(self, 'setDockNestingEnabled'):
+                self.setDockNestingEnabled(True)
+            
+            # === OPTIMISATIONS DE PERFORMANCE ===
+            
+            # Créer des splitters redimensionnables
+            for dock in all_docks:
+                if dock and dock.isVisible():
+                    try:
+                        # Optimiser les widgets internes pour le redimensionnement
+                        widget = dock.widget()
+                        if widget and hasattr(widget, 'setSizePolicy'):
+                            widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+                        
+                        # S'assurer que le dock peut être redimensionné
+                        dock.setMinimumSize(200, 150)
+                        dock.setMaximumSize(16777215, 16777215)  # Pas de limite max
+                        
+                    except Exception as e:
+                        log_error(f"Error optimizing dock {dock.objectName()}: {str(e)}")
+            
+            # === FINALISATION ===
+            
+            # Configurer les menus contextuels pour repositionnement
+            self._setup_dock_context_menus()
+            
+            # Vérifier que le layout est stable
+            self.update()
+            
+            # Test final : vérifier que les drop zones natives fonctionnent
+            self._validate_native_drop_zones()
+            
+            # === RACCOURCIS CLAVIER ===
+            # Configurer les raccourcis maintenant que tous les docks sont initialisés
+            self._setup_dock_shortcuts()
+            
+            # Message de confirmation
+            log_info("Dock system finalized with QGIS native repositioning, resizing features, context menus, and keyboard shortcuts")
+            
+        except Exception as e:
+            log_error(f"Error finalizing dock setup: {str(e)}")
+    
+    def _validate_native_drop_zones(self):
+        """Validate that Qt native drop zones are properly configured"""
+        try:
+            # Vérifier les options critiques
+            options = self.dockOptions()
+            
+            required_options = [
+                (QMainWindow.AllowNestedDocks, "AllowNestedDocks"),
+                (QMainWindow.AllowTabbedDocks, "AllowTabbedDocks"),
+                (QMainWindow.AnimatedDocks, "AnimatedDocks"),
+                (QMainWindow.GroupedDragging, "GroupedDragging")
+            ]
+            
+            missing_options = []
+            for option, name in required_options:
+                if not (options & option):
+                    missing_options.append(name)
+            
+            if missing_options:
+                log_error(f"Missing dock options for native drop zones: {', '.join(missing_options)}")
+            
+            # Vérifier que ForceTabbedDocks n'est PAS activé (bloquerait les drop zones)
+            if options & QMainWindow.ForceTabbedDocks:
+                log_error("WARNING: ForceTabbedDocks is enabled - this blocks native drop zones!")
+                # Corriger automatiquement
+                corrected_options = options & ~QMainWindow.ForceTabbedDocks
+                self.setDockOptions(corrected_options)
+                log_info("ForceTabbedDocks removed - native drop zones should now work")
+            
+            # Vérifier les features des docks
+            all_docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
+            for dock in all_docks:
+                if dock:
+                    features = dock.features()
+                    if not (features & QDockWidget.DockWidgetMovable):
+                        log_error(f"Dock {dock.objectName()} is not movable - drag & drop won't work!")
+            
+            log_info("Native Qt drop zones validation completed - should work like QGIS now")
+            
+        except Exception as e:
+            log_error(f"Error validating native drop zones: {str(e)}")
+    
+    def save_dock_state(self):
+        """Save current dock positions and sizes for restoration"""
+        try:
+            # Utiliser le système QSettings natif de Qt/QGIS
+            from qgis.core import QgsSettings
+            
+            settings = QgsSettings()
+            settings.beginGroup("transformer_plugin")
+            
+            # Sauvegarder l'état complet des docks (positions, tailles, visibilité)
+            dock_state = self.saveState()
+            settings.setValue("dock_state", dock_state)
+            
+            # Sauvegarder la géométrie de la fenêtre
+            settings.setValue("window_geometry", self.saveGeometry())
+            
+            # Sauvegarder les positions individuelles pour debug
+            for dock_name in ['source_dock', 'config_dock', 'log_dock', 'help_dock']:
+                dock = getattr(self, dock_name, None)
+                if dock:
+                    settings.setValue(f"{dock_name}_visible", dock.isVisible())
+                    settings.setValue(f"{dock_name}_floating", dock.isFloating())
+                    if dock.isFloating():
+                        settings.setValue(f"{dock_name}_floating_geometry", dock.geometry())
+            
+            settings.endGroup()
+            log_info("Dock positions and window state saved")
+            
+        except Exception as e:
+            log_error(f"Error saving dock state: {str(e)}")
+    
+    def restore_dock_state(self):
+        """Restore previously saved dock positions and sizes"""
+        try:
+            from qgis.core import QgsSettings
+            
+            settings = QgsSettings()
+            settings.beginGroup("transformer_plugin")
+            
+            # Restaurer l'état complet des docks
+            dock_state = settings.value("dock_state")
+            if dock_state:
+                self.restoreState(dock_state)
+                log_info("Dock state restored from previous session")
+            
+            # Restaurer la géométrie de la fenêtre
+            window_geometry = settings.value("window_geometry")
+            if window_geometry:
+                self.restoreGeometry(window_geometry)
+            
+            # Fallback: vérifier la visibilité individuelle
+            for dock_name in ['source_dock', 'config_dock', 'log_dock', 'help_dock']:
+                dock = getattr(self, dock_name, None)
+                if dock:
+                    visible = settings.value(f"{dock_name}_visible", True, type=bool)
+                    dock.setVisible(visible)
+            
+            settings.endGroup()
+            
+        except Exception as e:
+            log_error(f"Error restoring dock state: {str(e)}")
+            # Si la restauration échoue, utiliser le layout par défaut
+            self._layout_default()
+    
+    def closeEvent(self, event):
+        """Override close event to save dock positions automatically"""
+        try:
+            # Sauvegarder automatiquement les positions avant fermeture
+            self.save_dock_state()
+            
+            # Appeler la méthode parent pour fermer proprement
+            super().closeEvent(event)
+            
+        except Exception as e:
+            log_error(f"Error during close event: {str(e)}")
+            # S'assurer que la fenêtre se ferme même en cas d'erreur
+            event.accept()
+    
+    def showEvent(self, event):
+        """Override show event to restore dock positions when window opens"""
+        try:
+            # Appeler la méthode parent d'abord
+            super().showEvent(event)
+            
+            # Restaurer les positions des docks après affichage
+            if hasattr(self, 'source_dock'):  # S'assurer que les docks sont créés
+                QTimer.singleShot(200, self.restore_dock_state)
+            
+        except Exception as e:
+            log_error(f"Error during show event: {str(e)}")
+    
+    def reset_dock_layout(self):
+        """Reset all docks to default positions and sizes"""
+        try:
+            # Supprimer la configuration sauvegardée
+            from qgis.core import QgsSettings
+            settings = QgsSettings()
+            settings.beginGroup("transformer_plugin")
+            settings.remove("dock_state")
+            settings.remove("window_geometry")
+            settings.endGroup()
+            
+            # Appliquer le layout par défaut
+            self._layout_default()
+            
+            log_info("Dock layout reset to default configuration")
+            
+        except Exception as e:
+            log_error(f"Error resetting dock layout: {str(e)}")
+    
+    def move_dock_to_area(self, dock_name, area):
+        """Move a specific dock to a different area programmatically"""
+        try:
+            dock = getattr(self, dock_name, None)
+            if not dock:
+                log_error(f"Dock '{dock_name}' not found")
+                return False
+            
+            # Convertir l'area si nécessaire
+            area_map = {
+                'left': Qt.LeftDockWidgetArea,
+                'right': Qt.RightDockWidgetArea,
+                'top': Qt.TopDockWidgetArea,
+                'bottom': Qt.BottomDockWidgetArea
+            }
+            
+            if isinstance(area, str):
+                area = area_map.get(area.lower(), area)
+            
+            # Déplacer le dock
+            self.addDockWidget(area, dock)
+            dock.setVisible(True)
+            
+            log_info(f"Dock '{dock_name}' moved to {area}")
+            return True
+            
+        except Exception as e:
+            log_error(f"Error moving dock '{dock_name}': {str(e)}")
+            return False
+    
+    def resize_dock_to_percentage(self, dock_name, width_percent=None, height_percent=None):
+        """Resize a dock to a percentage of the window size"""
+        try:
+            dock = getattr(self, dock_name, None)
+            if not dock:
+                log_error(f"Dock '{dock_name}' not found")
+                return False
+            
+            window_size = self.size()
+            
+            # Calculer les nouvelles tailles
+            new_width = int(window_size.width() * width_percent / 100) if width_percent else dock.width()
+            new_height = int(window_size.height() * height_percent / 100) if height_percent else dock.height()
+            
+            # Appliquer le redimensionnement
+            if width_percent:
+                self.resizeDocks([dock], [new_width], Qt.Horizontal)
+            if height_percent:
+                self.resizeDocks([dock], [new_height], Qt.Vertical)
+            
+            log_info(f"Dock '{dock_name}' resized - Width: {new_width}px, Height: {new_height}px")
+            return True
+            
+        except Exception as e:
+            log_error(f"Error resizing dock '{dock_name}': {str(e)}")
+            return False
+    
+    def toggle_dock_floating(self, dock_name):
+        """Toggle a dock between docked and floating state"""
+        try:
+            dock = getattr(self, dock_name, None)
+            if not dock:
+                log_error(f"Dock '{dock_name}' not found")
+                return False
+            
+            # Basculer l'état flottant
+            dock.setFloating(not dock.isFloating())
+            
+            state = "floating" if dock.isFloating() else "docked"
+            log_info(f"Dock '{dock_name}' is now {state}")
+            return True
+            
+        except Exception as e:
+            log_error(f"Error toggling dock '{dock_name}' floating state: {str(e)}")
+            return False
+    
+    def reset_dock_layout(self):
+        """Reset all dock widgets to their default positions"""
+        try:
+            # Réinitialiser à la configuration par défaut
+            # D'abord, s'assurer que tous les docks sont visibles et ancrés
+            all_docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
+            
+            for dock in all_docks:
+                if dock:
+                    dock.setVisible(True)
+                    dock.setFloating(False)
+            
+            # Supprimer tous les dock widgets du layout
+            for dock in all_docks:
+                if dock:
+                    self.removeDockWidget(dock)
+            
+            # Réapliquer l'arrangement par défaut
+            self._arrange_fluid_layout()
+            self._apply_intelligent_sizing()
+            
+            self.log_message("Dock layout reset to default configuration", "Success")
+            
+        except Exception as e:
+            log_error(f"Error resetting dock layout: {str(e)}")
+    
+    def toggle_all_docks(self):
+        """Toggle visibility of all dock widgets"""
+        try:
+            all_docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
+            
+            # Déterminer l'action : si au moins un dock est visible, cacher tous, sinon afficher tous
+            visible_count = sum(1 for dock in all_docks if dock and dock.isVisible())
+            show_all = visible_count == 0
+            
+            for dock in all_docks:
+                if dock:
+                    dock.setVisible(show_all)
+            
+            action = "shown" if show_all else "hidden"
+            self.log_message(f"👁️ All dock widgets {action}", "Info")
+            
+        except Exception as e:
+            log_error(f"Error toggling all docks visibility: {str(e)}")
+    
+    def _setup_dock_shortcuts(self):
+        """Setup keyboard shortcuts for dock repositioning and management"""
+        try:
+            # Vérifier que les docks existent avant de configurer les raccourcis
+            dock_mapping = {
+                'F1': 'help_dock',
+                'F2': 'source_dock', 
+                'F3': 'config_dock',
+                'F4': 'log_dock'
+            }
+            
+            # Vérifier l'existence des docks
+            missing_docks = []
+            for key, dock_name in dock_mapping.items():
+                dock = getattr(self, dock_name, None)
+                if not dock:
+                    missing_docks.append(dock_name)
+                    log_error(f"Dock '{dock_name}' not found for shortcut {key}")
+            
+            if missing_docks:
+                log_error(f"Cannot setup shortcuts - missing docks: {missing_docks}")
+                return
+            
+            # Configurer les raccourcis pour les docks
+            for key, dock_name in dock_mapping.items():
+                try:
+                    shortcut = QShortcut(QKeySequence(key), self)
+                    shortcut.setContext(Qt.ApplicationShortcut)  # Assure le contexte global
+                    
+                    # Créer une fonction de callback spécifique
+                    def make_toggle_callback(dn):
+                        return lambda: self._toggle_dock_visibility(dn)
+                    
+                    shortcut.activated.connect(make_toggle_callback(dock_name))
+                    
+                    # Ajouter tooltip avec le raccourci
+                    dock = getattr(self, dock_name)
+                    current_tooltip = dock.toolTip()
+                    new_tooltip = f"{current_tooltip}\n\nShortcut: {key}" if current_tooltip else f"Shortcut: {key}"
+                    dock.setToolTip(new_tooltip)
+                    
+                    log_info(f"Shortcut {key} configured for {dock_name}")
+                    
+                except Exception as e:
+                    log_error(f"Error creating shortcut {key} for {dock_name}: {str(e)}")
+            
+            # Raccourcis spéciaux
+            special_shortcuts = {
+                'F9': ('Reset dock layout to default', self.reset_dock_layout),
+                'F10': ('Save current dock layout', self.save_dock_state),
+                'F11': ('Toggle all docks visibility', self._toggle_all_docks_visibility)
+            }
+            
+            for key, (description, callback) in special_shortcuts.items():
+                try:
+                    shortcut = QShortcut(QKeySequence(key), self)
+                    shortcut.setContext(Qt.ApplicationShortcut)
+                    shortcut.activated.connect(callback)
+                    log_info(f"Special shortcut {key} configured: {description}")
+                except Exception as e:
+                    log_error(f"Error creating special shortcut {key}: {str(e)}")
+            
+            log_info("All dock keyboard shortcuts configured successfully")
+            
+        except Exception as e:
+            log_error(f"Error setting up dock shortcuts: {str(e)}")
+    
+    def test_shortcuts(self):
+        """Méthode de test pour vérifier les raccourcis - appel manuel"""
+        log_info("=== TEST DES RACCOURCIS CLAVIER ===")
         
-        # Panel Configuration
-        self.config_dock = QDockWidget("Configuration Preview", self)
-        self.config_dock.setWidget(self.create_config_preview_widget())
-        self.config_dock.setAllowedAreas(Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea)
-        self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+        # Vérifier l'existence des docks
+        dock_names = ['help_dock', 'source_dock', 'config_dock', 'log_dock']
+        for dock_name in dock_names:
+            dock = getattr(self, dock_name, None)
+            if dock:
+                log_info(f"✓ {dock_name}: EXISTS (visible={dock.isVisible()})")
+            else:
+                log_error(f"✗ {dock_name}: MISSING")
         
-        # Panel Logs
-        self.logs_dock = QDockWidget("Activity Log", self)
-        self.logs_dock.setWidget(self.create_logs_widget())
-        self.logs_dock.setAllowedAreas(Qt.BottomDockWidgetArea)
-        self.addDockWidget(Qt.BottomDockWidgetArea, self.logs_dock)
+        # Tester manuellement un toggle
+        log_info("Testing F3 (config_dock) toggle...")
+        self._toggle_dock_visibility('config_dock')
         
-        # Panel Help
-        self.help_dock = QDockWidget("Quick Help", self)
-        self.help_dock.setWidget(self.create_help_widget())
-        self.help_dock.setAllowedAreas(Qt.RightDockWidgetArea)
-        self.addDockWidget(Qt.RightDockWidgetArea, self.help_dock)
-        
-        # Group certain docks
-        self.tabifyDockWidget(self.config_dock, self.help_dock)
-        
-        # Activity Log disabled by default (but not the tab selection which will be done later)
-        self.logs_dock.setVisible(False)
+        log_info("=== FIN DU TEST ===")
+    
+    def _toggle_dock_visibility(self, dock_name):
+        """Toggle visibility of a specific dock"""
+        try:
+            log_info(f"Attempting to toggle visibility of dock '{dock_name}'")
+            dock = getattr(self, dock_name, None)
+            if dock:
+                current_state = dock.isVisible()
+                dock.setVisible(not current_state)
+                new_state = dock.isVisible()
+                state_text = "visible" if new_state else "hidden"
+                log_info(f"Dock '{dock_name}' toggled: {current_state} -> {new_state} ({state_text})")
+                
+                # Forcer la mise à jour de l'affichage
+                dock.raise_()
+                if new_state:
+                    dock.activateWindow()
+                self.update()
+            else:
+                log_error(f"Dock '{dock_name}' not found - cannot toggle visibility")
+        except Exception as e:
+            log_error(f"Error toggling visibility of dock '{dock_name}': {str(e)}")
+    
+    def _toggle_all_docks_visibility(self):
+        """Toggle visibility of all docks at once"""
+        try:
+            all_docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
+            
+            # Vérifier si au moins un dock est visible
+            any_visible = any(dock and dock.isVisible() for dock in all_docks)
+            
+            # Si au moins un est visible, cacher tous, sinon afficher tous
+            for dock in all_docks:
+                if dock:
+                    dock.setVisible(not any_visible)
+            
+            state = "visible" if not any_visible else "hidden"
+            log_info(f"All docks are now {state}")
+            
+        except Exception as e:
+            log_error(f"Error toggling all docks visibility: {str(e)}")
+    
+    def _setup_dock_context_menus(self):
+        """Setup context menus for dock widgets to facilitate repositioning"""
+        try:
+            all_docks = {
+                'source_dock': 'Source Files',
+                'config_dock': 'Configuration Preview',
+                'log_dock': 'Activity Monitor',
+                'help_dock': 'Quick Help'
+            }
+            
+            for dock_name, dock_title in all_docks.items():
+                dock = getattr(self, dock_name, None)
+                if dock:
+                    self._add_context_menu_to_dock(dock, dock_name, dock_title)
+            
+            log_info("Context menus added to all docks")
+            
+        except Exception as e:
+            log_error(f"Error setting up dock context menus: {str(e)}")
+    
+    def _add_context_menu_to_dock(self, dock, dock_name, dock_title):
+        """Add a context menu to a specific dock widget"""
+        try:
+            # Activer le menu contextuel
+            dock.setContextMenuPolicy(Qt.CustomContextMenu)
+            dock.customContextMenuRequested.connect(
+                lambda pos, dn=dock_name, dt=dock_title: self._show_dock_context_menu(pos, dock, dn, dt)
+            )
+            
+        except Exception as e:
+            log_error(f"Error adding context menu to dock '{dock_name}': {str(e)}")
+    
+    def _show_dock_context_menu(self, position, dock, dock_name, dock_title):
+        """Show context menu for dock repositioning and management"""
+        try:
+            menu = QMenu(f"{dock_title} Options", self)
+            
+            # === ACTIONS DE POSITIONNEMENT ===
+            move_menu = QMenu("Move to Area", menu)
+            move_menu.setIcon(QIcon(":/images/themes/default/mActionMove.svg"))
+            
+            areas = [
+                ('Left', Qt.LeftDockWidgetArea),
+                ('Right', Qt.RightDockWidgetArea),
+                ('Top', Qt.TopDockWidgetArea),
+                ('Bottom', Qt.BottomDockWidgetArea)
+            ]
+            
+            for area_name, area_const in areas:
+                action = QAction(f"Move to {area_name}", move_menu)
+                action.triggered.connect(
+                    lambda checked, area=area_const: self.move_dock_to_area(dock_name, area)
+                )
+                move_menu.addAction(action)
+            
+            menu.addMenu(move_menu)
+            
+            # === ACTIONS DE REDIMENSIONNEMENT ===
+            resize_menu = QMenu("Resize", menu)
+            resize_menu.setIcon(QIcon(":/images/themes/default/mActionResize.svg"))
+            
+            resize_options = [
+                ('Small (20%)', 20, 20),
+                ('Medium (30%)', 30, 30),
+                ('Large (40%)', 40, 40),
+                ('Extra Large (50%)', 50, 50)
+            ]
+            
+            for size_name, width_pct, height_pct in resize_options:
+                action = QAction(size_name, resize_menu)
+                action.triggered.connect(
+                    lambda checked, w=width_pct, h=height_pct: 
+                    self.resize_dock_to_percentage(dock_name, w, h)
+                )
+                resize_menu.addAction(action)
+            
+            menu.addMenu(resize_menu)
+            menu.addSeparator()
+            
+            # === ACTIONS GÉNÉRALES ===
+            
+            # Flottant/Ancré
+            float_text = "Dock" if dock.isFloating() else "Float"
+            float_action = QAction(f"{float_text} Window", menu)
+            float_action.setIcon(QIcon(":/images/themes/default/mActionFloat.svg"))
+            float_action.triggered.connect(lambda: self.toggle_dock_floating(dock_name))
+            menu.addAction(float_action)
+            
+            # Masquer/Afficher
+            visibility_text = "Hide" if dock.isVisible() else "Show"
+            visibility_action = QAction(f"{visibility_text} Panel", menu)
+            visibility_action.setIcon(QIcon(":/images/themes/default/mActionShowAllLayers.svg"))
+            visibility_action.triggered.connect(lambda: self._toggle_dock_visibility(dock_name))
+            menu.addAction(visibility_action)
+            
+            menu.addSeparator()
+            
+            # === ACTIONS DE LAYOUT ===
+            layout_action = QAction("Reset All Docks Layout", menu)
+            layout_action.setIcon(QIcon(":/images/themes/default/mActionRefresh.svg"))
+            layout_action.triggered.connect(self.reset_dock_layout)
+            menu.addAction(layout_action)
+            
+            save_action = QAction("Save Current Layout", menu)
+            save_action.setIcon(QIcon(":/images/themes/default/mActionFileSave.svg"))
+            save_action.triggered.connect(self.save_dock_state)
+            menu.addAction(save_action)
+            
+            # Afficher le menu à la position du clic
+            global_pos = dock.mapToGlobal(position)
+            menu.exec_(global_pos)
+            
+        except Exception as e:
+            log_error(f"Error showing context menu for dock '{dock_name}': {str(e)}")
+    
+    def _setup_fallback_docks(self):
+        """Setup simple fallback docks in case of error"""
+        try:
+            # Vector Sources dock (left)
+            self.source_dock = QDockWidget("Vector Files", self)
+            self.source_dock.setWidget(QLabel("Source files panel - Error loading advanced features"))
+            self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+            
+            # Configuration Preview dock (right top)
+            self.config_dock = QDockWidget("Configuration Preview", self)
+            self.config_dock.setWidget(QLabel("Configuration panel - Error loading advanced features"))
+            self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+            
+            # Activity Monitor dock (right bottom)
+            self.log_dock = QDockWidget("Activity Monitor", self)
+            self.log_dock.setWidget(QLabel("Activity log panel - Error loading advanced features"))
+            self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
+            self.splitDockWidget(self.config_dock, self.log_dock, Qt.Vertical)
+            
+            # Quick Help dock (tabbed)
+            self.help_dock = QDockWidget("Quick Help", self)
+            self.help_dock.setWidget(QLabel("Help panel - Error loading advanced features"))
+            self.tabifyDockWidget(self.config_dock, self.help_dock)
+            
+            log_error("Loaded fallback dock system - some features may be unavailable")
+            
+        except Exception as e:
+            log_error(f"Failed to create fallback docks: {str(e)}")
+            # Ultimate fallback - minimal interface
+            try:
+                central_widget = QWidget()
+                central_layout = QVBoxLayout(central_widget)
+                error_label = QLabel("Critical Error: Interface failed to load properly.\nPlease restart the plugin.")
+                error_label.setStyleSheet("color: red; font-weight: bold; padding: 20px;")
+                central_layout.addWidget(error_label)
+                self.setCentralWidget(central_widget)
+            except:
+                pass  # Can't do anything more
+    
+    def _debug_dock_properties(self):
+        """Debug dock properties to identify drag & drop issues"""
+        try:
+            docks = {
+                'Vector Sources': self.source_dock,
+                'Configuration Preview': self.config_dock,
+                'Activity Monitor': self.log_dock,
+                'Quick Help': self.help_dock
+            }
+            
+            for name, dock in docks.items():
+                if dock:
+                    features = dock.features()
+                    areas = dock.allowedAreas()
+                    
+                    movable = bool(features & QDockWidget.DockWidgetMovable)
+                    floatable = bool(features & QDockWidget.DockWidgetFloatable)
+                    closable = bool(features & QDockWidget.DockWidgetClosable)
+                    
+                    self.log_message(f"DEBUG {name}: Movable={movable}, Floatable={floatable}, Closable={closable}")
+                    self.log_message(f"DEBUG {name}: Allowed areas={areas}, Visible={dock.isVisible()}, Enabled={dock.isEnabled()}")
+                else:
+                    self.log_message(f"DEBUG {name}: DOCK IS NULL!")
+                    
+            # Debug main window dock options
+            options = self.dockOptions()
+            animated = bool(options & QMainWindow.AnimatedDocks)
+            nested = bool(options & QMainWindow.AllowNestedDocks)
+            tabbed = bool(options & QMainWindow.AllowTabbedDocks)
+            grouped = bool(options & QMainWindow.GroupedDragging)
+            
+            self.log_message(f"DEBUG MainWindow: Animated={animated}, Nested={nested}, Tabbed={tabbed}, Grouped={grouped}")
+            
+        except Exception as e:
+            self.log_message(f"DEBUG ERROR: {str(e)}")
+    
+    def _finalize_dock_setup(self):
+        """Finalize dock setup - Qt native system handles the rest"""
+        try:
+            # S'assurer que tous les docks sont visibles et activés
+            docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
+            
+            for dock in docks:
+                if dock:
+                    # S'assurer que le dock est visible et activé
+                    dock.setVisible(True)
+                    dock.setEnabled(True)
+                    
+                    # Vérifier les features - Qt gère automatiquement le drag & drop
+                    features = dock.features()
+                    if not (features & QDockWidget.DockWidgetMovable):
+                        dock.setFeatures(
+                            QDockWidget.DockWidgetMovable |
+                            QDockWidget.DockWidgetFloatable |
+                            QDockWidget.DockWidgetClosable
+                        )
+            
+            # Message de succès
+            self.log_message("Dock widgets ready - Qt native drag & drop active")
+            
+            # Forcer une mise à jour de l'interface
+            self.update()
+            
+        except Exception as e:
+            self.log_message(f"Error in dock finalization: {str(e)}")
+    
+    def _force_dock_drop_zones(self):
+        """Force activation of dock drop zones"""
+        try:
+            # Forcer la mise à jour du layout
+            self.update()
+            
+            # S'assurer que tous les docks sont correctement enregistrés
+            docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
+            
+            for dock in docks:
+                if dock:
+                    # Forcer la mise à jour des propriétés
+                    dock.update()
+                    
+                    # Réactiver les fonctionnalités si elles ont été désactivées
+                    current_features = dock.features()
+                    if not (current_features & QDockWidget.DockWidgetMovable):
+                        dock.setFeatures(
+                            QDockWidget.DockWidgetMovable |
+                            QDockWidget.DockWidgetFloatable |
+                            QDockWidget.DockWidgetClosable
+                        )
+                        self.log_message(f"FIXED: Re-enabled features for {dock.windowTitle()}")
+            
+            # Forcer la recalculation du layout du QMainWindow
+            QTimer.singleShot(100, self._delayed_layout_update)
+            
+        except Exception as e:
+            self.log_message(f"ERROR forcing dock drop zones: {str(e)}")
+    
+    def _delayed_layout_update(self):
+        """Delayed layout update to ensure proper dock zone activation"""
+        try:
+            # Forcer une mise à jour complète du layout
+            self.centralWidget().update()
+            self.update()
+            
+            # Log de confirmation
+            self.log_message("Layout update completed - dock drop zones should now be active")
+            
+        except Exception as e:
+            self.log_message(f"ERROR in delayed layout update: {str(e)}")
+    
+    # Méthodes d'overlay supprimées - on utilise le système Qt natif
     
     def create_shapefiles_widget(self):
         """Create shapefiles management widget"""
@@ -1958,49 +3370,69 @@ class EnhancedTransformerDialog(QMainWindow):
         return widget
     
     def create_config_preview_widget(self):
-        """Create the configuration preview widget"""
+        """Create the configuration preview widget with modern styling"""
         widget = QWidget()
         layout = QVBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
         
-        # Preview toolbar
+        # Preview toolbar with modern icons
         toolbar = QToolBar()
-        toolbar.setIconSize(QSize(16, 16))
+        toolbar.setIconSize(QSize(20, 20))
+        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         
-        validate_action = QAction(QIcon(":/images/themes/default/mIconSuccess.svg"), "Validate", self)
+        validate_action = QAction("Validate", self)
+        validate_action.setIcon(QIcon(":/images/themes/default/mIconSuccess.svg"))
+        validate_action.setToolTip("Validate current configuration")
         validate_action.triggered.connect(self.validate_configuration)
         toolbar.addAction(validate_action)
         
-        save_action = QAction(QIcon(":/images/themes/default/mActionFileSave.svg"), "Save", self)
+        save_action = QAction("Save", self)
+        save_action.setIcon(QIcon(":/images/themes/default/mActionFileSave.svg"))
+        save_action.setToolTip("Save current configuration")
         save_action.triggered.connect(self.save_current_table_config)
         toolbar.addAction(save_action)
         
-        test_action = QAction(QIcon(":/images/themes/default/mActionPlay.svg"), "Test", self)
+        test_action = QAction("Test", self)
+        test_action.setIcon(QIcon(":/images/themes/default/mActionPlay.svg"))
+        test_action.setToolTip("Test current configuration")
         test_action.triggered.connect(self.test_configuration)
         toolbar.addAction(test_action)
         
-        initialize_action = QAction(QIcon(":/images/themes/default/mActionNew.svg"), "Initialize", self)
-        initialize_action.triggered.connect(self.initialize_configuration)
-        toolbar.addAction(initialize_action)
-        
         layout.addWidget(toolbar)
         
-        # JSON preview
+        # JSON preview with syntax highlighting
+        preview_label = QLabel("Configuration Preview:")
+        preview_label.setStyleSheet("font-weight: bold; color: #1976D2; margin-top: 8px;")
+        layout.addWidget(preview_label)
+        
         self.config_preview = QPlainTextEdit()
         self.config_preview.setReadOnly(True)
         self.config_preview.setFont(QFont("Consolas", 9))
+        self.config_preview.setMinimumHeight(120)
         self.config_preview.setMaximumHeight(200)
-        
-        layout.addWidget(QLabel("Configuration Preview:"))
+        self.config_preview.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                padding: 8px;
+            }
+        """)
         layout.addWidget(self.config_preview)
         
-        # Statistics
+        # Enhanced statistics
         stats_group = QGroupBox("Statistics")
         stats_layout = QFormLayout()
         
         self.total_fields_label = QLabel("0")
+        self.total_fields_label.setStyleSheet("font-weight: bold; color: #28a745;")
+        
         self.total_tables_label = QLabel("0")
+        self.total_tables_label.setStyleSheet("font-weight: bold; color: #17a2b8;")
+        
         self.filter_status_label = QLabel("Disabled")
+        self.filter_status_label.setStyleSheet("font-weight: bold; color: #6c757d;")
         
         stats_layout.addRow("Fields:", self.total_fields_label)
         stats_layout.addRow("Tables:", self.total_tables_label)
@@ -2009,16 +3441,42 @@ class EnhancedTransformerDialog(QMainWindow):
         stats_group.setLayout(stats_layout)
         layout.addWidget(stats_group)
         
-        # Transformation actions
-        actions_group = QGroupBox("Actions")
+        # Enhanced action buttons
+        actions_group = QGroupBox("Transform Actions")
         actions_layout = QVBoxLayout()
         
         self.transform_selected_btn = QPushButton("Transform Selected")
         self.transform_selected_btn.setIcon(QIcon(":/images/themes/default/mActionStart.svg"))
+        self.transform_selected_btn.setMinimumHeight(32)
+        self.transform_selected_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                padding: 6px 12px;
+            }
+            QPushButton:hover { background-color: #218838; }
+            QPushButton:pressed { background-color: #1e7e34; }
+        """)
         self.transform_selected_btn.clicked.connect(self.transform_selected_shapefile)
         
         self.transform_all_btn = QPushButton("Transform All")
         self.transform_all_btn.setIcon(QIcon(":/images/themes/default/mActionBatch.svg"))
+        self.transform_all_btn.setMinimumHeight(32)
+        self.transform_all_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+                padding: 6px 12px;
+            }
+            QPushButton:hover { background-color: #0056b3; }
+            QPushButton:pressed { background-color: #004085; }
+        """)
         self.transform_all_btn.clicked.connect(self.transform_all_shapefiles)
         
         actions_layout.addWidget(self.transform_selected_btn)
@@ -2027,34 +3485,114 @@ class EnhancedTransformerDialog(QMainWindow):
         actions_group.setLayout(actions_layout)
         layout.addWidget(actions_group)
         
+        layout.addStretch()
         widget.setLayout(layout)
         return widget
     
     def create_logs_widget(self):
-        """Create the logs widget"""
+        """Create the modern activity monitor widget"""
         widget = QWidget()
         layout = QVBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
         
-        # Logs toolbar
+        # Activity toolbar
         toolbar = QToolBar()
-        toolbar.setIconSize(QSize(16, 16))
+        toolbar.setIconSize(QSize(18, 18))
         
-        clear_action = QAction(QIcon(":/images/themes/default/mActionDeleteSelected.svg"), "Clear", self)
+        clear_action = QAction("Clear", self)
+        clear_action.setIcon(QIcon(":/images/themes/default/mActionDeleteSelected.svg"))
+        clear_action.setToolTip("Clear activity log")
         clear_action.triggered.connect(self.clear_logs)
         toolbar.addAction(clear_action)
         
-        export_logs_action = QAction(QIcon(":/images/themes/default/mActionExport.svg"), "Export", self)
+        export_logs_action = QAction("Export", self)
+        export_logs_action.setIcon(QIcon(":/images/themes/default/mActionExport.svg"))
+        export_logs_action.setToolTip("Export activity log to file")
         export_logs_action.triggered.connect(self.export_logs)
         toolbar.addAction(export_logs_action)
         
+        toolbar.addSeparator()
+        
+        # Log level filter with checkboxes
+        filter_group = QGroupBox("Filters")
+        filter_group.setMaximumHeight(45)
+        filter_group.setStyleSheet("""
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #404040;
+                border-radius: 3px;
+                margin-top: 6px;
+                padding-top: 6px;
+            }
+                padding: 0 4px;
+            }
+        """)
+        
+        # Filter controls - Compact dropdown with checkable items
+        filter_label = QLabel("Filter:")
+        toolbar.addWidget(filter_label)
+        
+        self.filter_combo = QComboBox()
+        self.filter_combo.setMinimumWidth(120)
+        self.filter_combo.setMaximumHeight(24)  # Keep it compact
+        
+        # Initialize filter states
+        self.log_filters = {
+            "Success": True,
+            "Info": True, 
+            "Warning": True,
+            "Error": True,
+            "Panel": False  # Panel messages disabled by default
+        }
+        
+        # Add items using QGIS native green/white styling
+        filter_items = [
+            "Success",
+            "Info",
+            "Warning", 
+            "Error",
+            "Panel"
+        ]
+        
+        for filter_name in filter_items:
+            self.filter_combo.addItem(filter_name)
+        
+        # Apply initial QGIS native styling
+        self._update_filter_combo_display()
+        
+        # Set tooltip
+        self.filter_combo.setToolTip("Click to toggle log level visibility")
+        
+        # Connect combo box - use activated instead of currentTextChanged
+        self.filter_combo.activated.connect(self._on_filter_combo_clicked)
+        
+        toolbar.addWidget(self.filter_combo)
+        
         layout.addWidget(toolbar)
         
-        # Zone de logs
+        # Activity monitor area
+        monitor_label = QLabel("Real-time Activity Monitor:")
+        monitor_label.setStyleSheet("font-weight: bold; color: #ff8c00; margin-top: 4px;")
+        layout.addWidget(monitor_label)
+        
         self.logs_text = QPlainTextEdit()
         self.logs_text.setReadOnly(True)
-        self.logs_text.setFont(QFont("Consolas", 8))
-        self.logs_text.setMaximumHeight(150)
+        self.logs_text.setFont(QFont("Consolas", 6))
+        self.logs_text.setMinimumHeight(120)
+        self.logs_text.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: rgba(61, 41, 20, 0.85);
+                color: #ffffff;
+                border: 1px solid #404040;
+                border-radius: 4px;
+                padding: 8px;
+                selection-background-color: #404040;
+            }
+        """)
+        
+        # Add placeholder text
+        self.logs_text.setPlaceholderText("Activity log will appear here...\n\nProcessing events\nSuccess messages\nWarnings\nErrors")
         
         layout.addWidget(self.logs_text)
         
@@ -2062,102 +3600,396 @@ class EnhancedTransformerDialog(QMainWindow):
         return widget
     
     def create_help_widget(self):
-        """Create the help widget"""
+        """Create the modern quick help widget"""
         widget = QWidget()
         layout = QVBoxLayout()
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(8, 8, 8, 8)
         
-        # Help tabs
+        # Help tabs with modern styling
         help_tabs = QTabWidget()
         help_tabs.setTabPosition(QTabWidget.South)
+        help_tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #cccccc;
+                border-radius: 4px;
+            }
+            QTabBar::tab {
+                background: #f8f9fa;
+                border: 1px solid #dee2e6;
+                padding: 6px 12px;
+                margin-right: 2px;
+                border-radius: 4px 4px 0 0;
+            }
+            QTabBar::tab:selected {
+                background: #007bff;
+                color: white;
+            }
+        """)
         
         # Expression help
         expr_help = QTextEdit()
         expr_help.setReadOnly(True)
-        expr_help.setMaximumHeight(200)
+        expr_help.setStyleSheet("""
+            QTextEdit {
+                background-color: #f8f9fa;
+                border: none;
+                font-size: 11px;
+            }
+        """)
         expr_help.setHtml("""
-        <h3>Expression Help</h3>
-        <p><b>Geometry Functions:</b></p>
-        <ul>
-        <li><code>area($geometry)</code> - Feature area</li>
-        <li><code>perimeter($geometry)</code> - Feature perimeter</li>
-        <li><code>centroid($geometry)</code> - Feature centroid</li>
-        </ul>
-        
-        <p><b>Math Functions:</b></p>
-        <ul>
-        <li><code>round(value, decimals)</code> - Round number</li>
-        <li><code>abs(value)</code> - Absolute value</li>
-        <li><code>sqrt(value)</code> - Square root</li>
-        </ul>
-        
-        <p><b>Text Functions:</b></p>
-        <ul>
-        <li><code>upper(text)</code> - Uppercase</li>
-        <li><code>concat(text1, text2)</code> - Concatenate</li>
-        </ul>
+        <div style="padding: 10px;">
+            <h3 style="color: #1976D2; margin-top: 0;">Expression Quick Reference</h3>
+            
+            <h4 style="color: #28a745;">Geometry Functions:</h4>
+            <ul style="margin-left: 15px;">
+                <li><code>area($geometry)</code> - Calculate feature area</li>
+                <li><code>perimeter($geometry)</code> - Calculate perimeter</li>
+                <li><code>centroid($geometry)</code> - Get feature centroid</li>
+                <li><code>buffer($geometry, distance)</code> - Create buffer</li>
+                <li><code>bounds($geometry)</code> - Get bounding box</li>
+            </ul>
+            
+            <h4 style="color: #17a2b8;">Math Functions:</h4>
+            <ul style="margin-left: 15px;">
+                <li><code>round(value, decimals)</code> - Round number</li>
+                <li><code>abs(value)</code> - Absolute value</li>
+                <li><code>sqrt(value)</code> - Square root</li>
+                <li><code>min(val1, val2)</code> - Minimum value</li>
+                <li><code>max(val1, val2)</code> - Maximum value</li>
+            </ul>
+            
+            <h4 style="color: #6f42c1;">Text Functions:</h4>
+            <ul style="margin-left: 15px;">
+                <li><code>upper(text)</code> - Convert to uppercase</li>
+                <li><code>lower(text)</code> - Convert to lowercase</li>
+                <li><code>concat(text1, text2)</code> - Concatenate text</li>
+                <li><code>regexp_replace(text, pattern, replacement)</code> - Replace with regex</li>
+            </ul>
+        </div>
         """)
         help_tabs.addTab(expr_help, "Expressions")
         
         # Filter help
         filter_help = QTextEdit()
         filter_help.setReadOnly(True)
-        filter_help.setMaximumHeight(200)
+        filter_help.setStyleSheet("""
+            QTextEdit {
+                background-color: #f8f9fa;
+                border: none;
+                font-size: 11px;
+            }
+        """)
         filter_help.setHtml("""
-        <h3>Filter Help</h3>
-        <p><b>Common Filters:</b></p>
-        <ul>
-        <li><code>area($geometry) > 1000</code> - Area greater than 1000</li>
-        <li><code>"TYPE" = 'Building'</code> - Type equals Building</li>
-        <li><code>is_valid($geometry)</code> - Valid geometries only</li>
-        </ul>
-        
-        <p><b>Operators:</b></p>
-        <ul>
-        <li><code>=, !=, <, >, <=, >=</code> - Comparison</li>
-        <li><code>AND, OR, NOT</code> - Logical</li>
-        <li><code>LIKE, ILIKE</code> - Pattern matching</li>
-        </ul>
+        <div style="padding: 10px;">
+            <h3 style="color: #1976D2; margin-top: 0;">Filter Quick Reference</h3>
+            
+            <h4 style="color: #28a745;">Common Filters:</h4>
+            <ul style="margin-left: 15px;">
+                <li><code>area($geometry) > 1000</code> - Area greater than 1000</li>
+                <li><code>"TYPE" = 'Building'</code> - Type equals Building</li>
+                <li><code>is_valid($geometry)</code> - Valid geometries only</li>
+                <li><code>"POPULATION" BETWEEN 1000 AND 5000</code> - Range filter</li>
+            </ul>
+            
+            <h4 style="color: #17a2b8;">Operators:</h4>
+            <ul style="margin-left: 15px;">
+                <li><code>=, !=, <, >, <=, >=</code> - Comparison operators</li>
+                <li><code>AND, OR, NOT</code> - Logical operators</li>
+                <li><code>LIKE, ILIKE</code> - Pattern matching (case sensitive/insensitive)</li>
+                <li><code>IN ('value1', 'value2')</code> - Multiple value matching</li>
+            </ul>
+            
+            <h4 style="color: #dc3545;">Advanced Examples:</h4>
+            <ul style="margin-left: 15px;">
+                <li><code>"NAME" ILIKE '%house%'</code> - Contains "house" (case insensitive)</li>
+                <li><code>length($geometry) > 500 AND "TYPE" = 'Road'</code> - Combined conditions</li>
+                <li><code>touches($geometry, geom_from_wkt('POLYGON(...)'))</code> - Spatial filter</li>
+            </ul>
+        </div>
         """)
         help_tabs.addTab(filter_help, "Filters")
         
-        layout.addWidget(help_tabs)
+        # Workflow help
+        workflow_help = QTextEdit()
+        workflow_help.setReadOnly(True)
+        workflow_help.setStyleSheet("""
+            QTextEdit {
+                background-color: #f8f9fa;
+                border: none;
+                font-size: 11px;
+            }
+        """)
+        workflow_help.setHtml("""
+        <div style="padding: 10px;">
+            <h3 style="color: #1976D2; margin-top: 0;">Workflow Guide</h3>
+            
+            <h4 style="color: #28a745;">Step-by-Step Process:</h4>
+            <ol style="margin-left: 15px;">
+                <li><strong>Load Vector Files:</strong> Use the Vector Sources panel</li>
+                <li><strong>Configure Fields:</strong> Set up calculated fields in the Expression Builder</li>
+                <li><strong>Apply Filters:</strong> Add conditions to filter your data</li>
+                <li><strong>Validate:</strong> Check your configuration for errors</li>
+                <li><strong>Transform:</strong> Execute the transformation process</li>
+            </ol>
+            
+            <h4 style="color: #17a2b8;">Tips & Tricks:</h4>
+            <ul style="margin-left: 15px;">
+                <li>Use <code>Ctrl+Z</code> to undo changes</li>
+                <li>Right-click for context menus</li>
+                <li>Drag dock panels to reorganize your workspace</li>
+                <li>Use layout presets for different workflows</li>
+            </ul>
+            
+            <h4 style="color: #6f42c1;">Layout Presets:</h4>
+            <ul style="margin-left: 15px;">
+                <li><strong>Default:</strong> Standard layout with all panels</li>
+                <li><strong>Vertical:</strong> Stacked layout for wide screens</li>
+                <li><strong>Focus Config:</strong> Maximize configuration panel</li>
+                <li><strong>Focus Monitor:</strong> Maximize activity monitoring</li>
+            </ul>
+        </div>
+        """)
+        help_tabs.addTab(workflow_help, "Workflow")
         
+        layout.addWidget(help_tabs)
         widget.setLayout(layout)
         return widget
     
+    def _create_modern_dock(self, title, object_name, widget):
+        """Create a modern dock widget with enhanced properties"""
+        dock = QDockWidget(title, self)
+        dock.setObjectName(object_name)
+        dock.setWidget(widget)
+        
+        # Enable all dock features for maximum flexibility
+        dock.setFeatures(
+            QDockWidget.DockWidgetMovable |
+            QDockWidget.DockWidgetFloatable |
+            QDockWidget.DockWidgetClosable
+        )
+        
+        # Allow docking in all areas
+        dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        
+        return dock
+    
+    def _arrange_fluid_layout(self):
+        """Arrange docks in modern fluid layout"""
+        # Add docks to main window
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.help_dock)
+        
+        # Create vertical split: Config (top) | Activity Monitor (bottom)
+        self.splitDockWidget(self.config_dock, self.log_dock, Qt.Vertical)
+        
+        # Create tab group: Configuration + Quick Help
+        self.tabifyDockWidget(self.config_dock, self.help_dock)
+        
+        # Set default active tab (Configuration)
+        self.config_dock.raise_()
+    
+    def _setup_dock_signals(self):
+        """Setup enhanced dock signals for user feedback"""
+        # Track dock movements for user feedback
+        for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
+            dock.dockLocationChanged.connect(
+                lambda area, dock=dock: self._on_dock_moved(dock, area)
+            )
+            dock.visibilityChanged.connect(
+                lambda visible, dock=dock: self._on_dock_visibility_changed(dock, visible)
+            )
+            dock.topLevelChanged.connect(
+                lambda floating, dock=dock: self._on_dock_floating_changed(dock, floating)
+            )
+    
+    def _setup_dock_styling(self):
+        """Apply modern styling to dock widgets"""
+        dock_style = """
+            QDockWidget {
+                font-weight: bold;
+                border: 1px solid #cccccc;
+            }
+            QDockWidget::title {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f0f0f0, stop:1 #e0e0e0);
+                padding: 4px 8px;
+                border-bottom: 1px solid #cccccc;
+            }
+            QDockWidget::float-button {
+                subcontrol-position: top right;
+                subcontrol-origin: margin;
+                position: absolute;
+                top: 3px; right: 3px; width: 16px; height: 16px;
+            }
+            QDockWidget[floating="true"] {
+                border: 2px solid #2196F3;
+                background: rgba(33, 150, 243, 0.05);
+            }
+        """
+        
+        # Apply to all docks
+        for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
+            dock.setStyleSheet(dock_style)
+    
+    def _setup_layout_presets(self):
+        """Setup quick layout presets for different workflows"""
+        # This will be connected to toolbar buttons
+        self.layout_presets = {
+            'default': self._layout_default,
+            'vertical': self._layout_vertical, 
+            'horizontal': self._layout_horizontal,
+            'focus_config': self._layout_focus_config,
+            'focus_monitor': self._layout_focus_monitor
+        }
+    
+    def _on_dock_moved(self, dock, area):
+        """Handle dock movement with user feedback"""
+        area_names = {
+            Qt.LeftDockWidgetArea: 'Left',
+            Qt.RightDockWidgetArea: 'Right', 
+            Qt.TopDockWidgetArea: 'Top',
+            Qt.BottomDockWidgetArea: 'Bottom'
+        }
+        area_name = area_names.get(area, 'Unknown')
+        self.log_message(f"Panel '{dock.windowTitle()}' moved to {area_name} area", "Info")
+    
+    def _on_dock_visibility_changed(self, dock, visible):
+        """Handle dock visibility changes"""
+        status = "shown" if visible else "hidden"
+        self.log_message(f"Panel '{dock.windowTitle()}' {status}", "Info")
+    
+    def _on_dock_floating_changed(self, dock, floating):
+        """Handle dock floating state changes"""
+        if floating:
+            self.log_message(f"Panel '{dock.windowTitle()}' is now floating - drag to reposition", "Info")
+        else:
+            self.log_message(f"Panel '{dock.windowTitle()}' docked successfully", "Success")
+    
+    # === LAYOUT PRESETS ===
+    
+    def _layout_default(self):
+        """Default layout: Sources left, Config+Monitor right, Help tabbed"""
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
+        self.splitDockWidget(self.config_dock, self.log_dock, Qt.Vertical)
+        self.tabifyDockWidget(self.config_dock, self.help_dock)
+        self.config_dock.raise_()
+        self.log_message("Layout reset to default", "Success")
+    
+    def _layout_vertical(self):
+        """Vertical layout: Config top, Monitor bottom"""
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+        self.addDockWidget(Qt.TopDockWidgetArea, self.config_dock)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.help_dock)
+        self.log_message("Applied vertical layout", "Success")
+    
+    def _layout_horizontal(self):
+        """Horizontal layout: All panels side by side"""
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.help_dock)
+        self.log_message("Applied horizontal layout", "Success")
+    
+    def _layout_focus_config(self):
+        """Focus on configuration: Large config panel"""
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+        self.tabifyDockWidget(self.config_dock, self.log_dock)
+        self.tabifyDockWidget(self.config_dock, self.help_dock)
+        self.config_dock.raise_()
+        self.log_message("Configuration focus mode activated", "Success")
+    
+    def _layout_focus_monitor(self):
+        """Focus on monitoring: Large activity monitor"""
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
+        self.tabifyDockWidget(self.log_dock, self.config_dock)
+        self.tabifyDockWidget(self.log_dock, self.help_dock)
+        self.log_dock.raise_()
+        self.log_message("Activity monitor focus mode activated", "Success")
+    
+    def _setup_fallback_docks(self):
+        """Setup simple fallback docks in case of error"""
+        try:
+            # Create simple docks without advanced features
+            self.source_dock = QDockWidget("Vector Files", self)
+            self.source_dock.setWidget(QLabel("Source files panel - Error loading advanced features"))
+            self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
+            
+            self.config_dock = QDockWidget("Configuration", self)
+            self.config_dock.setWidget(QLabel("Configuration panel - Error loading advanced features"))
+            self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
+            
+            self.log_dock = QDockWidget("Activity Log", self)
+            self.log_dock.setWidget(QLabel("Activity log panel - Error loading advanced features"))
+            self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
+            
+            self.help_dock = QDockWidget("Help", self)
+            self.help_dock.setWidget(QLabel("Help panel - Error loading advanced features"))
+            self.addDockWidget(Qt.RightDockWidgetArea, self.help_dock)
+            
+            log_error("Loaded fallback dock system - some features may be unavailable")
+            
+        except Exception as e:
+            log_error(f"Failed to create fallback docks: {str(e)}")
+    
     def setup_toolbar(self):
-        """Configure the toolbar"""
+        """Configure the toolbar - version optimisée et lisible"""
         toolbar = self.addToolBar("Main")
         toolbar.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-        toolbar.setIconSize(QSize(24, 24))
+        toolbar.setIconSize(QSize(22, 22))  # Taille optimale
         
-        # Main actions
-        load_action = QAction(QIcon(":/images/themes/default/mActionAdd.svg"), "Load\nVector Files", self)
+        # Configuration toolbar avec écriture petite mais hauteur confortable
+        toolbar.setMinimumHeight(70)  # Hauteur augmentée pour plus d'espace vertical
+        toolbar.setMaximumHeight(70)
+        
+        # Style avec petite écriture
+        toolbar.setStyleSheet("""
+            QToolBar {
+                font-size: 9px;
+                font-weight: bold;
+                spacing: 4px;
+            }
+            QToolButton {
+                font-size: 9px;
+                font-weight: bold;
+                margin: 3px;
+                padding: 4px;
+                color: #333;
+            }
+        """)
+        
+        # Main actions - avec emojis et petite écriture
+        load_action = QAction(QIcon(":/images/themes/default/mActionAdd.svg"), "Load", self)
         load_action.setToolTip("Load vector files for transformation (Shapefile, GeoJSON, GeoPackage, KML, etc.)")
         load_action.triggered.connect(self.load_shapefile)
         toolbar.addAction(load_action)
         
         toolbar.addSeparator()
         
-        validate_action = QAction(QIcon(":/images/themes/default/mIconSuccess.svg"), "Validate\nConfig", self)
+        validate_action = QAction(QIcon(":/images/themes/default/mIconSuccess.svg"), "Validate", self)
         validate_action.setToolTip("Validate current configuration")
         validate_action.triggered.connect(self.validate_configuration)
         toolbar.addAction(validate_action)
         
-        save_action = QAction(QIcon(":/images/themes/default/mActionFileSave.svg"), "Save\nConfig", self)
+        save_action = QAction(QIcon(":/images/themes/default/mActionFileSave.svg"), "Save", self)
         save_action.setToolTip("Save current configuration")
         save_action.triggered.connect(self.save_current_table_config)
         toolbar.addAction(save_action)
         
         toolbar.addSeparator()
         
-        transform_action = QAction(QIcon(":/images/themes/default/mActionStart.svg"), "Transform\nSelected", self)
+        transform_action = QAction(QIcon(":/images/themes/default/mActionStart.svg"), "Transform", self)
         transform_action.setToolTip("Transform selected vector file")
         transform_action.triggered.connect(self.transform_selected_shapefile)
         toolbar.addAction(transform_action)
         
-        batch_action = QAction(QIcon(":/images/themes/default/mActionBatch.svg"), "Transform\nAll", self)
+        batch_action = QAction(QIcon(":/images/themes/default/mActionBatch.svg"), "Transform All", self)
         batch_action.setToolTip("Transform all loaded vector files")
         batch_action.triggered.connect(self.transform_all_shapefiles)
         toolbar.addAction(batch_action)
@@ -2165,10 +3997,60 @@ class EnhancedTransformerDialog(QMainWindow):
         toolbar.addSeparator()
         
         # Switch vers export
-        export_action = QAction(QIcon(":/images/themes/default/mActionExport.svg"), "Export\nMode", self)
+        export_action = QAction(QIcon(":/images/themes/default/mActionExport.svg"), "Export Mode", self)
         export_action.setToolTip("Switch to export mode")
         export_action.triggered.connect(lambda: self.main_tabs.setCurrentIndex(1))
         toolbar.addAction(export_action)
+        
+        toolbar.addSeparator()
+        
+        # Layout presets dropdown
+        layout_preset_button = QToolButton(self)
+        layout_preset_button.setText("Layouts")
+        layout_preset_button.setIcon(QIcon(":/images/themes/default/mActionLayout.svg"))
+        layout_preset_button.setToolTip("Quick layout presets for different workflows")
+        layout_preset_button.setPopupMode(QToolButton.InstantPopup)
+        
+        layout_preset_menu = QMenu("Layout Presets", self)
+        
+        # Default layout
+        default_action = QAction("Default Layout", self)
+        default_action.setIcon(QIcon(":/images/themes/default/mActionHome.svg"))
+        default_action.setToolTip("Standard layout with all panels")
+        default_action.triggered.connect(self._layout_default)
+        layout_preset_menu.addAction(default_action)
+        
+        # Vertical layout
+        vertical_action = QAction("Vertical Layout", self)
+        vertical_action.setIcon(QIcon(":/images/themes/default/mActionSplitVertical.svg"))
+        vertical_action.setToolTip("Stacked layout for wide screens")
+        vertical_action.triggered.connect(self._layout_vertical)
+        layout_preset_menu.addAction(vertical_action)
+        
+        # Horizontal layout
+        horizontal_action = QAction("Horizontal Layout", self)
+        horizontal_action.setIcon(QIcon(":/images/themes/default/mActionSplitHorizontal.svg"))
+        horizontal_action.setToolTip("All panels side by side")
+        horizontal_action.triggered.connect(self._layout_horizontal)
+        layout_preset_menu.addAction(horizontal_action)
+        
+        layout_preset_menu.addSeparator()
+        
+        # Focus modes
+        focus_config_action = QAction("Focus Configuration", self)
+        focus_config_action.setIcon(QIcon(":/images/themes/default/mActionOptions.svg"))
+        focus_config_action.setToolTip("Maximize configuration panel")
+        focus_config_action.triggered.connect(self._layout_focus_config)
+        layout_preset_menu.addAction(focus_config_action)
+        
+        focus_monitor_action = QAction("Focus Monitor", self)
+        focus_monitor_action.setIcon(QIcon(":/images/themes/default/mActionShowLogs.svg"))
+        focus_monitor_action.setToolTip("Maximize activity monitor")
+        focus_monitor_action.triggered.connect(self._layout_focus_monitor)
+        layout_preset_menu.addAction(focus_monitor_action)
+        
+        layout_preset_button.setMenu(layout_preset_menu)
+        toolbar.addWidget(layout_preset_button)
     
     def setup_statusbar(self):
         """Configure the status bar"""
@@ -2253,10 +4135,59 @@ class EnhancedTransformerDialog(QMainWindow):
         view_menu = menubar.addMenu("&View")
         
         # Add docks to the View menu
-        view_menu.addAction(self.shapefiles_dock.toggleViewAction())
+        view_menu.addAction(self.source_dock.toggleViewAction())
         view_menu.addAction(self.config_dock.toggleViewAction())
-        view_menu.addAction(self.logs_dock.toggleViewAction())
+        view_menu.addAction(self.log_dock.toggleViewAction())
         view_menu.addAction(self.help_dock.toggleViewAction())
+        
+        view_menu.addSeparator()
+        
+        # Configuration Components submenu
+        components_menu = view_menu.addMenu("Configuration &Components")
+        
+        # Add component visibility actions with shortcuts
+        table_config_menu_action = QAction("&Table Configuration", self)
+        table_config_menu_action.setCheckable(True)
+        table_config_menu_action.setChecked(True)
+        table_config_menu_action.setShortcut(QKeySequence("Ctrl+1"))
+        table_config_menu_action.toggled.connect(lambda checked: self.toggle_component_visibility('table_config', checked))
+        components_menu.addAction(table_config_menu_action)
+        
+        filter_menu_action = QAction("&Smart Filter", self)
+        filter_menu_action.setCheckable(True)
+        filter_menu_action.setChecked(True)
+        filter_menu_action.setShortcut(QKeySequence("Ctrl+2"))
+        filter_menu_action.toggled.connect(lambda checked: self.toggle_component_visibility('smart_filter', checked))
+        components_menu.addAction(filter_menu_action)
+        
+        expression_menu_action = QAction("&Expression Builder", self)
+        expression_menu_action.setCheckable(True)
+        expression_menu_action.setChecked(True)
+        expression_menu_action.setShortcut(QKeySequence("Ctrl+3"))
+        expression_menu_action.toggled.connect(lambda checked: self.toggle_component_visibility('expression_builder', checked))
+        components_menu.addAction(expression_menu_action)
+        
+        fields_menu_action = QAction("&Field Management", self)
+        fields_menu_action.setCheckable(True)
+        fields_menu_action.setChecked(True)
+        fields_menu_action.setShortcut(QKeySequence("Ctrl+4"))
+        fields_menu_action.toggled.connect(lambda checked: self.toggle_component_visibility('field_management', checked))
+        components_menu.addAction(fields_menu_action)
+        
+        components_menu.addSeparator()
+        
+        show_all_components_action = QAction("Show &All Components", self)
+        show_all_components_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
+        show_all_components_action.triggered.connect(self.show_all_components)
+        components_menu.addAction(show_all_components_action)
+        
+        # Store menu actions for synchronization
+        self.component_menu_actions = {
+            'table_config': table_config_menu_action,
+            'smart_filter': filter_menu_action,
+            'expression_builder': expression_menu_action,
+            'field_management': fields_menu_action
+        }
         
         view_menu.addSeparator()
         
@@ -2322,14 +4253,15 @@ class EnhancedTransformerDialog(QMainWindow):
     def setup_centralized_logger(self):
         """Configure le logger centralisé avec le widget Activity Log"""
         try:
-            # Check if the logs dock and logs text exist
-            if hasattr(self, 'logs_dock') and hasattr(self, 'logs_text'):
+            # Check if the logs text widget exists
+            if hasattr(self, 'logs_text') and self.logs_text is not None:
                 # Connect the logger to the Activity Log widget
                 plugin_logger.set_activity_log_widget(self.logs_text)
                 log_info("Centralized logger configured successfully")
                 log_info(f"Logger connected to Activity Log panel: {type(self.logs_text).__name__}")
             else:
-                log_warning("Activity Log widget not found - logger will only send to QGIS Message Log")
+                # Fallback message to QGIS log only
+                QgsMessageLog.logMessage("Activity Log widget not found - logger will only send to QGIS Message Log", "Transformer", Qgis.Warning)
                 
         except Exception as e:
             error_msg = f"Error setting up centralized logger: {str(e)}"
@@ -2337,12 +4269,8 @@ class EnhancedTransformerDialog(QMainWindow):
             QgsMessageLog.logMessage(error_msg, "Transformer", Qgis.Critical)
     
     def test_centralized_logger(self):
-        """Test the centralized logger with all log levels"""
-        log_info("Testing centralized logger - Info message")
-        log_warning("Testing centralized logger - Warning message")
-        log_error("Testing centralized logger - Error message")
-        log_success("Testing centralized logger - Success message")
-        log_info("Centralized logger test completed")
+        """Test the centralized logger with a simple confirmation message"""
+        log_info("Activity Monitor ready")
     
     def apply_theme(self):
         """Apply the selected theme"""
@@ -2623,9 +4551,9 @@ class EnhancedTransformerDialog(QMainWindow):
             
             # Enhanced status message
             if loaded_count > 0:
-                self.log_message(f"✅ Successfully loaded {loaded_count} vector file(s)", "Info")
+                self.log_message(f"Successfully loaded {loaded_count} vector file(s)", "Success")
             if failed_count > 0:
-                self.log_message(f"⚠️ Failed to load {failed_count} file(s)", "Warning")
+                self.log_message(f"Failed to load {failed_count} file(s)", "Warning")
     
     def add_vector_file(self, file_path: str) -> bool:
         """Add a vector file (supports all QGIS-compatible formats)"""
@@ -2677,7 +4605,7 @@ class EnhancedTransformerDialog(QMainWindow):
                 crs_info = layer.crs().authid() if layer.crs().isValid() else "No CRS"
                 
                 self.log_message(
-                    f"✅ Added {file_format}: {filename} ({geometry_info}, {crs_info})", 
+                    f"Added {file_format}: {filename} ({geometry_info}, {crs_info})", 
                     "Info"
                 )
                 
@@ -2784,7 +4712,7 @@ class EnhancedTransformerDialog(QMainWindow):
         """Remove the selected shapefile"""
         current_item = self.shp_tree.currentItem()
         if not current_item:
-            QMessageBox.information(self, "Information", "Please select a shapefile to remove")
+            self.log_message("Please select a shapefile to remove", "Warning")
             return
         
         filename = current_item.data(0, Qt.UserRole)
@@ -2998,7 +4926,7 @@ class EnhancedTransformerDialog(QMainWindow):
             # Summary message
             if loaded_qgis_count > 0:
                 self.log_message(
-                    f"✅ Loaded {loaded_qgis_count} vector layer(s) from QGIS project", 
+                    f"Loaded {loaded_qgis_count} vector layer(s) from QGIS project", 
                     "Info"
                 )
             else:
@@ -3218,6 +5146,34 @@ class EnhancedTransformerDialog(QMainWindow):
             QMessageBox.critical(self, "Initialization Error", error_msg)
             self.log_message(error_msg, "Error")
     
+    def _configurations_are_identical(self, config1, config2):
+        """Compare two configurations to check if they are identical"""
+        try:
+            # Keys to compare (excluding metadata like save_date)
+            keys_to_compare = ['calculated_fields', 'filter', 'target_crs', 'geometry_expression', 'source_file']
+            
+            for key in keys_to_compare:
+                val1 = config1.get(key)
+                val2 = config2.get(key)
+                
+                # Handle None values
+                if val1 is None and val2 is None:
+                    continue
+                if val1 is None or val2 is None:
+                    return False
+                    
+                # Special handling for different types
+                if isinstance(val1, dict) and isinstance(val2, dict):
+                    if val1 != val2:
+                        return False
+                elif str(val1) != str(val2):
+                    return False
+            
+            return True
+        except Exception:
+            # If comparison fails for any reason, assume they're different
+            return False
+    
     def save_current_table_config(self, skip_validation=False):
         """Save the current table configuration with duplicate check"""
         try:
@@ -3244,12 +5200,28 @@ class EnhancedTransformerDialog(QMainWindow):
                 existing_config = self.config_manager.get_table_config(table_name)
                 existing_source = existing_config.get("source_file", "")
                 
-                # Dialogue de confirmation pour remplacer la configuration existante
+                # Create current configuration object for comparison
+                current_config = {
+                    'calculated_fields': calculated_fields,
+                    'filter': filter_config,
+                    'target_crs': target_crs,
+                    'geometry_expression': geometry_expression,
+                    'source_file': filename
+                }
+                
+                # Compare configurations - only show dialog if they're different
+                if self._configurations_are_identical(existing_config, current_config):
+                    # Configurations are identical, no need to ask user
+                    self.log_message(f"Configuration for '{table_name}' is already up to date", "Info")
+                    return
+                
+                # Configurations are different, ask for confirmation
                 reply = QMessageBox.question(
                     self,
                     "Configuration Already Exists",
                     f"A configuration already exists for table '{table_name}'\n"
                     f"(Source: {os.path.basename(existing_source)})\n\n"
+                    f"The current configuration is different from the saved one.\n"
                     f"Do you want to replace the existing configuration?",
                     QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.No
@@ -3267,8 +5239,7 @@ class EnhancedTransformerDialog(QMainWindow):
             
             if success and self.config_manager.save_config():
                 action = "updated" if self.config_manager.has_table_config(table_name) else "saved"
-                QMessageBox.information(self, "Success", f"Configuration {action} for table '{table_name}'")
-                self.log_message(f"Configuration {action}: {table_name}", "Info")
+                self.log_message(f"Configuration {action} for table '{table_name}'", "Success")
                 self.update_statistics()
             else:
                 QMessageBox.critical(self, "Error", "Failed to save configuration")
@@ -3415,7 +5386,7 @@ The configuration is working correctly and ready for full transformation."""
             if shapefile_info.get('is_qgis_layer', False):
                 # Transform QGIS layer directly from layer object
                 layer_obj = shapefile_info['layer']
-                self.log_message(f"🔄 Transforming QGIS layer: {filename}", "Info")
+                self.log_message(f"Transforming QGIS layer: {filename}", "Info")
                 
                 layers = self.transformer.transform_qgis_layer_to_memory_layers(
                     layer_obj, 
@@ -3425,7 +5396,7 @@ The configuration is working correctly and ready for full transformation."""
             else:
                 # Transform external shapefile from file path
                 shp_path = shapefile_info['path']
-                self.log_message(f"🔄 Transforming external shapefile: {filename}", "Info")
+                self.log_message(f"Starting transformation: {filename}", "Info")
                 layers = self.transformer.transform_shapefile_to_memory_layers(shp_path, target_crs)
             
             if layers:
@@ -3528,7 +5499,7 @@ Errors: {len(errors)}
                 if reply == QMessageBox.Yes:
                     self.main_tabs.setCurrentIndex(1)
             else:
-                QMessageBox.information(self, "Batch Transformation Complete", result_msg)
+                self.log_message(f"Batch transformation complete: {result_msg}", "Success")
                 
         except Exception as e:
             error_msg = f"Batch transformation error: {str(e)}"
@@ -3672,33 +5643,195 @@ Errors: {len(errors)}
                 self.filter_status_label.setText("Disabled")
     
     def log_message(self, message, level="Info"):
-        """Add a message to the log"""
+        """Add a message to the log with professional formatting and filtering"""
         try:
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            level_prefix = {
-                "Info": "ℹ",
-                "Warning": "⚠",
-                "Error": "✗",
-                "Success": "✓"
-            }.get(level, "•")
+            # Initialize cache if not exists
+            if not hasattr(self, '_log_cache'):
+                self._log_cache = []
             
-            log_entry = f"[{timestamp}] {level_prefix} {message}"
+            # Auto-detect panel messages and set level to "Panel"
+            if self._is_panel_message(message):
+                level = "Panel"
+            
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            log_entry = f"[{timestamp}] {message}"
+            
+            # Cache the log entry with its level
+            self._log_cache.append((log_entry, level))
+            
+            # Check if this message type is filtered out
+            if hasattr(self, 'log_filters') and level in self.log_filters:
+                if not self.log_filters[level]:
+                    # Still log to QGIS but not to UI
+                    qgis_level = {
+                        "Info": Qgis.Info,
+                        "Warning": Qgis.Warning,
+                        "Error": Qgis.Critical,
+                        "Success": Qgis.Info,
+                        "Panel": Qgis.Info
+                    }.get(level, Qgis.Info)
+                    QgsMessageLog.logMessage(message, "Transformer", qgis_level)
+                    return
             
             # Add to the logs widget
             self.logs_text.appendPlainText(log_entry)
+            
+            # Apply color formatting
+            cursor = self.logs_text.textCursor()
+            cursor.movePosition(cursor.End)
+            cursor.movePosition(cursor.StartOfLine, cursor.KeepAnchor)
+            
+            # Professional color coding like FME Jobs with Panel category
+            level_colors = {
+                "Success": QColor(34, 197, 94),    # Green for success
+                "Warning": QColor(245, 158, 11),   # Orange for warnings  
+                "Error": QColor(239, 68, 68),      # Red for errors
+                "Info": QColor(255, 255, 255),     # White for normal info
+                "Panel": QColor(136, 136, 136)     # Gray for panel messages
+            }
+            
+            color = level_colors.get(level, QColor(255, 255, 255))
+            
+            # Apply color to current line
+            format = cursor.charFormat()
+            format.setForeground(color)
+            cursor.setCharFormat(format)
+            
+            # Move cursor to end for next message
+            cursor.movePosition(cursor.End)
+            self.logs_text.setTextCursor(cursor)
+            
+            # Ensure latest message is visible
+            self.logs_text.ensureCursorVisible()
             
             # Log also to QGIS
             qgis_level = {
                 "Info": Qgis.Info,
                 "Warning": Qgis.Warning,
                 "Error": Qgis.Critical,
-                "Success": Qgis.Info
+                "Success": Qgis.Info,
+                "Panel": Qgis.Info
             }.get(level, Qgis.Info)
             
             QgsMessageLog.logMessage(message, "Transformer", qgis_level)
             
         except Exception:
             pass  # Avoid cascading errors
+    
+    def _is_panel_message(self, message):
+        """Detect if a message is related to panel movements"""
+        panel_keywords = [
+            "Panel ",
+            "moved to", 
+            "shown", 
+            "hidden", 
+            "docked", 
+            "floating", 
+            "Layout reset",
+            "drag to reposition",
+            "Unknown area",
+            "successfully"
+        ]
+        
+        return any(keyword in message for keyword in panel_keywords)
+    
+    def _on_filter_combo_clicked(self, index):
+        """Handle combo box clicks to toggle filter states"""
+        try:
+            # Get the filter key from the combo box items
+            filter_keys = ["Success", "Info", "Warning", "Error", "Panel"]
+            if 0 <= index < len(filter_keys):
+                filter_key = filter_keys[index]
+                
+                # Toggle the filter state
+                self.log_filters[filter_key] = not self.log_filters[filter_key]
+                
+                # Update the combo box display
+                self._update_filter_combo_display()
+                
+                # Refresh the log display
+                self.filter_logs()
+                
+                # Close the combo box popup (auto-collapse)
+                self.filter_combo.hidePopup()
+                
+        except Exception:
+            pass
+    
+    def _update_filter_combo_display(self):
+        """Update combo box items to show current filter states with QGIS native style"""
+        try:
+            filter_items = [
+                ("Success", self.log_filters.get("Success", True)),
+                ("Info", self.log_filters.get("Info", True)),
+                ("Warning", self.log_filters.get("Warning", True)),
+                ("Error", self.log_filters.get("Error", True)),
+                ("Panel", self.log_filters.get("Panel", False))
+            ]
+            
+            # Update items with QGIS native green/white styling
+            for i, (name, is_checked) in enumerate(filter_items):
+                if is_checked:
+                    # Green background for active filters with filled square
+                    display_text = f"🟦 {name}"
+                    self.filter_combo.setItemText(i, display_text)
+                    # Use Qt roles for styling
+                    from qgis.PyQt.QtCore import Qt
+                    from qgis.PyQt.QtGui import QColor
+                    self.filter_combo.setItemData(i, QColor(150, 150, 150), Qt.BackgroundRole)
+                    self.filter_combo.setItemData(i, QColor(200, 200, 200), Qt.ForegroundRole)
+                else:
+                    # Green background for inactive filters with empty square
+                    display_text = f"⬜ {name}"
+                    self.filter_combo.setItemText(i, display_text)
+                    # Same green background as active filters
+                    self.filter_combo.setItemData(i, QColor(150, 150, 150), Qt.BackgroundRole)
+                    self.filter_combo.setItemData(i, QColor(200, 200, 200), Qt.ForegroundRole)
+        except Exception:
+            pass
+    
+    def filter_logs(self):
+        """Filter log display based on filter states"""
+        try:
+            if not hasattr(self, 'logs_text') or not hasattr(self, 'log_filters'):
+                return
+            
+            # Get all text content and store with levels
+            if not hasattr(self, '_log_cache'):
+                self._log_cache = []
+                return  # No cached logs yet
+            
+            # Clear display
+            self.logs_text.clear()
+            
+            # Re-add cached logs that match active filters
+            for log_entry, level in self._log_cache:
+                if level in self.log_filters and self.log_filters[level]:
+                    self.logs_text.appendPlainText(log_entry)
+                    
+                    # Apply color formatting
+                    cursor = self.logs_text.textCursor()
+                    cursor.movePosition(cursor.End)
+                    cursor.movePosition(cursor.StartOfLine, cursor.KeepAnchor)
+                    
+                    level_colors = {
+                        "Success": QColor(34, 197, 94),
+                        "Warning": QColor(245, 158, 11), 
+                        "Error": QColor(239, 68, 68),
+                        "Info": QColor(255, 255, 255),
+                        "Panel": QColor(136, 136, 136)
+                    }
+                    
+                    color = level_colors.get(level, QColor(255, 255, 255))
+                    format = cursor.charFormat()
+                    format.setForeground(color)
+                    cursor.setCharFormat(format)
+            
+            # Restore scroll position
+            self.logs_text.ensureCursorVisible()
+            
+        except Exception:
+            pass  # Silently handle filtering errors
     
     def clear_logs(self):
         """Clear the logs"""
@@ -3787,8 +5920,7 @@ Errors: {len(errors)}
                 with open(filename, 'w', encoding='utf-8') as f:
                     f.write(self.logs_text.toPlainText())
                 
-                QMessageBox.information(self, "Success", f"Logs exported to:\n{filename}")
-                self.log_message(f"Logs exported to {filename}", "Info")
+                self.log_message(f"Logs exported to {filename}", "Success")
                 
         except Exception as e:
             error_msg = f"Error exporting logs: {str(e)}"
@@ -3821,8 +5953,7 @@ Errors: {len(errors)}
         if filename:
             if self.config_manager.import_config(filename):
                 self.auto_load_configs()
-                QMessageBox.information(self, "Success", f"Configuration imported from:\n{filename}")
-                self.log_message(f"Configuration imported from {filename}", "Info")
+                self.log_message(f"Configuration imported from {filename}", "Success")
             else:
                 QMessageBox.critical(self, "Error", "Failed to import configuration")
     
@@ -3836,8 +5967,7 @@ Errors: {len(errors)}
         
         if filename:
             if self.config_manager.export_config(filename):
-                QMessageBox.information(self, "Success", f"Configuration exported to:\n{filename}")
-                self.log_message(f"Configuration exported to {filename}", "Info")
+                self.log_message(f"Configuration exported to {filename}", "Success")
             else:
                 QMessageBox.critical(self, "Error", "Failed to export configuration")
     
@@ -3869,7 +5999,7 @@ Errors: {len(errors)}
             issues = self.config_manager.validate_config()
             
             if not issues:
-                QMessageBox.information(self, "Validation Results", "All configurations are valid!")
+                self.log_message("All configurations are valid!", "Success")
             else:
                 issues_text = "\n".join([f"• {issue}" for issue in issues])
                 QMessageBox.warning(self, "Validation Results", f"Issues found:\n\n{issues_text}")
@@ -3934,7 +6064,6 @@ Errors: {len(errors)}
 Provides the equivalent of <strong style="color: #238636;">Reader + AttributeManager + Reprojector + Writer</strong><br/>
 components found in commercial ETL solutions, with complete workflow persistence.
 </p>
-</div>
 </div>
 </div>
 
@@ -4386,6 +6515,16 @@ Built with ❤️ for the QGIS community
                     return
         
         self.current_crs_label.setText("Unknown")
+    
+    # === NOUVEAUX WIDGETS MODULAIRES (transformation blocs centraux → docks) ===
+    
+
+    
+
+    
+
+    
+
 
 
 class PreferencesDialog(QDialog):

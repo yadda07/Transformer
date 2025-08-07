@@ -3,7 +3,7 @@
 name=Transformer
 qgisMinimumVersion=3.10
 description=Essential ETL components for vector data transformation. Provides Reader+AttributeManager+Reprojector+Writer functionality with workflow persistence.
-version=1.1.0
+version=1.1.1
 author=Yadda
 email=youcef.geodesien@gmail.com
 
@@ -38,6 +38,12 @@ qgisMaximumVersion=3.45
 
 ; Changelog
 changelog=
+    Version 1.1.1 (2025-08-07):
+    - Eliminated disruptive popup dialogs for seamless ETL workflow
+    - Activity Log now serves as the central information hub
+    - Refined component styling with minimalist design approach
+    - Transformed interface from interrupt-driven to stream-driven processing
+    
     Version 1.1.0 (2025-08-05):
     - Added support for QGIS project layers (process loaded layers directly)
     - Added universal vector format support (15+ formats instead of Shapefile only)
