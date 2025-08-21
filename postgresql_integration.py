@@ -16,10 +16,51 @@ from qgis.PyQt.QtWidgets import (
     QMessageBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QSplitter,
     QFrame, QScrollArea, QTabWidget, QTreeWidget, QTreeWidgetItem, QGridLayout,
     QApplication, QDesktopWidget, QPlainTextEdit, QProgressBar, QSlider, QCompleter,
-    QInputDialog, QSizePolicy, QStyle
+    QInputDialog, QStyle
 )
-from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal, QTimer, QStringListModel
-from qgis.PyQt.QtGui import QFont, QPixmap, QIcon, QTextCursor, QSyntaxHighlighter, QTextCharFormat, QColor
+
+# Import QSizePolicy with fallback
+try:
+    from qgis.PyQt.QtWidgets import QSizePolicy
+except ImportError:
+    try:
+        from PyQt5.QtWidgets import QSizePolicy
+    except ImportError:
+        class QSizePolicy:
+            Expanding = 7
+            Preferred = 5
+            def __init__(self, h=None, v=None):
+                pass
+from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal, QStringListModel
+
+# Import QTimer with fallback
+try:
+    from qgis.PyQt.QtCore import QTimer
+except ImportError:
+    try:
+        from PyQt5.QtCore import QTimer
+    except ImportError:
+        class QTimer:
+            @staticmethod
+            def singleShot(msec, func):
+                try:
+                    func()
+                except:
+                    pass
+from qgis.PyQt.QtGui import QPixmap, QIcon, QTextCursor, QSyntaxHighlighter, QTextCharFormat, QColor
+
+# Import QFont with fallback
+try:
+    from qgis.PyQt.QtGui import QFont
+except ImportError:
+    try:
+        from PyQt5.QtGui import QFont
+    except ImportError:
+        class QFont:
+            def __init__(self, family="Arial", size=9, weight=None):
+                pass
+            class Bold:
+                pass
 from qgis.core import (
     QgsProject, QgsVectorLayer, QgsDataSourceUri, QgsCredentials, QgsMessageLog, Qgis,
     QgsApplication, QgsAuthManager, QgsVectorFileWriter, QgsCoordinateReferenceSystem,
@@ -2271,7 +2312,9 @@ class PostgreSQLMappingWidget(QWidget):
                 return
                 
             # Vérifier les préférences utilisateur pour la fenêtre de confirmation
-            show_confirmation = self._should_show_confirmation()
+            # Générer une clé unique pour ce set de mappings
+            mapping_key = self._generate_mapping_key(compatibility_info)
+            show_confirmation = self._should_show_confirmation_for_mapping(mapping_key)
             
             if show_confirmation:
                 # Afficher la fenêtre de mapping interactif avec les détails
@@ -2289,7 +2332,7 @@ class PostgreSQLMappingWidget(QWidget):
                     
                 # Save the preference if the user checked "Do not show again"
                 if confirm_dialog.dont_show_again:
-                    self._save_confirmation_preference(False)
+                    self._save_confirmation_preference_for_mapping(mapping_key, False)
                     
                 # Extract and store temporarily the detailed mappings
                 temp_detailed_mappings = []
@@ -2353,18 +2396,12 @@ class PostgreSQLMappingWidget(QWidget):
                     result = self._perform_integration(table_info)
                     if result:
                         success_count += 1
-                        QgsMessageLog.logMessage(
-                            f"Intégration réussie: {table_info['layer']} → {table_info['schema']}.{table_info['table']}",
-                            "Transformer", Qgis.Success
-                        )
                     else:
                         error_count += 1
+                        log_critical(f"Integration failed for table {table_info['schema']}.{table_info['table']}")
                 except Exception as e:
                     error_count += 1
-                    QgsMessageLog.logMessage(
-                        f"Erreur intégration {table_info['layer']}: {str(e)}",
-                        "Transformer", Qgis.Critical
-                    )
+                    log_critical(f"Integration error for table {table_info['schema']}.{table_info['table']}: {str(e)}")
                     
             # Save mappings for reuse (detailed mappings are in _temp_detailed_mappings)
             self.save_mappings()
@@ -2375,18 +2412,18 @@ class PostgreSQLMappingWidget(QWidget):
             if hasattr(self, '_temp_detailed_mappings'):
                 self._temp_detailed_mappings = []
                 
-            # Final report
-            if success_count > 0 or error_count > 0:
-                message = f"Integration completed:\n {success_count} table(s) integrated successfully"
+            # Final report in plugin Activity Log
+            if success_count > 0:
+                log_success(f"PostgreSQL integration completed: {success_count} table(s) integrated successfully")
                 if error_count > 0:
-                    message += f"\n {error_count} error(s)"
-                    
-                QgsMessageLog.logMessage(f"PostgreSQL integration completed: {message}", "Transformer", Qgis.Success)
+                    log_warning(f"Integration completed with {error_count} error(s)")
+            elif error_count > 0:
+                log_critical(f"PostgreSQL integration failed: {error_count} error(s)")
             else:
-                QMessageBox.warning(self, "Warning", "No integration performed")
+                log_warning("No PostgreSQL integration performed")
             
         except Exception as e:
-            QgsMessageLog.logMessage(f"General error during export: {str(e)}", "Transformer", Qgis.Critical)
+            log_critical(f"PostgreSQL export error: {str(e)}")
             QMessageBox.critical(self, "Export error", f"Export failed: {str(e)}")
     
     def _perform_integration(self, table_info):
@@ -2396,8 +2433,8 @@ class PostgreSQLMappingWidget(QWidget):
             schema = table_info['schema']
             table = table_info['table']
             
-            # Start integration logging
-            log_info(f"Starting integration: {layer_name} → {schema}.{table}")
+            # Start integration with clear table identification
+            log_info(f"Integrating table {schema}.{table} from layer '{layer_name}'")
             
             # Get the QGIS source layer
             project = QgsProject.instance()
@@ -2416,12 +2453,10 @@ class PostgreSQLMappingWidget(QWidget):
                 log_critical(f"Layer '{layer_name}' is not a vector layer")
                 return False
             
-            # Log source layer details
+            # Get source layer details for final summary
             feature_count = source_layer.featureCount()
             field_count = len(source_layer.fields())
             geom_type = QgsWkbTypes.geometryDisplayString(source_layer.geometryType())
-            
-            log_info(f"Source layer analysis: {feature_count} features, {field_count} fields, geometry: {geom_type}")
             
             # Connect to PostgreSQL
             if not self.config_widget:
@@ -2440,7 +2475,6 @@ class PostgreSQLMappingWidget(QWidget):
             try:
                 conn = psycopg2.connect(**conn_params)
                 cursor = conn.cursor()
-                log_info(f"Database connection established for integration")
             except psycopg2.Error as e:
                 log_critical(f"Database connection failed: {str(e)}")
                 return False
@@ -2454,9 +2488,8 @@ class PostgreSQLMappingWidget(QWidget):
                     # Check current row count
                     cursor.execute(f'SELECT COUNT(*) FROM "{schema}"."{table}"')
                     existing_count = cursor.fetchone()[0]
-                    log_info(f"Target table {schema}.{table} exists with {existing_count} existing records")
                 else:
-                    log_warning(f"Target table {schema}.{table} does not exist - will be created")
+                    log_warning(f"Target table {schema}.{table} does not exist - cannot integrate")
                     cursor.close()
                     conn.close()
                     return False
@@ -2467,8 +2500,7 @@ class PostgreSQLMappingWidget(QWidget):
                 conn.close()
                 return False
             
-            # Begin data transfer
-            log_info(f"Starting data transfer: {feature_count} features to copy")
+            # Begin data transfer (no intermediate log for cleaner output)
             
             # Use QgsVectorLayerExporter for efficient bulk data transfer
             provider_uri = QgsDataSourceUri()
@@ -2500,20 +2532,20 @@ class PostgreSQLMappingWidget(QWidget):
                     final_count = cursor.fetchone()[0]
                     transferred_count = final_count - (existing_count if table_exists else 0)
                     
-                    log_success(f"Data transfer completed: {transferred_count} records transferred to {schema}.{table} (total: {final_count})")
+                    log_success(f"Table {schema}.{table}: {transferred_count} records integrated successfully")
                     
                     cursor.close()
                     conn.close()
                     return True
                     
                 except psycopg2.Error as e:
-                    log_warning(f"Failed to verify transfer results: {str(e)}")
+                    log_warning(f"Transfer verification failed: {str(e)}")
                     cursor.close()
                     conn.close()
                     return True  # Transfer probably succeeded even if verification failed
                     
             else:
-                log_critical(f"Data export failed: {error_string}")
+                log_critical(f"Table {schema}.{table} integration failed: {error_string}")
                 cursor.close()
                 conn.close()
                 return False
@@ -3102,8 +3134,15 @@ class PostgreSQLMappingWidget(QWidget):
                 
         return None
         
-    def _should_show_confirmation(self):
-        """Determine if the confirmation window should be displayed"""
+    def _generate_mapping_key(self, compatibility_info):
+        """Generate a unique key for this set of mappings"""
+        # Créer une clé basée sur les tables de destination
+        tables = [f"{info['schema']}.{info['table']}" for info in compatibility_info]
+        tables.sort()  # Assurer l'ordre pour cohérence
+        return "|".join(tables)
+    
+    def _should_show_confirmation_for_mapping(self, mapping_key):
+        """Determine if the confirmation window should be displayed for this specific mapping"""
         try:
             plugin_dir = os.path.dirname(os.path.realpath(__file__))
             config_path = os.path.join(plugin_dir, "transformer_postgresql_preferences.json")
@@ -3111,26 +3150,39 @@ class PostgreSQLMappingWidget(QWidget):
             if os.path.exists(config_path):
                 with open(config_path, 'r') as f:
                     prefs = json.load(f)
-                    return prefs.get('show_confirmation', True)
+                    # Vérifier si ce mapping spécifique a été désactivé
+                    mapping_prefs = prefs.get('mapping_confirmations', {})
+                    return mapping_prefs.get(mapping_key, True)  # Par défaut: afficher
             else:
                 return True  # Default to showing confirmation
         except:
             return True
             
-    def _save_confirmation_preference(self, show_confirmation):
-        """Save the confirmation preference"""
+    def _save_confirmation_preference_for_mapping(self, mapping_key, show_confirmation):
+        """Save the confirmation preference for a specific mapping"""
         try:
             plugin_dir = os.path.dirname(os.path.realpath(__file__))
             config_path = os.path.join(plugin_dir, "transformer_postgresql_preferences.json")
             
-            prefs = {'show_confirmation': show_confirmation}
+            # Charger les préférences existantes
+            prefs = {}
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    prefs = json.load(f)
+            
+            # Assurer que la section mapping_confirmations existe
+            if 'mapping_confirmations' not in prefs:
+                prefs['mapping_confirmations'] = {}
+            
+            # Sauvegarder la préférence pour ce mapping spécifique
+            prefs['mapping_confirmations'][mapping_key] = show_confirmation
             
             with open(config_path, 'w') as f:
                 json.dump(prefs, f, indent=2)
                 
-            QgsMessageLog.logMessage(f"Preference saved: show_confirmation = {show_confirmation}", "Transformer", Qgis.Info)
+            log_info(f"Mapping confirmation preference saved for: {mapping_key}")
         except Exception as e:
-            QgsMessageLog.logMessage(f"Error saving preferences: {str(e)}", "Transformer", Qgis.Warning)
+            log_warning(f"Error saving mapping preference: {str(e)}")
             
     def _perform_integration(self, table_info):
         """Perform the actual table integration"""

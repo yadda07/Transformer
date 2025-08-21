@@ -9,7 +9,22 @@ Developed by the team of 4 Senior Developers
 import os
 from typing import Optional
 
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, QTimer
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
+
+# Import QTimer with fallback
+try:
+    from qgis.PyQt.QtCore import QTimer
+except ImportError:
+    try:
+        from PyQt5.QtCore import QTimer
+    except ImportError:
+        class QTimer:
+            @staticmethod
+            def singleShot(msec, func):
+                try:
+                    func()
+                except:
+                    pass
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox, QApplication
 

@@ -29,8 +29,22 @@ class SimpleConfigManager:
         """Config from JSON file"""
         try:
             if os.path.exists(self.config_file):
+                # Check if file is empty
+                if os.path.getsize(self.config_file) == 0:
+                    QgsMessageLog.logMessage("Config file is empty, initializing with default structure", "Transformer", Qgis.Info)
+                    self.save_config()
+                    return True
+                
                 with open(self.config_file, 'r', encoding='utf-8') as f:
-                    self.config_data = json.load(f)
+                    loaded_data = json.load(f)
+                
+                # Validate loaded data structure
+                if not isinstance(loaded_data, dict) or 'tables' not in loaded_data:
+                    QgsMessageLog.logMessage("Invalid config structure, reinitializing", "Transformer", Qgis.Warning)
+                    self.save_config()
+                    return True
+                
+                self.config_data = loaded_data
                 
                 # Migration from old ver if needed
                 self._migrate_config_if_needed()
@@ -41,6 +55,7 @@ class SimpleConfigManager:
                 )
                 return True
             else:
+                QgsMessageLog.logMessage("Config file doesn't exist, creating with default structure", "Transformer", Qgis.Info)
                 self.save_config()
                 return True
         except Exception as e:
@@ -253,19 +268,48 @@ class SimpleConfigManager:
             return False
     
     def import_config(self, import_path: str) -> bool:
-        """Import config from file"""
+        """Import config from file and merge with existing calculated_fields_config.json"""
         try:
             with open(import_path, 'r', encoding='utf-8') as f:
                 imported_data = json.load(f)
             
             if "tables" in imported_data:
-                self.config_data = imported_data
+                # Initialize tables dict if not exists
+                if "tables" not in self.config_data:
+                    self.config_data["tables"] = {}
+                
+                # Merge imported tables with existing ones in calculated_fields_config.json
+                imported_tables = imported_data.get("tables", {})
+                merged_count = 0
+                overwritten_count = 0
+                
+                for table_name, table_config in imported_tables.items():
+                    if table_name in self.config_data["tables"]:
+                        overwritten_count += 1
+                        QgsMessageLog.logMessage(f"Overwriting existing config for table '{table_name}'", "Transformer", Qgis.Info)
+                    else:
+                        merged_count += 1
+                    
+                    # Merge the table config into calculated_fields_config.json
+                    self.config_data["tables"][table_name] = table_config
+                
+                # Update version and timestamp from imported file if newer
+                imported_version = imported_data.get("version", "1.0")
+                if imported_version >= self.config_data.get("version", "1.0"):
+                    self.config_data["version"] = imported_version
                 
                 # Migration if needed after import
                 self._migrate_config_if_needed()
                 
                 self.save_config()
-                QgsMessageLog.logMessage(f"Configuration imported from {import_path}", "Transformer", Qgis.Info)
+                
+                # Log summary of import operation
+                total_imported = len(imported_tables)
+                QgsMessageLog.logMessage(
+                    f"Configuration merged from {import_path}: {total_imported} table(s) imported "
+                    f"({merged_count} new, {overwritten_count} updated)", 
+                    "Transformer", Qgis.Info
+                )
                 return True
             else:
                 QgsMessageLog.logMessage("Invalid configuration format", "Transformer", Qgis.Warning)

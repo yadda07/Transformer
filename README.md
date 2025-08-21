@@ -26,14 +26,36 @@ Transformer provides a cohesive ETL architecture where each component is designe
 ### Workflow Automation
 Once configured, the transformation pipeline operates autonomously - eliminating manual intervention for recurring tasks. This approach transforms complex, multi-step processes into simple, one-click operations, significantly improving productivity for geospatial data workflows.
 
+## Interface Improvements (Version 1.1.1)
+
+### Workflow-Focused Design
+The interface has been refined to support continuous data processing workflows:
+
+#### **Reduced Interruptions**
+- Confirmation dialogs removed from routine operations
+- Information flows through a centralized activity log
+- Operations execute directly with feedback in the log panel
+
+#### **Modular Interface**
+- Components organized as independent dock widgets
+- Standard Qt repositioning and resizing
+- Window layouts persist between sessions
+
+#### **Activity Logging**
+- Color-coded message types for visual distinction
+- Filterable log levels (Success, Warning, Error, Info)
+- Consolidated feedback without interface clutter
+
 ## Features
 
 ### Data Transformation
 
-* Transform multiple vector files in batch mode (15+ formats supported)
-* Apply coordinate system reprojection
-* Calculate geometric properties (area, perimeter, centroid)
-* Transform and map field data types
+* Support for multiple vector formats (Shapefile, GeoJSON, GeoPackage, KML, DXF, GPX, etc.)
+* Process layers from QGIS project or external files
+* Coordinate system transformations using QGIS reprojection engine
+* Geometric calculations through QGIS expression functions
+* Field calculations and data type transformations
+* Batch processing for multiple files with shared configurations
 
 ### Export Options
 
@@ -97,17 +119,31 @@ The tool is suitable for organizations that need to:
 
 ```
 transformer/
-├── __init__.py
-├── main_plugin.py
-├── Transformer_dialog.py
-├── gestionnaire.py
-├── trans_calc.py
-├── export_module.py
-├── postgresql_integration.py
-├── logger.py
-├── styles.css
-├── metadata.txt
-└── readme.md
+├── __init__.py                                  # Plugin initialization
+├── main_plugin.py                              # Main plugin class and QGIS integration
+├── EnhancedTransformerDialog.py                 # Main enhanced interface dialog
+├── Transformer_dialog.py                       # Core dialog functionality
+├── AdvancedExpressionWidget.py                 # Expression builder component
+├── SmartFilterWidget.py                        # Smart filtering component
+├── FieldWidget.py                             # Field management component
+├── ExpressionTesterDialog.py                   # Expression testing dialog
+├── ExpressionSyntaxHighlighter.py             # Syntax highlighting for expressions
+├── FieldDefinitionDialog.py                    # Field definition dialog
+├── PreferencesDialog.py                        # User preferences dialog
+├── config_selector.py                          # Configuration selection utilities
+├── gestionnaire.py                             # Configuration manager
+├── trans_calc.py                               # Transformation calculation engine
+├── export_module.py                            # Export functionality module
+├── postgresql_integration.py                   # PostgreSQL database integration
+├── logger.py                                   # Logging system
+├── styles.css                                  # UI styling
+├── metadata.txt                                # Plugin metadata
+├── calculated_fields_config.json               # Calculated fields configuration
+├── postgresql_detailed_mappings.json           # PostgreSQL detailed mappings
+├── transformer_postgresql.json                 # PostgreSQL connection settings
+├── transformer_postgresql_mappings.json        # PostgreSQL table mappings
+├── transformer_postgresql_preferences.json     # PostgreSQL preferences
+└── README.md                                   # Documentation
 ```
 
 ## Usage Guide

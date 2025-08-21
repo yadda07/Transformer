@@ -644,13 +644,18 @@ class SimpleTransformer:
                 QgsMessageLog.logMessage(f"Invalid QGIS source layer: {layer_name}", "Transformer", Qgis.Warning)
                 return layers_created
                 
-            # Use the layer name to find table configurations
-            table_names = self.config_manager.get_tables_for_source(layer_name)
+            # Normalize layer name by removing file extension if present
+            normalized_layer_name = layer_name
+            if layer_name.lower().endswith('.shp'):
+                normalized_layer_name = layer_name[:-4]
+            
+            # Use the normalized layer name to find table configurations
+            table_names = self.config_manager.get_tables_for_source(normalized_layer_name)
             
             if not table_names:
-                QgsMessageLog.logMessage(f"No configuration found for QGIS layer: {layer_name}", "Transformer", Qgis.Warning)
+                QgsMessageLog.logMessage(f"No configuration found for QGIS layer: '{layer_name}'", "Transformer", Qgis.Warning)
                 return layers_created
-            
+                
             for table_name in table_names:
                 config = self.config_manager.get_table_config(table_name)
                 if not config:
@@ -712,10 +717,12 @@ class SimpleTransformer:
             source_geom_type = source_layer.geometryType()
             output_geom_type = source_geom_type
             
+            QgsMessageLog.logMessage(f"Source geometry type: {source_geom_type} for {table_name}", "Transformer", Qgis.Info)
+            
             # If there's a geometry expression, we might need to adjust the geometry type
             if geometry_expression and geometry_expression != "$geometry":
                 # For complex expressions, we'll keep the original type and let QGIS handle it
-                # Advanced users can create specific geometry types if needed
+                QgsMessageLog.logMessage(f"Using geometry expression: {geometry_expression}", "Transformer", Qgis.Info)
                 pass
             
             # Determine CRS
@@ -742,7 +749,12 @@ class SimpleTransformer:
             field_configs = []
             
             for field_name, expression in calculated_fields.items():
-                field = QgsField(field_name, QVariant.String)
+                # Skip geometry field - it's handled by geometry_expression
+                if field_name.lower() == 'geometry':
+                    QgsMessageLog.logMessage(f"Skipping geometry field - handled by geometry_expression: {expression}", "Transformer", Qgis.Info)
+                    continue
+                    
+                field = QgsField(field_name, QVariant.String, "string")
                 field_configs.append((field, expression))
             
             # Use edit context to add fields
@@ -821,14 +833,29 @@ class SimpleTransformer:
                         
                         dest_feature.setGeometry(final_geometry)
                         
+                        # Log geometry type compatibility for debugging
+                        if final_geometry and not final_geometry.isNull():
+                            actual_geom_type = final_geometry.type()
+                            expected_geom_type = dest_layer.geometryType()
+                            if actual_geom_type != expected_geom_type:
+                                QgsMessageLog.logMessage(f"Geometry type mismatch - Expected: {expected_geom_type}, Got: {actual_geom_type}", "Transformer", Qgis.Warning)
+                        
                     except Exception as e:
                         QgsMessageLog.logMessage(f"Geometry processing error: {str(e)}", "Transformer", Qgis.Warning)
                         errors += 1
                         continue
                 
                 # Add feature to destination layer
-                with edit(dest_layer):
-                    dest_layer.addFeature(dest_feature)
+                try:
+                    with edit(dest_layer):
+                        success = dest_layer.addFeature(dest_feature)
+                        if not success:
+                            QgsMessageLog.logMessage(f"Failed to add feature {processed + 1} to layer {table_name}", "Transformer", Qgis.Warning)
+                            errors += 1
+                except Exception as e:
+                    QgsMessageLog.logMessage(f"Error adding feature to layer {table_name}: {str(e)}", "Transformer", Qgis.Warning)
+                    errors += 1
+                    continue
                 
                 processed += 1
             
