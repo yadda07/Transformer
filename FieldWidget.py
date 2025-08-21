@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import os
 from qgis.PyQt.QtCore import pyqtSignal, Qt
 from qgis.PyQt.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QPushButton, QTreeWidget, 
@@ -31,7 +32,7 @@ except ImportError:
                 pass
             class Bold:
                 pass
-from qgis.core import QgsMessageLog, Qgis
+from qgis.core import QgsMessageLog, Qgis, QgsWkbTypes
 
 # Import classes directly to avoid circular imports
 from .FieldDefinitionDialog import FieldDefinitionDialog
