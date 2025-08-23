@@ -4,7 +4,7 @@ A QGIS plugin for transforming vector files with calculated fields, coordinate r
 
 ## Overview
 
-**Transformer** is a comprehensive ETL (Extract, Transform, Load) solution built within QGIS, providing enterprise-grade data processing capabilities through integrated components that work seamlessly together. This plugin addresses the need for powerful, accessible transformation tools by leveraging QGIS's rich API ecosystem to deliver functionality comparable to commercial ETL platforms.
+**Transformer** is a ETL (Extract, Transform, Load) solution built within QGIS, providing enterprise-grade data processing capabilities through integrated components that work seamlessly together. This plugin addresses the need for powerful, accessible transformation tools by leveraging QGIS's rich API ecosystem to deliver functionality comparable to commercial ETL platforms.
 
 ### ETL Integration Philosophy
 The plugin combines multiple ETL components into a unified workflow: **Reader + AttributeManager + Reprojector + Writer + ConfigurationManager**, enabling complete data processing pipelines. Once configured, the entire transformation process becomes automated - users define their workflow once and execute it repeatedly with consistent results.
