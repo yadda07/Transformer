@@ -241,14 +241,6 @@ except Exception as e:
     POSTGRESQL_INTEGRATION_AVAILABLE = False
     PostgreSQLIntegrationWidget = None
 
-# Import smooth config selector
-try:
-    from .smooth_config_selector import SmoothConfigSelector
-    SMOOTH_CONFIG_SELECTOR_AVAILABLE = True
-except ImportError as e:
-    QgsMessageLog.logMessage(f"Smooth config selector import failed: {str(e)}", "Transformer", Qgis.Warning)
-    SMOOTH_CONFIG_SELECTOR_AVAILABLE = False
-    SmoothConfigSelector = None
 
 # Import des classes extraites dans des fichiers séparés
 try:
