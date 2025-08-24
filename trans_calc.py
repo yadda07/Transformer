@@ -41,27 +41,20 @@ class SimpleTransformer:
                     
                     if not expression.hasEvalError() and result is not None:
                         if isinstance(result, bool):
-                            field = QgsField("temp", QVariant.Bool, "boolean")
-                            return field
+                            return QgsField("temp", QVariant.Bool, "boolean")
                         elif isinstance(result, int):
-                            field = QgsField("temp", QVariant.Int, "integer")
-                            field.setLength(10)
+                            field = QgsField("temp", QVariant.Int, "integer", 10)
                             return field
                         elif isinstance(result, float):
-                            field = QgsField("temp", QVariant.Double, "double")
-                            field.setLength(20)
-                            field.setPrecision(6)
+                            field = QgsField("temp", QVariant.Double, "double", 20, 6)
                             return field
                         elif hasattr(result, 'date'):
-                            field = QgsField("temp", QVariant.DateTime, "datetime")
-                            return field
+                            return QgsField("temp", QVariant.DateTime, "datetime")
         
         except Exception:
             pass
         
-        field = QgsField("temp", QVariant.String, "string")
-        field.setLength(255)
-        return field
+        return QgsField("temp", QVariant.String, "string", 255)
     
     def test_filter_expression(self, filter_expression: str, source_layer: QgsVectorLayer) -> Tuple[bool, str, int]:
         """Test filter expression and return validity, message, and filtered count"""

@@ -1,17 +1,24 @@
 
 # -*- coding: utf-8 -*-
+import os
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, QMessageBox, QDialogButtonBox
 )
+from qgis.PyQt.QtGui import QIcon
 
 class FieldDefinitionDialog(QDialog):
     """Field definition dialog"""
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Field Definition")
+        self.setWindowTitle("Transformer - Field Definition")
         self.setModal(True)
         self.resize(400, 200)
+        
+        # Définir l'icône du dialog avec le logo
+        logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+        if os.path.exists(logo_path):
+            self.setWindowIcon(QIcon(logo_path))
         
         self.setup_ui()
     

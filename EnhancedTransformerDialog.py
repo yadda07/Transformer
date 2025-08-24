@@ -42,6 +42,7 @@ except ImportError:
                 except:
                     pass
 
+from qgis.PyQt.QtGui import QPixmap, QIcon
 from qgis.PyQt.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLabel, QLineEdit, QPushButton, QTextEdit, QPlainTextEdit, QComboBox, QCheckBox,
@@ -49,7 +50,7 @@ from qgis.PyQt.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QTableWidget, QTableWidgetItem, QHeaderView,
     QToolButton, QMenu, QAction, QActionGroup, QStatusBar, QMenuBar, QProgressBar,
     QFileDialog, QMessageBox, QInputDialog, QListWidget, QListWidgetItem,
-    QDockWidget, QAbstractItemView, QApplication
+    QDockWidget, QAbstractItemView, QApplication, QDialog
 )
 
 # Import QToolBar with fallback
@@ -227,8 +228,14 @@ class EnhancedTransformerDialog(QMainWindow):
         self.setMinimumSize(1200, 800)
         self.resize(1600, 1000)
         
-        # Application icon
-        self.setWindowIcon(QIcon(":/images/themes/default/mActionTransform.svg"))
+        # Application icon - logo du plugin
+        import os
+        logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+        if os.path.exists(logo_path):
+            self.setWindowIcon(QIcon(logo_path))
+        else:
+            # Fallback vers l'icône par défaut si le logo n'est pas trouvé
+            self.setWindowIcon(QIcon(":/images/themes/default/mActionTransform.svg"))
         
         # Configuration avancée pour repositionnement et redimensionnement fluide
         try:
@@ -877,60 +884,8 @@ class EnhancedTransformerDialog(QMainWindow):
             log_error(f"Error applying monitor focus layout: {str(e)}")
     
     def _setup_dock_styling(self):
-        """Setup dock widget styling - version moderne adaptative au thème"""
-        try:
-            dock_style = """
-                QDockWidget {
-                    titlebar-close-icon: url(:/images/themes/default/mIconClose.svg);
-                    titlebar-normal-icon: url(:/images/themes/default/mActionUndock.svg);
-                    border: 1px solid palette(mid);
-                    background-color: palette(window);
-                }
-                
-                QDockWidget::title {
-                    background-color: palette(button);
-                    color: #FF8C00 !important;
-                    font-weight: bold;
-                    font-size: 13px;
-                    padding: 4px;
-                    border: 1px solid palette(mid);
-                }
-                
-                QDockWidget::title:hover {
-                    background-color: palette(highlight);
-                    color: palette(highlighted-text);
-                }
-                
-                QDockWidget::close-button, QDockWidget::float-button {
-                    subcontrol-position: top right;
-                    subcontrol-origin: margin;
-                    position: absolute;
-                    top: 0px; right: 5px; bottom: 0px;
-                    width: 20px;
-                }
-                
-                QDockWidget::close-button:hover, QDockWidget::float-button:hover {
-                    background-color: palette(highlight);
-                    border-radius: 2px;
-                }
-                
-                /* Floating dock widget styling */
-                QDockWidget[floating="true"] {
-                    border: 2px solid palette(highlight);
-                    background-color: palette(window);
-                    border-radius: 4px;
-                }
-                
-                QDockWidget[floating="true"]::title {
-                    background-color: palette(highlight);
-                    color: palette(highlighted-text);
-                }
-                """
-            
-            self.setStyleSheet(self.styleSheet() + dock_style)
-            
-        except Exception as e:
-            log_error(f"Error applying dock styling: {str(e)}")
+        """Setup dock widget styling - laisser le thème QGIS par défaut"""
+        pass
     
     def _create_modern_dock(self, title, object_name, widget):
         """Create a modern dock widget with enhanced repositioning and resizing"""
@@ -952,9 +907,6 @@ class EnhancedTransformerDialog(QMainWindow):
             )
             
             # PAS de custom title bar - utiliser titre natif
-            # FORCER le style directement sur le dock (comme ligne 3207-3219)
-            dock.setStyleSheet("QDockWidget::title { color: #FF8C00 !important; font-weight: bold; font-size: 13px; }")
-            print(f"DEBUG: Applied orange style directly to dock '{title}'")
             
             # Zones autorisées : TOUTES pour flexibilité maximale comme QGIS
             dock.setAllowedAreas(Qt.AllDockWidgetAreas)
@@ -1285,12 +1237,19 @@ class EnhancedTransformerDialog(QMainWindow):
                     visible = settings.value(f"{dock_name}_visible", True, type=bool)
                     dock.setVisible(visible)
             
-            settings.endGroup()
+            # Forcer l'application immédiate avec un délai
+            QTimer.singleShot(500, self._force_dock_title_visibility)
             
         except Exception as e:
-            log_error(f"Error restoring dock state: {str(e)}")
-            # Si la restauration échoue, utiliser le layout par défaut
-            self._layout_default()
+            log_error(f"Error setting up dock styling: {str(e)}")
+    
+    def _force_dock_title_visibility(self):
+        """Méthode désactivée - plus d'application de styles"""
+        pass
+    
+    def _maintain_dock_styles(self):
+        """Méthode désactivée - plus de maintenance de styles"""
+        pass
     
     def closeEvent(self, event):
         """Override close event to save dock positions automatically"""
@@ -1702,46 +1661,18 @@ class EnhancedTransformerDialog(QMainWindow):
             log_error(f"Error showing context menu for dock '{dock_name}': {str(e)}")
     
     def _apply_dock_titles_styles(self):
-        """Forcer les styles orange via QApplication et palette globale"""
-        try:
-            # CHANGER le FOND de la barre titre pour créer contraste
-            qgis_app = QApplication.instance()
-            if qgis_app:
-                global_style = qgis_app.styleSheet() + """
-                QDockWidget::title {
-                    background-color: #FF8C00 !important;
-                    color: #000000 !important;
-                    font-weight: bold !important;
-                    font-size: 13px !important;
-                    padding: 4px !important;
-                }
-                """
-                qgis_app.setStyleSheet(global_style)
-                print("DEBUG: Applied ORANGE BACKGROUND to dock titles for visibility")
-            
-            # Double sécurité - style sur chaque dock individuellement  
-            docks = [
-                (self.source_dock, "Vector Files"),
-                (self.config_dock, "Configuration Preview"), 
-                (self.log_dock, "Activity Monitor"),
-                (self.help_dock, "Quick Help")
-            ]
-            
-            for dock, name in docks:
-                if dock:
-                    # Fond orange avec texte noir pour contraste
-                    dock.setStyleSheet("QDockWidget::title { background-color: #FF8C00 !important; color: #000000 !important; font-weight: bold !important; padding: 4px !important; }")
-                    print(f"DEBUG: Applied ORANGE BACKGROUND to '{name}'")
-                    
-        except Exception as e:
-            log_error(f"Error applying dock titles styles: {str(e)}")
+        """Méthode désactivée - plus d'application de styles"""
+        pass
+    
+    def force_apply_dock_styles(self):
+        """Méthode publique pour forcer l'application des styles"""
+        self._apply_dock_titles_styles()
     
     def _setup_fallback_docks(self):
         """Setup simple fallback docks in case of error"""
         try:
             # Vector Sources dock (left)
             self.source_dock = QDockWidget("Vector Files", self)
-            self.source_dock.setStyleSheet("QDockWidget::title { color: #FF8C00; font-weight: bold; }")
             self.source_dock.setWidget(QLabel("Source files panel - Error loading advanced features"))
             self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
             
@@ -2558,7 +2489,7 @@ class EnhancedTransformerDialog(QMainWindow):
         title_layout.setSpacing(10)
         
         title_label = QLabel(title)
-        title_label.setStyleSheet("font-weight: bold; color: #333; padding-right: 20px;")
+        title_label.setStyleSheet("font-weight: bold; padding-right: 20px;")
         title_layout.addWidget(title_label)
         title_layout.addStretch(1)
         
@@ -2645,33 +2576,8 @@ class EnhancedTransformerDialog(QMainWindow):
             )
     
     def _setup_dock_styling(self):
-        """Apply modern styling to dock widgets"""
-        dock_style = """
-            QDockWidget {
-                font-weight: bold;
-                border: 1px solid #cccccc;
-            }
-            QDockWidget::title {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #f0f0f0, stop:1 #e0e0e0);
-                padding: 4px 8px;
-                border-bottom: 1px solid #cccccc;
-            }
-            QDockWidget::float-button {
-                subcontrol-position: top right;
-                subcontrol-origin: margin;
-                position: absolute;
-                top: 3px; right: 3px; width: 16px; height: 16px;
-            }
-            QDockWidget[floating="true"] {
-                border: 2px solid #2196F3;
-                background: rgba(33, 150, 243, 0.05);
-            }
-        """
-        
-        # Apply to all docks
-        for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
-            dock.setStyleSheet(dock_style)
+        """Laisser le styling par défaut de QGIS"""
+        pass
     
     def _setup_layout_presets(self):
         """Setup quick layout presets for different workflows"""
@@ -5241,15 +5147,98 @@ Errors: {len(errors)}
     
     def show_help(self):
         """Show help"""
+        # Créer un dialog personnalisé
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Help - Transformer")
+        dialog.setModal(True)
+        dialog.resize(1000, 700)
+        dialog.setMinimumSize(800, 600)
+        dialog.setStyleSheet("QDialog { background-color: #0d1117; color: #e6edf3; }")
+        
+        # Layout principal
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Créer le header avec logo
+        header_widget = QWidget()
+        header_widget.setStyleSheet("background-color: rgba(35, 134, 54, 0.9);")
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(25, 25, 25, 25)
+        header_layout.setSpacing(20)
+        
+        # Logo cliquable
+        logo_label = QLabel()
+        logo_path = os.path.join(os.path.dirname(__file__), 'logo.png')
+        if os.path.exists(logo_path):
+            pixmap = QPixmap(logo_path).scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            logo_label.setPixmap(pixmap)
+        else:
+            logo_label.setText("T")
+            logo_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white; background: transparent;")
+        
+        logo_label.setFixedSize(64, 64)
+        logo_label.setAlignment(Qt.AlignCenter)
+        logo_label.setStyleSheet(logo_label.styleSheet() + "QLabel { background: transparent; }")
+        logo_label.setCursor(Qt.PointingHandCursor)
+        
+        # Simuler le clic pour ouvrir GitHub
+        def open_github():
+            import webbrowser
+            webbrowser.open('https://github.com/yadda07/Transformer')
+        
+        logo_label.mousePressEvent = lambda event: open_github()
+        
+        # Texte du header
+        text_widget = QWidget()
+        text_widget.setStyleSheet("background: transparent;")
+        text_layout = QVBoxLayout(text_widget)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(2)
+        text_layout.addStretch()  # Push content to center
+        
+        title_label = QLabel("Transformer")
+        title_label.setStyleSheet("font-size: 28px; font-weight: 600; color: #e6edf3; margin: 0; background: transparent;")
+        
+        subtitle_label = QLabel("")
+        subtitle_label.setStyleSheet("font-size: 16px; color: #e6edf3; opacity: 0.95; margin: 0; background: transparent; min-height: 20px;")
+        
+        # Animation typewriter
+        self.typewriter_phrases = [
+            "Arrange your data once, and never rearrange.",
+            "Transform shapefiles with QGIS expressions.",
+            "Export to PostgreSQL and multiple formats.",
+            "Built for the QGIS community."
+        ]
+        self.current_phrase_index = 0
+        self.current_char_index = 0
+        self.is_typing = True
+        self.cursor_visible = True
+        
+        # Timers pour l'animation
+        self.help_typing_timer = QTimer(dialog)  # Attacher au dialog
+        self.help_typing_timer.timeout.connect(lambda: self.animate_typewriter(subtitle_label))
+        self.help_typing_timer.start(80)  # Plus rapide: 80ms entre chaque caractère
+        
+        self.help_cursor_timer = QTimer(dialog)  # Attacher au dialog
+        self.help_cursor_timer.timeout.connect(lambda: self.animate_cursor(subtitle_label))
+        self.help_cursor_timer.start(200)  # Curseur plus rapide: 300ms
+        
+        # Arrêter les timers à la fermeture du dialog
+        dialog.finished.connect(lambda: self.stop_help_animation())
+        
+        text_layout.addWidget(title_label)
+        text_layout.addWidget(subtitle_label)
+        text_layout.addStretch()  # Push content to center
+        
+        header_layout.addWidget(logo_label, 0, Qt.AlignVCenter)
+        header_layout.addWidget(text_widget, 1, Qt.AlignVCenter)
+        header_layout.addStretch()
+        
+        layout.addWidget(header_widget)
+        
+        # Contenu HTML simplifié (sans le problématique header)
         help_html = """
                 <div style="font-family: 'Segoe UI', Arial, sans-serif; background: #0d1117; padding: 20px; border-radius: 10px; width: 100%; min-width: 850px; color: #e6edf3;">
-
-                <!-- Header Card -->
-                <div style="background: #161b22; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); margin-bottom: 20px; overflow: hidden; border: 1px solid #30363d;">
-                <div style="background: #238636; color: #e6edf3; padding: 25px; text-align: center;">
-                <h1 style="margin: 0; font-size: 28px; font-weight: 600; text-shadow: 1px 1px 2px rgba(0,0,0,0.5);">Transformer</h1>
-                <p style="margin: 10px 0 0 0; font-size: 16px; opacity: 0.95; font-weight: 300;">Arrange your data once, and never rearrange.</p>
-                </div>
 
                 <!-- Core ETL Highlight -->
                 <div style="background: linear-gradient(90deg, #0d2818 0%, #0c1c2b 100%); padding: 20px; border-bottom: 3px solid #238636;">
@@ -5356,19 +5345,7 @@ Errors: {len(errors)}
                 </div>
         """
         
-        # Créer un dialog personnalisé redimensionnable avec scroll
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Help - Transformer")
-        dialog.setModal(True)
-        dialog.resize(1000, 700)
-        dialog.setMinimumSize(800, 600)
-        dialog.setStyleSheet("QDialog { background-color: #0d1117; color: #e6edf3; }")
-        
-        # Layout principal
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Zone de scroll
+        # Zone de scroll pour le contenu HTML
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -5393,9 +5370,6 @@ Errors: {len(errors)}
             border: none;
             background-color: #0d1117;
         }
-        QDialog {
-            background-color: #0d1117;
-        }
         """
         content_widget.setStyleSheet(responsive_css)
         
@@ -5413,6 +5387,88 @@ Errors: {len(errors)}
         layout.addLayout(button_layout)
         
         dialog.exec_()
+    
+    def stop_help_animation(self):
+        """Arrête les timers d'animation du Help"""
+        if hasattr(self, 'help_typing_timer'):
+            self.help_typing_timer.stop()
+        if hasattr(self, 'help_cursor_timer'):
+            self.help_cursor_timer.stop()
+
+    def animate_typewriter(self, label):
+        """Anime l'effet typewriter"""
+        if not hasattr(self, 'typewriter_phrases') or not label:
+            return
+            
+        try:
+            current_phrase = self.typewriter_phrases[self.current_phrase_index]
+            
+            if self.is_typing:
+                # Écriture caractère par caractère
+                if self.current_char_index <= len(current_phrase):
+                    text = current_phrase[:self.current_char_index]
+                    cursor = "|" if self.cursor_visible else " "
+                    label.setText(text + cursor)
+                    self.current_char_index += 1
+                else:
+                    # Pause à la fin de la phrase
+                    if hasattr(self, 'help_typing_timer'):
+                        self.help_typing_timer.stop()
+                    QTimer.singleShot(1500, lambda: self.start_erasing(label))  # Pause 1.5s
+        except RuntimeError:
+            # Widget supprimé, arrêter l'animation
+            self.stop_help_animation()
+        
+    def start_erasing(self, label):
+        """Démarre l'effacement"""
+        if not label or not hasattr(self, 'help_typing_timer'):
+            return
+            
+        try:
+            self.is_typing = False
+            self.help_typing_timer.timeout.disconnect()
+            self.help_typing_timer.timeout.connect(lambda: self.animate_erasing(label))
+            self.help_typing_timer.start(30)  # Plus rapide pour effacer: 30ms
+        except RuntimeError:
+            self.stop_help_animation()
+        
+    def animate_erasing(self, label):
+        """Anime l'effacement"""
+        if not hasattr(self, 'typewriter_phrases') or not label:
+            return
+            
+        try:
+            current_phrase = self.typewriter_phrases[self.current_phrase_index]
+            
+            if self.current_char_index > 0:
+                self.current_char_index -= 1
+                text = current_phrase[:self.current_char_index]
+                cursor = "|" if self.cursor_visible else " "
+                label.setText(text + cursor)
+            else:
+                # Passer à la phrase suivante
+                self.current_phrase_index = (self.current_phrase_index + 1) % len(self.typewriter_phrases)
+                self.is_typing = True
+                if hasattr(self, 'help_typing_timer'):
+                    self.help_typing_timer.timeout.disconnect()
+                    self.help_typing_timer.timeout.connect(lambda: self.animate_typewriter(label))
+                    self.help_typing_timer.start(40)
+        except RuntimeError:
+            self.stop_help_animation()
+            
+    def animate_cursor(self, label):
+        """Anime le curseur clignotant"""
+        if not label or not hasattr(self, 'typewriter_phrases'):
+            return
+            
+        try:
+            self.cursor_visible = not self.cursor_visible
+            current_phrase = self.typewriter_phrases[self.current_phrase_index]
+            text = current_phrase[:self.current_char_index]
+            cursor = "|" if self.cursor_visible else " "
+            label.setText(text + cursor)
+        except RuntimeError:
+            self.stop_help_animation()
     
     def show_about(self):
         """Show about information"""

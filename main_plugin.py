@@ -163,8 +163,8 @@ class TransformerPlugin:
     def initGui(self):
         """Initialize the plugin user interface"""
         try:
-            # Create menu action with error handling
-            icon_path = os.path.join(self.plugin_dir, 'icon.png')
+            # Create menu action with error handling - use logo.png
+            icon_path = os.path.join(self.plugin_dir, 'logo.png')
             if not os.path.exists(icon_path):
                 # Use default QGIS icon compatible with 3.42
                 try:
