@@ -41,7 +41,7 @@ class SimpleTransformer:
                     
                     if not expression.hasEvalError() and result is not None:
                         if isinstance(result, bool):
-                            return QgsField("temp", QVariant.Bool, "boolean")
+                            return QgsField("temp", QVariant.Bool, "boolean", 1)
                         elif isinstance(result, int):
                             field = QgsField("temp", QVariant.Int, "integer", 10)
                             return field
@@ -49,7 +49,7 @@ class SimpleTransformer:
                             field = QgsField("temp", QVariant.Double, "double", 20, 6)
                             return field
                         elif hasattr(result, 'date'):
-                            return QgsField("temp", QVariant.DateTime, "datetime")
+                            return QgsField("temp", QVariant.DateTime, "datetime", 20)
         
         except Exception:
             pass
@@ -747,7 +747,7 @@ class SimpleTransformer:
                     QgsMessageLog.logMessage(f"Skipping geometry field - handled by geometry_expression: {expression}", "Transformer", Qgis.Info)
                     continue
                     
-                field = QgsField(field_name, QVariant.String, "string")
+                field = QgsField(field_name, QVariant.String, "string", 255)
                 field_configs.append((field, expression))
             
             # Use edit context to add fields
