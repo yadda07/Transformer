@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
+import os
 import copy
 from qgis.PyQt.QtWidgets import (
-    QDialog, QVBoxLayout, QFormLayout, QTabWidget, QWidget, QComboBox, 
-    QCheckBox, QSpinBox, QDialogButtonBox
+    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QTabWidget, QWidget, QComboBox, 
+    QCheckBox, QSpinBox, QDialogButtonBox, QLabel
 )
 from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QIcon
 
 # Import des enums depuis le fichier principal
 from .Transformer_dialog import InterfaceTheme, InterfaceSettings
@@ -16,9 +18,14 @@ class PreferencesDialog(QDialog):
         super().__init__(parent)
         self.settings = copy.deepcopy(settings)
         
-        self.setWindowTitle("Preferences")
+        self.setWindowTitle("Transformer - Preferences")
         self.setModal(True)
         self.resize(500, 400)
+        
+        # Définir l'icône du dialog avec le logo
+        logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+        if os.path.exists(logo_path):
+            self.setWindowIcon(QIcon(logo_path))
         
         self.setup_ui()
         self.load_settings()

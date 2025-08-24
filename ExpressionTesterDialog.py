@@ -1,9 +1,11 @@
 
 # -*- coding: utf-8 -*-
+import os
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QPushButton,
     QGroupBox, QTableWidget, QTableWidgetItem, QDialogButtonBox, QMessageBox
 )
+from qgis.PyQt.QtGui import QIcon
 from qgis.core import QgsExpression, QgsExpressionContext, QgsExpressionContextUtils
 from qgis.gui import QgsMapLayerComboBox
 
@@ -17,9 +19,14 @@ class ExpressionTesterDialog(QDialog):
         super().__init__(parent)
         self.layer = layer
         
-        self.setWindowTitle("Expression Tester")
+        self.setWindowTitle("Transformer - Expression Tester")
         self.setModal(True)
         self.resize(800, 600)
+        
+        # Définir l'icône du dialog avec le logo
+        logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+        if os.path.exists(logo_path):
+            self.setWindowIcon(QIcon(logo_path))
         
         self.setup_ui()
         self.setup_connections()
