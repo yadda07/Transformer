@@ -5390,10 +5390,16 @@ Errors: {len(errors)}
     
     def stop_help_animation(self):
         """Arrête les timers d'animation du Help"""
-        if hasattr(self, 'help_typing_timer'):
-            self.help_typing_timer.stop()
-        if hasattr(self, 'help_cursor_timer'):
-            self.help_cursor_timer.stop()
+        try:
+            if hasattr(self, 'help_typing_timer') and self.help_typing_timer is not None:
+                self.help_typing_timer.stop()
+        except RuntimeError:
+            pass  # Timer already deleted
+        try:
+            if hasattr(self, 'help_cursor_timer') and self.help_cursor_timer is not None:
+                self.help_cursor_timer.stop()
+        except RuntimeError:
+            pass  # Timer already deleted
 
     def animate_typewriter(self, label):
         """Anime l'effet typewriter"""
@@ -5421,15 +5427,19 @@ Errors: {len(errors)}
         
     def start_erasing(self, label):
         """Démarre l'effacement"""
-        if not label or not hasattr(self, 'help_typing_timer'):
+        if not label:
             return
             
         try:
+            if not hasattr(self, 'help_typing_timer') or self.help_typing_timer is None:
+                return
+                
             self.is_typing = False
             self.help_typing_timer.timeout.disconnect()
             self.help_typing_timer.timeout.connect(lambda: self.animate_erasing(label))
             self.help_typing_timer.start(30)  # Plus rapide pour effacer: 30ms
         except RuntimeError:
+            # Timer has been deleted, stop animation gracefully
             self.stop_help_animation()
         
     def animate_erasing(self, label):
