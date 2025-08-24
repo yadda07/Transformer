@@ -3,7 +3,7 @@ import os
 from qgis.PyQt.QtCore import pyqtSignal, Qt
 from qgis.PyQt.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QPushButton, QTreeWidget, 
-    QTreeWidgetItem, QGroupBox, QLabel, QMessageBox
+    QTreeWidgetItem, QGroupBox, QLabel, QMessageBox, QDialog
 )
 
 # Import QSizePolicy with fallback

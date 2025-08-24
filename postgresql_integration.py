@@ -3726,6 +3726,14 @@ class PostgreSQLMappingWidget(QWidget):
         """Auto-connect to PostgreSQL and load the mapping for a layer"""
         if not self.auto_connect:
             return False
+        
+        # Check if this layer is already mapped to prevent duplicates
+        for i in range(self.mapping_table.rowCount()):
+            layer_widget = self.mapping_table.cellWidget(i, 0)
+            if layer_widget and hasattr(layer_widget, 'currentText'):
+                if layer_widget.currentText() == layer_name:
+                    QgsMessageLog.logMessage(f"DEBUG: Layer {layer_name} already has mapping in row {i} - skipping", "Transformer", Qgis.Info)
+                    return True  # Already mapped, consider it a success
             
         QgsMessageLog.logMessage(f"Auto-connect to PostgreSQL and load the mapping for a layer {layer_name}", "Transformer", Qgis.Info)
         
@@ -3750,9 +3758,23 @@ class PostgreSQLMappingWidget(QWidget):
                 
                 QgsMessageLog.logMessage(f"Mapping automatically loaded: {layer_name} → {schema}.{table}", "Transformer", Qgis.Success)
                 
-                # Add a row to the table
-                row = self.mapping_table.rowCount()
-                self.mapping_table.insertRow(row)
+                # Check if mapping already exists for this layer
+                existing_row = -1
+                for i in range(self.mapping_table.rowCount()):
+                    layer_widget = self.mapping_table.cellWidget(i, 0)
+                    if layer_widget and hasattr(layer_widget, 'currentText'):
+                        if layer_widget.currentText() == layer_name:
+                            existing_row = i
+                            break
+                
+                # Use existing row or add new one
+                if existing_row >= 0:
+                    row = existing_row
+                    QgsMessageLog.logMessage(f"DEBUG: Reusing existing row {row} for layer {layer_name}", "Transformer", Qgis.Info)
+                else:
+                    row = self.mapping_table.rowCount()
+                    self.mapping_table.insertRow(row)
+                    QgsMessageLog.logMessage(f"DEBUG: Added new row {row} for layer {layer_name}", "Transformer", Qgis.Info)
                 
                 # Colonne 0: ComboBox avec la couche transformée
                 layer_combo = QComboBox()
@@ -3908,8 +3930,16 @@ class PostgreSQLMappingWidget(QWidget):
                 QMessageBox.critical(self, "Error", "Unable to find the selected mapping.")
                 return
             
-            # Add the selected mapping to the table
-            row = self.mapping_table.rowCount()
+            # Debug: Log current table state
+            current_rows = self.mapping_table.rowCount()
+            QgsMessageLog.logMessage(f"DEBUG: Current mapping table has {current_rows} rows before loading", "Transformer", Qgis.Info)
+            
+            # Clear the table first to avoid duplicates
+            self.mapping_table.setRowCount(0)
+            QgsMessageLog.logMessage(f"DEBUG: Cleared mapping table, now adding mapping", "Transformer", Qgis.Info)
+            
+            # Add exactly one row for the loaded mapping
+            row = 0
             self.mapping_table.insertRow(row)
             
             # Column 0: ComboBox with transformed layers
