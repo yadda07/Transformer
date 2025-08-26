@@ -15,7 +15,7 @@ from qgis.core import (
     QgsMessageLog, Qgis, QgsMemoryProviderUtils, QgsFeatureRequest,
     QgsCoordinateTransform, edit
 )
-from qgis.PyQt.QtCore import QVariant
+from qgis.PyQt.QtCore import QVariant, QMetaType
 
 
 class SimpleTransformer:
@@ -41,20 +41,25 @@ class SimpleTransformer:
                     
                     if not expression.hasEvalError() and result is not None:
                         if isinstance(result, bool):
-                            return QgsField("temp", QVariant.Bool, "boolean", 1)
+                            return QgsField("temp", QMetaType.Type.Bool)
                         elif isinstance(result, int):
-                            field = QgsField("temp", QVariant.Int, "integer", 10)
+                            field = QgsField("temp", QMetaType.Type.Int)
+                            field.setLength(10)
                             return field
                         elif isinstance(result, float):
-                            field = QgsField("temp", QVariant.Double, "double", 20, 6)
+                            field = QgsField("temp", QMetaType.Type.Double)
+                            field.setLength(20)
+                            field.setPrecision(6)
                             return field
                         elif hasattr(result, 'date'):
-                            return QgsField("temp", QVariant.DateTime, "datetime", 20)
+                            return QgsField("temp", QMetaType.Type.QDateTime)
         
         except Exception:
             pass
         
-        return QgsField("temp", QVariant.String, "string", 255)
+        field = QgsField("temp", QMetaType.Type.QString)
+        field.setLength(255)
+        return field
     
     def test_filter_expression(self, filter_expression: str, source_layer: QgsVectorLayer) -> Tuple[bool, str, int]:
         """Test filter expression and return validity, message, and filtered count"""
@@ -747,7 +752,8 @@ class SimpleTransformer:
                     QgsMessageLog.logMessage(f"Skipping geometry field - handled by geometry_expression: {expression}", "Transformer", Qgis.Info)
                     continue
                     
-                field = QgsField(field_name, QVariant.String, "string", 255)
+                field = QgsField(field_name, QMetaType.Type.QString)
+                field.setLength(255)
                 field_configs.append((field, expression))
             
             # Use edit context to add fields
