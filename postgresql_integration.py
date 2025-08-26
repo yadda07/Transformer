@@ -110,7 +110,7 @@ class IntegrationConfirmationDialog(QDialog):
         
     def setup_ui(self):
         """Setup the UI for the PostgreSQL mapping dialog"""
-        self.setWindowTitle("PostgreSQL Mapping")
+        self.setWindowTitle("PostgreSQL Field Mapping")
         self.setModal(True)
         
         # Optimized size for the mapping table
@@ -122,34 +122,25 @@ class IntegrationConfirmationDialog(QDialog):
         layout.setContentsMargins(20, 15, 20, 15)
         layout.setSpacing(15)
         
-        # Title and instructions
-        title_label = QLabel("<h2 style='color: #2c3e50; margin-bottom: 5px;'>Mapping fields for PostgreSQL integration</h2>")
+        # Title and instructions - NATIVE QGIS STYLE
+        title_label = QLabel("Mapping fields for PostgreSQL integration")
         title_label.setAlignment(Qt.AlignCenter)
+        title_font = QFont()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
         layout.addWidget(title_label)
         
-        subtitle_label = QLabel("<p style='color: #7f8c8d; font-size: 11pt; margin-top: 0;'>Verify and modify the automatic field mapping if necessary</p>")
+        subtitle_label = QLabel("Verify and modify the automatic field mapping if necessary")
         subtitle_label.setAlignment(Qt.AlignCenter)
+        subtitle_font = QFont()
+        subtitle_font.setPointSize(10)
+        subtitle_label.setFont(subtitle_font)
         layout.addWidget(subtitle_label)
         
-        # Tabs for each layer
+        # Tabs for each layer - NATIVE QGIS STYLE
         self.tabs = QTabWidget()
-        self.tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #bdc3c7;
-                border-radius: 5px;
-            }
-            QTabBar::tab {
-                background-color: #ecf0f1;
-                padding: 8px 16px;
-                margin-right: 2px;
-                border-top-left-radius: 5px;
-                border-top-right-radius: 5px;
-            }
-            QTabBar::tab:selected {
-                background-color: #3498db;
-                color: white;
-            }
-        """)
+        # Remove all custom CSS - use native QGIS styling
         
         # Create a tab for each layer
         for i, info in enumerate(self.compatibility_info):
@@ -158,110 +149,61 @@ class IntegrationConfirmationDialog(QDialog):
         
         layout.addWidget(self.tabs)
         
-        # Statistiques de mapping
+        # Statistiques de mapping - NATIVE QGIS STYLE
         stats_layout = QHBoxLayout()
         self.stats_label = QLabel()
-        self.stats_label.setStyleSheet("""
-            QLabel {
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
-                border-radius: 5px;
-                padding: 8px 12px;
-                font-size: 11pt;
-                color: #495057;
-            }
-        """)
-        stats_layout.addWidget(self.stats_label)
+        # Create native frame for stats
+        stats_frame = QFrame()
+        stats_frame.setFrameStyle(QFrame.Box | QFrame.Raised)
+        stats_frame.setLineWidth(1)
+        stats_frame_layout = QHBoxLayout(stats_frame)
+        stats_frame_layout.addWidget(self.stats_label)
+        stats_layout.addWidget(stats_frame)
         stats_layout.addStretch()
         
-        # Quick action buttons
+        # Quick action buttons - NATIVE QGIS STYLE
         self.auto_map_btn = QPushButton("Auto-mapping")
         self.clear_btn = QPushButton("Clear all")
         self.add_field_btn = QPushButton("Add custom field")
         
-        # Native QGIS style for all buttons
-        qgis_button_style = """
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #e9ecef);
-                color: #495057;
-                border: 1px solid #ced4da;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-size: 9pt;
-                font-weight: 500;
-                min-height: 20px;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e9ecef, stop:1 #dee2e6);
-                border-color: #adb5bd;
-            }
-            QPushButton:pressed {
-                background-color: #dee2e6;
-                border-color: #adb5bd;
-            }
-        """
-        
-        self.auto_map_btn.setStyleSheet(qgis_button_style)
-        self.clear_btn.setStyleSheet(qgis_button_style)
-        self.add_field_btn.setStyleSheet(qgis_button_style)
+        # Use native QGIS button styling - no custom CSS
+        self.auto_map_btn.setMinimumHeight(26)
+        self.clear_btn.setMinimumHeight(26)
+        self.add_field_btn.setMinimumHeight(26)
         
         stats_layout.addWidget(self.auto_map_btn)
         stats_layout.addWidget(self.clear_btn)
         stats_layout.addWidget(self.add_field_btn)
         layout.addLayout(stats_layout)
         
-        # Case à cocher "Ne plus afficher"
+        # Case à cocher "Ne plus afficher" - NATIVE QGIS STYLE
         checkbox_container = QHBoxLayout()
         self.dont_show_checkbox = QCheckBox("Do not show this window for future integrations")
-        self.dont_show_checkbox.setStyleSheet("""
-            QCheckBox {
-                font-size: 10pt;
-                color: #34495e;
-                padding: 5px;
-            }
-        """)
+        # Use native QGIS checkbox styling - no custom CSS
         checkbox_container.addWidget(self.dont_show_checkbox)
         checkbox_container.addStretch()
         layout.addLayout(checkbox_container)
         
-        # Main buttons
+        # Main buttons - NATIVE QGIS STYLE
         buttons_layout = QHBoxLayout()
         buttons_layout.setSpacing(15)
         
         self.reset_btn = QPushButton("Reset")
+        self.save_column_config_btn = QPushButton("Save Column Config")
         self.cancel_btn = QPushButton("Cancel")
         self.proceed_btn = QPushButton("Apply mapping")
         
-        # Native QGIS style for main buttons
+        # Native QGIS button sizes - no custom styling
         self.reset_btn.setMinimumSize(130, 35)
+        self.save_column_config_btn.setMinimumSize(160, 35)
         self.cancel_btn.setMinimumSize(120, 35)
         self.proceed_btn.setMinimumSize(180, 35)
         
-        # Native QGIS style for main buttons
-        main_button_style = """
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #e9ecef);
-                color: #495057;
-                border: 1px solid #ced4da;
-                border-radius: 4px;
-                padding: 8px 16px;
-                font-size: 10pt;
-                font-weight: 500;
-            }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e9ecef, stop:1 #dee2e6);
-                border-color: #adb5bd;
-            }
-            QPushButton:pressed {
-                background-color: #dee2e6;
-            }
-        """
-        
-        self.reset_btn.setStyleSheet(main_button_style)
-        self.cancel_btn.setStyleSheet(main_button_style)
-        self.proceed_btn.setStyleSheet(main_button_style)
+        # Make proceed button the default
+        self.proceed_btn.setDefault(True)
         
         buttons_layout.addWidget(self.reset_btn)
+        buttons_layout.addWidget(self.save_column_config_btn)
         buttons_layout.addStretch()
         buttons_layout.addWidget(self.cancel_btn)
         buttons_layout.addWidget(self.proceed_btn)
@@ -275,6 +217,7 @@ class IntegrationConfirmationDialog(QDialog):
         self.clear_btn.clicked.connect(self._clear_current_mapping)
         self.add_field_btn.clicked.connect(self._add_custom_field)
         self.reset_btn.clicked.connect(self._reset_mappings)
+        self.save_column_config_btn.clicked.connect(self._save_column_config)
         self.cancel_btn.clicked.connect(self.reject)
         self.proceed_btn.clicked.connect(self.accept)
         self.dont_show_checkbox.toggled.connect(self._on_dont_show_toggled)
@@ -289,22 +232,18 @@ class IntegrationConfirmationDialog(QDialog):
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(10)
         
-        # En-tête avec informations sur la couche
-        header_layout = QHBoxLayout()
+        # En-tête avec informations sur la couche - NATIVE QGIS STYLE
+        header_frame = QFrame()
+        header_frame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
+        header_layout = QHBoxLayout(header_frame)
         
-        layer_info = QLabel(f"<b>Couche:</b> {info['layer']} → <b>Destination:</b> {info['schema']}.{info['table']}")
-        layer_info.setStyleSheet("""
-            QLabel {
-                background-color: #e8f4fd;
-                border: 1px solid #bee5eb;
-                border-radius: 5px;
-                padding: 8px 12px;
-                font-size: 12pt;
-                color: #0c5460;
-            }
-        """)
+        layer_info = QLabel(f"Layer: {info['layer']} → Destination: {info['schema']}.{info['table']}")
+        layer_font = QFont()
+        layer_font.setBold(True)
+        layer_font.setPointSize(11)
+        layer_info.setFont(layer_font)
         header_layout.addWidget(layer_info)
-        layout.addLayout(header_layout)
+        layout.addWidget(header_frame)
         
         # Table for field mapping
         table = QTableWidget()
@@ -319,26 +258,7 @@ class IntegrationConfirmationDialog(QDialog):
             "Action"
         ])
         
-        # Table style
-        table.setStyleSheet("""
-            QTableWidget {
-                gridline-color: #bdc3c7;
-                background-color: white;
-                alternate-background-color: #f8f9fa;
-                selection-background-color: #3498db;
-            }
-            QTableWidget::item {
-                padding: 8px;
-                border-bottom: 1px solid #ecf0f1;
-            }
-            QHeaderView::section {
-                background-color: #34495e;
-                color: white;
-                padding: 10px;
-                border: none;
-                font-weight: bold;
-            }
-        """)
+        # Use native QGIS table styling - remove all custom CSS
         
         table.setAlternatingRowColors(True)
         table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -443,25 +363,11 @@ class IntegrationConfirmationDialog(QDialog):
             self._update_compatibility_status(status_item, source_field, dest_combo.currentData(), dest_fields)
             table.setItem(row, 5, status_item)
             
-            # Delete button (only for non-essential fields)
-            delete_btn = QPushButton("Suppr")
+            # Delete button (only for non-essential fields) - NATIVE QGIS STYLE
+            delete_btn = QPushButton("Delete")
             delete_btn.setMaximumSize(60, 25)
-            delete_btn.setToolTip("Supprimer ce champ du mapping")
-            delete_btn.setStyleSheet("""
-                QPushButton {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #f8f9fa, stop:1 #e9ecef);
-                    color: #495057;
-                    border: 1px solid #ced4da;
-                    border-radius: 3px;
-                    font-size: 9pt;
-                }
-                QPushButton:hover {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #e9ecef, stop:1 #dee2e6);
-                    border-color: #dc3545;
-                }
-            """)
-            
-            # For normal source fields, allow deletion
+            delete_btn.setToolTip("Delete this field mapping")
+            # Use native QGIS button styling - no custom CSS
             delete_btn.clicked.connect(lambda checked, r=row: self._delete_field_mapping(r))
             table.setCellWidget(row, 6, delete_btn)
         
@@ -658,7 +564,7 @@ class IntegrationConfirmationDialog(QDialog):
         compatibility_percentage = (compatible_fields / mapped_fields * 100) if mapped_fields > 0 else 0
         
         stats_text = (
-            f"<b>{layer_key}:</b> "
+            f"{layer_key}: "
             f"{mapped_fields}/{total_fields} champs mappés ({mapping_percentage:.1f}%) | "
             f"{compatible_fields}/{mapped_fields} compatibles ({compatibility_percentage:.1f}%)"
         )
@@ -859,24 +765,11 @@ class IntegrationConfirmationDialog(QDialog):
         status_item.setBackground(QColor(255, 255, 200))
         table.setItem(row, 5, status_item)
         
-        # Delete button for custom fields
-        delete_btn = QPushButton("Suppr")
+        # Delete button for custom fields - NATIVE QGIS STYLE
+        delete_btn = QPushButton("Delete")
         delete_btn.setMaximumSize(60, 25)
         delete_btn.setToolTip("Delete this custom field")
-        delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #f0f0f0;
-                color: #333;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-weight: normal;
-            }
-            QPushButton:hover {
-                background-color: #e0e0e0;
-                border-color: #aaa;
-            }
-        """)
+        # Use native QGIS button styling - no custom CSS
         delete_btn.clicked.connect(lambda checked, r=row: self._delete_field_mapping(r))
         table.setCellWidget(row, 6, delete_btn)
         
@@ -1013,130 +906,103 @@ class IntegrationConfirmationDialog(QDialog):
     def _on_dont_show_toggled(self, checked):
         """Handle the 'do not show again' checkbox"""
         self.dont_show_again = checked
-        
-    def _format_compatibility_info(self):
-        """Format compatibility information in HTML"""
-        html = """
-        <div style='font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.4;'>
-        <style>
-            .compatibility-item {
-                background-color: #ffffff;
-                border: 1px solid #e0e0e0;
-                border-radius: 8px;
-                padding: 20px;
-                margin-bottom: 15px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .item-header {
-                color: #2c3e50;
-                font-size: 14pt;
-                font-weight: bold;
-                margin-bottom: 15px;
-                padding-bottom: 8px;
-                border-bottom: 2px solid #3498db;
-            }
-            .status-row {
-                margin: 8px 0;
-                padding: 8px 0;
-                display: flex;
-                align-items: center;
-            }
-            .status-icon {
-                font-size: 16px;
-                margin-right: 8px;
-                min-width: 20px;
-            }
-            .status-label {
-                font-weight: bold;
-                margin-right: 8px;
-                min-width: 120px;
-            }
-            .field-details {
-                margin-top: 15px;
-                padding: 10px;
-                background-color: #f8f9fa;
-                border-left: 4px solid #3498db;
-                border-radius: 4px;
-            }
-            .field-list {
-                list-style: none;
-                padding: 0;
-                margin: 10px 0;
-            }
-            .field-list li {
-                padding: 5px 0;
-                border-bottom: 1px dotted #bdc3c7;
-            }
-            .field-list li:last-child {
-                border-bottom: none;
-            }
-        </style>
-        """
-        
-        for table_info in self.compatibility_info:
-            layer_name = table_info.get('layer_name', 'Unknown')
-            schema = table_info.get('schema', 'Unknown')
-            table = table_info.get('table', 'Unknown')
-            
-            html += f"<div class='compatibility-item'>"
-            html += f"<div class='item-header'>{layer_name} → {schema}.{table}</div>"
-            
-            # Geometry compatibility
-            geom_compatible = table_info.get('geometry_compatible', False)
-            geom_icon = "OK" if geom_compatible else "ERROR"
-            html += f"<div class='status-row'>"
-            html += f"<span class='status-icon'>{geom_icon}</span>"
-            html += f"<span class='status-label'>Geometry:</span>"
-            html += f"<span>{table_info.get('geometry_info', 'Not verified')}</span>"
-            html += f"</div>"
-            
-            # CRS compatibility
-            crs_compatible = table_info.get('crs_compatible', False)
-            crs_icon = "OK" if crs_compatible else "WARNING"
-            html += f"<div class='status-row'>"
-            html += f"<span class='status-icon'>{crs_icon}</span>"
-            html += f"<span class='status-label'>CRS:</span>"
-            html += f"<span>{table_info.get('crs_info', 'Not verified')}</span>"
-            html += f"</div>"
-            
-            # Correspondance des champs
-            matching_fields = table_info.get('matching_fields', 0)
-            total_fields = table_info.get('total_fields', 0)
-            field_percentage = (matching_fields / total_fields * 100) if total_fields > 0 else 0
-            
-            if field_percentage >= 80:
-                field_icon = "OK"
-            elif field_percentage >= 50:
-                field_icon = "WARNING"
-            else:
-                field_icon = "ERROR"
-                
-            html += f"<div class='status-row'>"
-            html += f"<span class='status-icon'>{field_icon}</span>"
-            html += f"<span class='status-label'>Champs correspondants:</span>"
-            html += f"<span>{matching_fields}/{total_fields} ({field_percentage:.1f}%)</span>"
-            html += f"</div>"
-            
-            # Détails des champs
-            field_details = table_info.get('field_details', [])
-            if field_details:
-                html += "<div class='field-details'>"
-                html += "<strong style='color: #2c3e50;'>📋 Détails des champs:</strong>"
-                html += "<ul class='field-list'>"
-                for field in field_details:
-                    status_icon = "OK" if field.get('compatible', False) else "ERROR"
-                    html += f"<li><span class='status-icon'>{status_icon}</span><strong>{field.get('source_name', '')}:</strong> {field.get('status', '')}</li>"
-                html += "</ul></div>"
-                
-            html += "</div>"  # End of compatibility-item
-            
-        html += "</div>"
-        return html
-        
-    def _on_dont_show_toggled(self, checked):
-        """Handle the change of the 'Do not show again' checkbox"""
-        self.dont_show_again = checked
     
+    def _save_column_config(self):
+        """Save complete column configuration to postgresql_detailed_mappings.json"""
+        try:
+            # Get complete mapping info from all tabs
+            detailed_mappings = []
+            
+            for tab_index in range(self.tabs.count()):
+                # Temporarily switch to each tab to extract its data
+                current_tab = self.tabs.currentIndex()
+                self.tabs.setCurrentIndex(tab_index)
+                
+                tab_widget = self.tabs.widget(tab_index)
+                tab_text = self.tabs.tabText(tab_index)
+                
+                if tab_widget and hasattr(tab_widget, 'children'):
+                    # Extract complete mapping info
+                    complete_info = self.get_complete_mapping_info()
+                    
+                    # Find corresponding layer info
+                    layer_info = None
+                    for info in self.compatibility_info:
+                        if info['layer'] == tab_text:
+                            layer_info = info
+                            break
+                    
+                    if layer_info:
+                        detailed_mapping = {
+                            "layer_name": layer_info['layer'],
+                            "schema": layer_info['schema'],
+                            "table": layer_info['table'],
+                            "field_mappings": complete_info.get('field_mapping', {}),
+                            "forced_types": complete_info.get('forced_types', {}),
+                            "custom_fields": complete_info.get('custom_fields', {}),
+                            "timestamp": datetime.now().isoformat(),
+                            "auto_generated": False
+                        }
+                        detailed_mappings.append(detailed_mapping)
+                
+                # Restore original tab selection
+                self.tabs.setCurrentIndex(current_tab)
+            
+            if not detailed_mappings:
+                QgsMessageLog.logMessage("No column configurations to save", "Transformer", Qgis.Warning)
+                return
+            
+            # Path to the detailed mappings file
+            plugin_dir = os.path.dirname(__file__)
+            config_path = os.path.join(plugin_dir, "postgresql_detailed_mappings.json")
+            
+            # Load existing mappings
+            existing_mappings = []
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, 'r') as f:
+                        existing_mappings = json.load(f)
+                        if not isinstance(existing_mappings, list):
+                            existing_mappings = []
+                except Exception:
+                    existing_mappings = []
+            
+            # Update existing mappings with complete column configurations
+            for new_mapping in detailed_mappings:
+                layer_name = new_mapping["layer_name"]
+                schema = new_mapping["schema"]
+                table = new_mapping["table"]
+                
+                # Find existing mapping and update it completely
+                found_index = -1
+                for i, existing in enumerate(existing_mappings):
+                    if (existing.get("layer_name") == layer_name and
+                        existing.get("schema") == schema and
+                        existing.get("table") == table):
+                        found_index = i
+                        break
+                
+                if found_index >= 0:
+                    # Update existing mapping with complete details
+                    existing_mappings[found_index] = new_mapping
+                else:
+                    # Add new complete mapping
+                    existing_mappings.append(new_mapping)
+            
+            # Save updated mappings
+            with open(config_path, 'w') as f:
+                json.dump(existing_mappings, f, indent=2)
+            
+            saved_count = len(detailed_mappings)
+            QgsMessageLog.logMessage(
+                f"Column configurations saved: {saved_count} complete mapping(s) saved to postgresql_detailed_mappings.json", 
+                "Transformer", 
+                Qgis.Success
+            )
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Error saving column configurations: {str(e)}", "Transformer", Qgis.Critical)
+        
     def get_complete_mapping_info(self):
         """Extrait les informations complètes de mapping depuis la boîte de dialogue
         
@@ -1246,569 +1112,393 @@ class PostgreSQLConfigWidget(QWidget):
         
         # Connection status indicator
         status_layout = QHBoxLayout()
+        # Native QGIS status indicator - no custom CSS
         self.status_indicator = QLabel("●")
         self.status_indicator.setFixedSize(12, 12)
         self.status_indicator.setAlignment(Qt.AlignCenter)
-        self.status_indicator.setStyleSheet("""
-            QLabel {
-                font-size: 12px;
-                font-weight: bold;
-                color: #999999;
-                border-radius: 8px;
-                background-color: rgba(153, 153, 153, 0.1);
-            }
-        """)
         
         self.status_label = QLabel("Not tested")
-        self.status_label.setStyleSheet("""
-            QLabel {
-                font-size: 11px;
-                color: #666666;
-                font-style: italic;
-                padding-left: 5px;
-            }
-        """)
+        # Use native QGIS font and colors - no custom CSS
+        font = self.status_label.font()
+        font.setItalic(True)
+        font.setPointSize(9)
+        self.status_label.setFont(font)
+        
+        # Set initial palette color
+        palette = self.status_label.palette()
+        palette.setColor(self.status_label.foregroundRole(), QColor(102, 102, 102))  # Gray
+        self.status_label.setPalette(palette)
+        
+        # Add spacing without CSS
+        self.status_label.setContentsMargins(5, 0, 0, 0)
         
         status_layout.addWidget(self.status_indicator)
         status_layout.addWidget(self.status_label)
-        status_layout.addStretch()
-        
         config_layout.addRow("Status:", status_layout)
         
-        # Boutons
-        buttons_layout = QHBoxLayout()
-        self.test_connection_btn = QPushButton("Test Connection")
-        self.save_config_btn = QPushButton("Save Config")
-        self.load_config_btn = QPushButton("Load Config")
+        # Buttons
+        button_layout = QHBoxLayout()
         
-        buttons_layout.addWidget(self.test_connection_btn)
-        buttons_layout.addWidget(self.save_config_btn)
-        buttons_layout.addWidget(self.load_config_btn)
-        buttons_layout.addStretch()
+        # Save config button
+        save_btn = QPushButton("Save Config")
+        save_btn.clicked.connect(self.save_config)
+        button_layout.addWidget(save_btn)
         
+        # Load config button
+        load_btn = QPushButton("Load Config")
+        load_btn.clicked.connect(self.load_config)
+        button_layout.addWidget(load_btn)
+        
+        # Test connection button
+        test_btn = QPushButton("Test Connection")
+        test_btn.clicked.connect(self.test_connection)
+        button_layout.addWidget(test_btn)
+        
+        # Add stretch to push Help button to the right
+        button_layout.addStretch()
+        
+        # Help button - separated to the right
+        help_btn = QPushButton("Help")
+        help_btn.clicked.connect(self.show_help)
+        button_layout.addWidget(help_btn)
+        config_layout.addRow("", button_layout)
+        
+        # Finalize the group box and main layout
         config_group.setLayout(config_layout)
         layout.addWidget(config_group)
-        layout.addLayout(buttons_layout)
         
+        # Set the main layout for the widget
         self.setLayout(layout)
         
-        # Connexions
-        self.test_connection_btn.clicked.connect(self.test_connection)
-        self.save_config_btn.clicked.connect(self.save_config)
-        self.load_config_btn.clicked.connect(self.load_config)
+        # Auto-load configuration on startup
+        self.auto_load_config()
         
-        # Initialize status
-        self.update_connection_status("not_tested")
+    def auto_load_config(self):
+        """Automatically load configuration on widget initialization"""
+        try:
+            config_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), 
+                "transformer_postgresql.json"
+            )
+            
+            if os.path.exists(config_file):
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                
+                # Load configuration into UI fields silently
+                if "host" in config:
+                    self.host_edit.setText(config["host"])
+                if "port" in config:
+                    self.port_edit.setValue(config["port"])
+                if "database" in config:
+                    self.database_edit.setText(config["database"])
+                if "username" in config:
+                    self.username_edit.setText(config["username"])
+                if "password" in config:
+                    self.password_edit.setText(config["password"])
+                
+                QgsMessageLog.logMessage(
+                    f"PostgreSQL configuration auto-loaded from {os.path.basename(config_file)}", 
+                    "Transformer", 
+                    Qgis.Info
+                )
+                
+                # Auto-test connection after loading config
+                QTimer.singleShot(500, self.auto_test_connection)
+                
+        except Exception as e:
+            # Silent fail for auto-load - don't bother user with startup errors
+            pass
     
-    def update_connection_status(self, status):
+    def auto_test_connection(self):
+        """Automatically test connection after config is loaded"""
+        try:
+            if (self.host_edit.text() and 
+                self.database_edit.text() and 
+                self.username_edit.text() and 
+                self.password_edit.text()):
+                
+                self.test_connection(silent=True)
+                
+        except Exception:
+            # Silent fail for auto-test
+            pass
+        
+    def update_status(self, status):
         """Update connection status indicator
         
         Args:
             status (str): 'connected' (green), 'error' (orange), 'failed' (red), 'not_tested' (gray)
         """
+        # Use direct stylesheet approach for reliable color display
         if status == "connected":
-            self.status_indicator.setStyleSheet("""
-                QLabel {
-                    font-size: 12px;
-                    font-weight: bold;
-                    color: #28a745;
-                }
-            """)
+            self.status_indicator.setText("●")
             self.status_label.setText("Connected")
-            self.status_label.setStyleSheet("""
-                QLabel {
-                    font-size: 11px;
-                    color: #28a745;
-                    font-weight: bold;
-                    padding-left: 5px;
-                }
-            """)
+            self.status_indicator.setStyleSheet("color: #28a745; font-size: 14px; font-weight: bold;")  # Green
+            self.status_label.setStyleSheet("color: #28a745;")
         elif status == "error":
-            self.status_indicator.setStyleSheet("""
-                QLabel {
-                    font-size: 12px;
-                    font-weight: bold;
-                    color: #ff8c00;
-                }
-            """)
+            self.status_indicator.setText("●")
             self.status_label.setText("Connection issue")
-            self.status_label.setStyleSheet("""
-                QLabel {
-                    font-size: 11px;
-                    color: #ff8c00;
-                    font-weight: bold;
-                    padding-left: 5px;
-                }
-            """)
+            self.status_indicator.setStyleSheet("color: #ff8c00; font-size: 14px; font-weight: bold;")  # Orange
+            self.status_label.setStyleSheet("color: #ff8c00;")
         elif status == "failed":
-            self.status_indicator.setStyleSheet("""
-                QLabel {
-                    font-size: 12px;
-                    font-weight: bold;
-                    color: #dc3545;
-                }
-            """)
+            self.status_indicator.setText("●")
             self.status_label.setText("Invalid credentials")
-            self.status_label.setStyleSheet("""
-                QLabel {
-                    font-size: 11px;
-                    color: #dc3545;
-                    font-weight: bold;
-                    padding-left: 5px;
-                }
-            """)
+            self.status_indicator.setStyleSheet("color: #dc3545; font-size: 14px; font-weight: bold;")  # Red
+            self.status_label.setStyleSheet("color: #dc3545;")
         else:  # not_tested
-            self.status_indicator.setStyleSheet("""
-                QLabel {
-                    font-size: 12px;
-                    font-weight: bold;
-                    color: #999999;
-                }
-            """)
+            self.status_indicator.setText("●")
             self.status_label.setText("Not tested")
-            self.status_label.setStyleSheet("""
-                QLabel {
-                    font-size: 11px;
-                    color: #666666;
-                    font-style: italic;
-                    padding-left: 5px;
-                }
-            """)
+            self.status_indicator.setStyleSheet("color: #999999; font-size: 14px; font-weight: bold;")  # Gray
+            self.status_label.setStyleSheet("color: #999999;")
     
-    def test_connection(self):
-        """Quick PostgreSQL connection test with visual feedback"""
-        if not POSTGRESQL_AVAILABLE:
-            self.update_connection_status("failed")
-            QgsMessageLog.logMessage("psycopg2 is not installed", "Transformer", Qgis.Warning)
-            return False
-        
+    def test_connection(self, silent=False):
+        """Test PostgreSQL connection with minimal UI"""
         try:
-            # Paramètres de connexion
-            conn_params = {
-                'host': self.host_edit.text() or 'localhost',
-                'port': self.port_edit.value(),
-                'database': self.database_edit.text(),
-                'user': self.username_edit.text(),
-                'password': self.password_edit.text(),
-                'connect_timeout': 3  # Quick timeout
-            }
+            if not POSTGRESQL_AVAILABLE:
+                if not silent:
+                    QgsMessageLog.logMessage("psycopg2 is not installed", "Transformer", Qgis.Warning)
+                self.update_status("failed")
+                return False
+                
+            # Get connection parameters
+            host = self.host_edit.text()
+            port = self.port_edit.value()
+            database = self.database_edit.text()
+            username = self.username_edit.text()
+            password = self.password_edit.text()
             
-            # Required fields validation
-            if not conn_params['database'] or not conn_params['user']:
-                self.update_connection_status("failed")
-                QgsMessageLog.logMessage("Database name and username are required", "Transformer", Qgis.Warning)
+            if not all([host, database, username, password]):
+                if not silent:
+                    QgsMessageLog.logMessage("Please fill in all connection fields", "Transformer", Qgis.Warning)
+                self.update_status("not_tested")
                 return False
             
-            # Quick connection test - just open/close
-            conn = psycopg2.connect(**conn_params)
+            # Test connection
+            import psycopg2
+            conn = psycopg2.connect(
+                host=host,
+                port=port,
+                database=database,
+                user=username,
+                password=password,
+                connect_timeout=10
+            )
             conn.close()
             
-            # Update status to connected
-            self.update_connection_status("connected")
+            # Connection successful
+            self.update_status("connected")
+            if not silent:
+                QgsMessageLog.logMessage(
+                    f"PostgreSQL connection established: {database}@{host}:{port} (user: {username})",
+                    "Transformer", 
+                    Qgis.Success
+                )
             
-            # Success log with detailed connection info
-            connection_details = f"{conn_params['database']}@{conn_params['host']}:{conn_params['port']} (user: {conn_params['user']})"
-            log_success(f"PostgreSQL connection established: {connection_details}")
-            
-            # Quick visual feedback in QGIS status bar
-            from qgis.utils import iface
-            if iface:
-                iface.messageBar().pushMessage("PostgreSQL", "Connection successful!", level=Qgis.Success, duration=2)
-            
-            # Auto-trigger schema refresh
-            self.auto_refresh_schemas()
+            # Auto-load schemas for mapping widget if available
+            self.trigger_schema_refresh()
             
             return True
             
-        except psycopg2.Error as e:
-            # Check if it's an authentication/credentials error or connection issue
-            error_str = str(e).lower()
-            if any(keyword in error_str for keyword in ['authentication', 'password', 'role', 'does not exist', 'permission denied']):
-                self.update_connection_status("failed")
-            else:
-                self.update_connection_status("error")
-            
-            log_critical(f"PostgreSQL connection failed: {str(e)}")
-            # Visual feedback for error
-            from qgis.utils import iface
-            if iface:
-                iface.messageBar().pushMessage("PostgreSQL", f"Connection failed: {str(e)}", level=Qgis.Critical, duration=5)
+        except Exception as e:
+            self.update_status("failed")
+            if not silent:
+                QgsMessageLog.logMessage(f"PostgreSQL connection failed: {str(e)}", "Transformer", Qgis.Critical)
             return False
-        except Exception as e:
-            self.update_connection_status("error")
-            log_critical(f"Connection error: {str(e)}")
-            from qgis.utils import iface
-            if iface:
-                iface.messageBar().pushMessage("PostgreSQL", f"Error: {str(e)}", level=Qgis.Critical, duration=5)
-            return False
-    
-    def auto_refresh_schemas(self):
-        """Auto refresh schemas after conn test"""
-        # Trigger schema refresh in mapping widget
-        # Find parent PostgreSQLIntegrationWidget
-        parent_widget = self.parent()
-        while parent_widget:
-            if hasattr(parent_widget, 'mapping_widget') and hasattr(parent_widget.mapping_widget, 'refresh_schemas'):
-                parent_widget.mapping_widget.refresh_schemas()
-                break
-            parent_widget = parent_widget.parent()
-    
-    def save_config(self):
-        """Save the conf"""
-        config = {
-            "host": self.host_edit.text(),
-            "port": self.port_edit.value(),
-            "database": self.database_edit.text(),
-            "username": self.username_edit.text(),
-            "password": self.password_edit.text()
-        }
-        
-        # Save in plugin folder
+
+    def trigger_schema_refresh(self):
+        """Trigger schema refresh in mapping widget after successful connection"""
         try:
-            plugin_dir = os.path.dirname(__file__)
-            config_path = os.path.join(plugin_dir, "transformer_postgresql.json")
-            with open(config_path, 'w') as f:
-                json.dump(config, f, indent=2)
-            QgsMessageLog.logMessage("PostgreSQL configuration saved successfully", "Transformer", Qgis.Success)
-        except Exception as e:
-            QMessageBox.critical(self, "Save Error", f"Failed to save config: {str(e)}")
+            # Find the parent PostgreSQL integration widget
+            parent_widget = self.parent()
+            if hasattr(parent_widget, 'mapping_widget'):
+                # Schedule schema refresh after a short delay to allow connection to stabilize
+                QTimer.singleShot(1000, parent_widget.mapping_widget.refresh_schemas)
+        except Exception:
+            # Silent fail - this is just a convenience feature
+            pass
     
-    def load_config(self):
-        """Load saved configuration"""
-        try:
-            plugin_dir = os.path.dirname(__file__)
-            config_path = os.path.join(plugin_dir, "transformer_postgresql.json")
-            if os.path.exists(config_path):
-                with open(config_path, 'r') as f:
-                    config = json.load(f)
-            
-                self.host_edit.setText(config.get("host", "localhost"))
-                self.port_edit.setValue(config.get("port", 5432))
-                self.database_edit.setText(config.get("database", ""))
-                self.username_edit.setText(config.get("username", ""))
-                self.password_edit.setText(config.get("password", ""))
-                
-                QgsMessageLog.logMessage("PostgreSQL configuration loaded successfully", "Transformer", Qgis.Success)
-            else:
-                QMessageBox.warning(self, "Warning", "No saved conf found")
-        except Exception as e:
-            QMessageBox.critical(self, "Load Error", f"Failed to load config: {str(e)}")
-
-
-class SearchableComboBox(QComboBox):
-    """ComboBox w/ integrated search & QGIS native autocompletion"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setEditable(True)
-        self.setInsertPolicy(QComboBox.NoInsert)
-        self.setMaxVisibleItems(15)  # More visible items
-        
-        # Setup native QGIS autocompletion
-        self.completer = QCompleter()
-        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
-        self.completer.setFilterMode(Qt.MatchContains)  # Search by content
-        self.completer.setModelSorting(QCompleter.UnsortedModel)  # Keep original order
-        self.completer.setCompletionMode(QCompleter.PopupCompletion)
-        
-        # Always show list on click
-        self.setCompleter(self.completer)
-        self.completer.setMaxVisibleItems(15)  # Same number as ComboBox
-        
-        # Store all available items
-        self.all_items = []
-        
-        # Init completer & model safely
-        self.completer = None
-        self.model = None
-        
-        # Init completer after widget ready
-        self._init_completer()
-        
-        # Connect signals for real-time search
-        if self.lineEdit():
-            self.lineEdit().textChanged.connect(self.on_text_changed)
-    
-    def _init_completer(self):
-        """Safe completer initialization"""
-        try:
-            # Create model w/ empty list
-            self.model = QStringListModel([])
-            
-            # Create completer with model
-            self.completer = QCompleter(self.model)
-            self.completer.setCompletionMode(QCompleter.PopupCompletion)
-            self.completer.setCaseSensitivity(Qt.CaseInsensitive)
-            self.completer.setFilterMode(Qt.MatchContains)
-            
-            # Assign completer to widget
-            self.setCompleter(self.completer)
-            
-        except Exception as e:
-            QgsMessageLog.logMessage(f"Completer initialization error: {str(e)}", "Transformer", Qgis.Warning)
-            # Fallback: no completer
-            self.completer = None
-            self.model = None
-        
-    def set_items(self, items):
-        """Set available items"""
-        self.all_items = items[:]
-        self.clear()
-        self.addItems(items)
-        
-        # Update model if available
-        if self.model:
-            try:
-                self.model.setStringList(items)
-            except Exception as e:
-                QgsMessageLog.logMessage(f"Model update error: {str(e)}", "Transformer", Qgis.Warning)
-        
-    def on_text_changed(self, text):
-        """Handle text changes for search"""
-        if not text:
-            # Empty text = show all items
-            self.clear()
-            self.addItems(self.all_items)
-            return
-            
-        # Filter items containing text (case insensitive)
-        filtered_items = [item for item in self.all_items if text.lower() in item.lower()]
-        
-        # Update dropdown list
-        self.clear()
-        self.addItems(filtered_items)
-        
-        # Update completer if available
-        if self.model:
-            try:
-                self.model.setStringList(filtered_items)
-            except Exception as e:
-                QgsMessageLog.logMessage(f"Completer update error: {str(e)}", "Transformer", Qgis.Warning)
-        
-        # Reopen popup if needed
-        if self.completer and filtered_items:
-            try:
-                if not self.completer.popup().isVisible():
-                    self.completer.complete()
-            except Exception as e:
-                QgsMessageLog.logMessage(f"Popup open error: {str(e)}", "Transformer", Qgis.Warning)
-
-
-class TableCreationComboBox(SearchableComboBox):
-    """ComboBox w/ option to create new table & integrated search"""
-    
-    # Signal emitted when new table requested
-    table_creation_requested = pyqtSignal(str)
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)  # Inherits from SearchableComboBox (advanced search)
-        self.setEditable(True)
-        self.setInsertPolicy(QComboBox.NoInsert)
-        
-        # Existing tables list
-        self.existing_tables = []
-        self.addItem("")  # Default empty selection
-        self.addItem("+ New table...")  # Creation option
-        
-        # Var to avoid auto-trigger
-        self.user_interaction = False
-        
-        # Connect signal
-        self.currentTextChanged.connect(self.on_text_changed)
-        
-        # Also connect activated signal (user click)
-        self.activated[str].connect(self.on_user_selection)
-        
-    def set_tables(self, tables):
-        """Set available tables"""
-        self.existing_tables = tables[:]
-        self.clear()
-        self.addItem("")  # Empty selection by default
-        self.addItem("+ New table...")  # Creation option
-        self.addItems(tables)
-        
-    def on_user_selection(self, text):
-        """Handle user selections (click on an option)"""
-        if text == "+ New table...":
-            # Ask for new table name
-            self.create_new_table()
-            
-    def on_text_changed(self, text):
-        """Handle text changes (keyboard input)"""
-        if text and text not in ["+ New table...", ""]:
-            # Check if it's new table name entered directly
-            existing_tables = [self.itemText(i) for i in range(2, self.count())]
-            if text not in existing_tables and text.strip():
-                # New table name entered directly
-                self.table_creation_requested.emit(text.strip())
-                
-    def create_new_table(self):
-        """Open dialog to create new table"""
-        table_name, ok = QInputDialog.getText(
-            self, 
-            "New table", 
-            "New table name:",
-            text=""
-        )
-        
-        if ok and table_name.strip():
-            # Add new table to list
-            self.addItem(table_name.strip())
-            self.setCurrentText(table_name.strip())
-            self.table_creation_requested.emit(table_name.strip())
-        else:
-            # Revert to empty selection (first element)
-            self.setCurrentIndex(0)
-
-
-class PostgreSQLMappingWidget(QWidget):
-    """Widget de mapping des tables transformées vers PostgreSQL"""
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.config_widget = None  # Référence vers le widget de config
-        self.available_schemas = []
-        self.available_tables = {}
-        self.auto_connect = True  # Connexion automatique activée par défaut
-        self.confirmation_dialog = None  # Boîte de dialogue de confirmation
-        self._temp_detailed_mappings = []  # Cache temporaire pour les mappings détaillés
-        self.setup_ui()
-        # Vérifier si des mappings sont disponibles pour les couches actuelles
-        QTimer.singleShot(500, self.check_auto_connect)
-        self.mappings = []
-    
-    def setup_ui(self):
-        """Interface de mapping"""
-        layout = QVBoxLayout()
-        
-        # Titre avec bouton d'aide
-        title_layout = QHBoxLayout()
-        title = QLabel("Table Mapping")
-        title.setStyleSheet("font-weight: bold; font-size: 14px;")
-        title_layout.addWidget(title)
-        
-        # Bouton d'aide style QGIS
-        help_button = QPushButton("?")
-        help_button.setStyleSheet("""
-            QPushButton {
-                background-color: #2E8B57;
-                color: white;
-                border: 1px solid #1E5F3F;
-                border-radius: 3px;
-                font-weight: bold;
-                font-size: 9px;
-                margin: 0px;
-                padding: 0px;
-                width: 12px;
-                height: 12px;
-                max-width: 12px;
-                max-height: 12px;
-                min-width: 12px;
-                min-height: 12px;
-            }
-            QPushButton:hover {
-                background-color: #228B22;
-                border: 1px solid #006400;
-            }
-            QPushButton:pressed {
-                background-color: #1E5F3F;
-            }
-        """)
-        help_button.setToolTip("Tip: Connect to PostgreSQL database first before setting up table mappings.\nUse 'Test Connection' to verify your database connection.")
-        help_button.setFixedSize(12, 12)
-        help_button.clicked.connect(self.show_mapping_help)
-        title_layout.addStretch()
-        title_layout.addWidget(help_button)
-        
-        layout.addLayout(title_layout)
-        
-        # Option de connexion automatique
-        self.auto_connect_check = QCheckBox("Connexion et mapping automatiques")
-        self.auto_connect_check.setChecked(True)
-        self.auto_connect_check.setToolTip("Active/désactive la connexion automatique à PostgreSQL et le chargement des mappings")
-        layout.addWidget(self.auto_connect_check)
-        self.auto_connect_check.toggled.connect(lambda state: setattr(self, 'auto_connect', state))
-        
-        # Tableau de mapping
-        self.mapping_table = QTableWidget()
-        self.mapping_table.setColumnCount(3)
-        self.mapping_table.setHorizontalHeaderLabels(["Transformed", "Schema", "Table"])
-        
-        # Configuration du tableau
-        header = self.mapping_table.horizontalHeader()
-        header.setStretchLastSection(True)
-        header.setSectionResizeMode(QHeaderView.Stretch)
-        
-        layout.addWidget(self.mapping_table)
-        
-        # Boutons de contrôle
-        buttons_layout = QHBoxLayout()
-        self.add_mapping_btn = QPushButton("Add Mapping")
-        self.remove_mapping_btn = QPushButton("Remove Selected")
-        self.refresh_schemas_btn = QPushButton("Refresh Schemas")
-        self.save_mappings_btn = QPushButton("Save Current")
-        self.load_mappings_btn = QPushButton("Load Saved")
-        self.export_btn = QPushButton("Export to PostgreSQL")
-        
-        buttons_layout.addWidget(self.add_mapping_btn)
-        buttons_layout.addWidget(self.remove_mapping_btn)
-        buttons_layout.addWidget(self.refresh_schemas_btn)
-        buttons_layout.addWidget(self.save_mappings_btn)
-        buttons_layout.addWidget(self.load_mappings_btn)
-        buttons_layout.addStretch()
-        buttons_layout.addWidget(self.export_btn)
-        
-        layout.addLayout(buttons_layout)
-        self.setLayout(layout)
-        
-        # Connexions
-        self.add_mapping_btn.clicked.connect(self.add_mapping)
-        self.remove_mapping_btn.clicked.connect(self.remove_selected)
-        self.refresh_schemas_btn.clicked.connect(self.refresh_schemas)
-        self.save_mappings_btn.clicked.connect(self.save_mappings)
-        self.load_mappings_btn.clicked.connect(self.load_mappings)
-        self.export_btn.clicked.connect(self.export_to_postgresql)
-    
-    def show_mapping_help(self):
-        """Affiche l'aide pour le mapping des tables"""
-        from PyQt5.QtWidgets import QMessageBox
-        
+    def show_help(self):
+        """Show native QGIS help dialog"""
         msg = QMessageBox(self)
         msg.setWindowTitle("Table Mapping Help")
         msg.setIcon(QMessageBox.Information)
         
-        help_text = """
-<div style="font-weight: normal;">
-<h2 style="color: #2E8B57; margin-bottom: 15px; font-weight: bold;">PostgreSQL Table Mapping</h2>
+        # Native QGIS help text - no HTML styling
+        help_text = """PostgreSQL Table Mapping
 
-<h3 style="color: #4A90E2; margin: 15px 0 8px 0; font-weight: bold;">Prerequisites</h3>
-<ul style="margin: 0; padding-left: 20px; font-weight: normal;">
-<li style="font-weight: normal;">Fill in PostgreSQL connection details</li>
-<li style="font-weight: normal;">Click <span style="background: #2C3E50; color: white; padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 11px;">Test Connection</span> to verify access</li>
-<li style="font-weight: normal;">Use <span style="background: #2C3E50; color: white; padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 11px;">Refresh Schemas</span> to load database schemas</li>
-</ul>
+Prerequisites:
+• Fill in PostgreSQL connection details
+• Click 'Test Connection' to verify access
+• Use 'Refresh Schemas' to load database schemas
 
-<h3 style="color: #4A90E2; margin: 15px 0 8px 0; font-weight: bold;">Mapping Configuration</h3>
-<ul style="margin: 0; padding-left: 20px; font-weight: normal;">
-<li style="font-weight: normal;">Transformed: QGIS layer name to export</li>
-<li style="font-weight: normal;">Schema: destination PostgreSQL schema</li>
-<li style="font-weight: normal;">Table: target table name</li>
-</ul>
+Mapping Configuration:
+• Transformed: QGIS layer name to export
+• Schema: destination PostgreSQL schema
+• Table: target table name
 
-<h3 style="color: #4A90E2; margin: 15px 0 8px 0; font-weight: bold;">Workflow</h3>
-<ul style="margin: 0; padding-left: 20px; font-weight: normal;">
-<li style="font-weight: normal;">Use <span style="background: #27AE60; color: white; padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 11px;">Add Mapping</span> to create new mappings</li>
-<li style="font-weight: normal;">Use <span style="background: #E67E22; color: white; padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 11px;">Save Current</span> to store configurations</li>
-<li style="font-weight: normal;">Auto-mapping loads saved configurations automatically</li>
-</ul>
-</div>
-        """
+Workflow:
+• Use 'Add Mapping' to create new mappings
+• Use 'Save Current' to store configurations
+• Auto-mapping loads saved configurations automatically"""
         
         msg.setText(help_text)
-        msg.setTextFormat(Qt.RichText)
+        msg.setTextFormat(Qt.PlainText)
         msg.setStandardButtons(QMessageBox.Ok)
         msg.resize(500, 400)
         msg.exec_()
+
+    def save_config(self):
+        """Save PostgreSQL connection configuration to file"""
+        try:
+            config = {
+                "host": self.host_edit.text(),
+                "port": self.port_edit.value(),
+                "database": self.database_edit.text(),
+                "username": self.username_edit.text(),
+                "password": self.password_edit.text(),  # Save password for convenience
+            }
+            
+            config_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), 
+                "transformer_postgresql.json"
+            )
+            
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+            
+            QgsMessageLog.logMessage(
+                f"PostgreSQL configuration saved to {os.path.basename(config_file)}", 
+                "Transformer", 
+                Qgis.Success
+            )
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"Error saving PostgreSQL configuration: {str(e)}", 
+                "Transformer", 
+                Qgis.Critical
+            )
+    
+    def load_config(self):
+        """Load PostgreSQL connection configuration from file"""
+        try:
+            config_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), 
+                "transformer_postgresql.json"
+            )
+            
+            if not os.path.exists(config_file):
+                QgsMessageLog.logMessage(
+                    "No saved PostgreSQL configuration found", 
+                    "Transformer", 
+                    Qgis.Warning
+                )
+                return
+            
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            # Load configuration into UI fields
+            if "host" in config:
+                self.host_edit.setText(config["host"])
+            if "port" in config:
+                self.port_edit.setValue(config["port"])
+            if "database" in config:
+                self.database_edit.setText(config["database"])
+            if "username" in config:
+                self.username_edit.setText(config["username"])
+            if "password" in config:
+                self.password_edit.setText(config["password"])
+            
+            QgsMessageLog.logMessage(
+                f"PostgreSQL configuration loaded from {os.path.basename(config_file)}", 
+                "Transformer", 
+                Qgis.Success
+            )
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"Error loading PostgreSQL configuration: {str(e)}", 
+                "Transformer", 
+                Qgis.Critical
+            )
+
+class PostgreSQLMappingWidget(QWidget):
+    """Widget pour le mapping des couches vers PostgreSQL"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.config_widget = None
+        self.available_schemas = []
+        self.available_tables = {}
+        self.auto_connect = True  # Enable auto-connect functionality
+        self.setup_ui()
+        
+        # Essayer de charger automatiquement les mappings existants au démarrage
+        self.auto_load_existing_mappings()
+    
+    def setup_ui(self):
+        """Setup native QGIS mapping interface"""
+        layout = QVBoxLayout(self)
+        
+        # Title with native QGIS font
+        title = QLabel("Layer to PostgreSQL")
+        title_font = title.font()
+        title_font.setBold(True)
+        title_font.setPointSize(12)
+        title.setFont(title_font)
+        layout.addWidget(title)
+        
+        # Toolbar
+        toolbar_layout = QHBoxLayout()
+        
+        # Add mapping button
+        add_btn = QPushButton("Add Mapping")
+        add_btn.clicked.connect(self.add_mapping)
+        toolbar_layout.addWidget(add_btn)
+        
+        # Remove mapping button
+        remove_btn = QPushButton("Remove Selected")
+        remove_btn.clicked.connect(self.remove_selected)
+        toolbar_layout.addWidget(remove_btn)
+        
+        # Refresh schemas button
+        refresh_btn = QPushButton("Refresh Schemas")
+        refresh_btn.clicked.connect(self.refresh_schemas)
+        toolbar_layout.addWidget(refresh_btn)
+        
+        # Add separator
+        toolbar_layout.addWidget(QWidget())  # Spacer
+        
+        # Save Mapping button
+        save_mapping_btn = QPushButton("Save Mapping")
+        save_mapping_btn.clicked.connect(self.save_mappings)
+        toolbar_layout.addWidget(save_mapping_btn)
+        
+        # Load Mapping button
+        load_mapping_btn = QPushButton("Load Mapping")
+        load_mapping_btn.clicked.connect(self.load_mappings)
+        toolbar_layout.addWidget(load_mapping_btn)
+        
+        # Export PostgreSQL button
+        export_btn = QPushButton("Export PostgreSQL")
+        export_btn.clicked.connect(self.export_to_postgresql)
+        toolbar_layout.addWidget(export_btn)
+        
+        toolbar_layout.addStretch()
+        layout.addLayout(toolbar_layout)
+        
+        # Mapping table
+        self.mapping_table = QTableWidget()
+        self.mapping_table.setColumnCount(3)
+        self.mapping_table.setHorizontalHeaderLabels(["QGIS Layer", "Schema", "Table"])
+        
+        # Set column widths
+        header = self.mapping_table.horizontalHeader()
+        header.setStretchLastSection(True)
+        
+        layout.addWidget(self.mapping_table)
     
     def add_mapping(self):
         """Ajoute une nouvelle ligne de mapping"""
@@ -1876,40 +1566,55 @@ class PostgreSQLMappingWidget(QWidget):
     
     def handle_table_selection(self, row, text):
         """Gère la sélection de table, incluant la création de nouvelles tables"""
-        if text == "+ Nouvelle table...":
-            table_name, ok = QInputDialog.getText(
-                self, 
-                "Nouvelle table", 
-                "Nom de la nouvelle table:",
-                text=""
-            )
-            
-            if ok and table_name.strip():
-                table_name = table_name.strip()
+        try:
+            if text == "+ Nouvelle table...":
+                table_name, ok = QInputDialog.getText(
+                    self, 
+                    "Nouvelle table", 
+                    "Nom de la nouvelle table:",
+                    text=""
+                )
                 
-                # Mettre à jour la combobox avec le nom de la nouvelle table
-                table_combo = self.mapping_table.cellWidget(row, 2)
-                if table_combo:
-                    # Sauvegarder l'état actuel
-                    current_items = [table_combo.itemText(i) for i in range(table_combo.count())]
+                if ok and table_name.strip():
+                    table_name = table_name.strip()
                     
-                    # Ajouter la nouvelle table si elle n'existe pas
-                    if table_name not in current_items:
-                        table_combo.insertItem(table_combo.count() - 1, table_name)  # Insérer avant "+ Nouvelle table..."
-                    
-                    # Sélectionner la nouvelle table
-                    table_combo.setCurrentText(table_name)
-                    
-                    QgsMessageLog.logMessage(f"Nouvelle table '{table_name}' ajoutée au mapping ligne {row}", "Transformer", Qgis.Info)
-            else:
-                # Annuler - remettre à vide
-                table_combo = self.mapping_table.cellWidget(row, 2)
-                if table_combo:
-                    table_combo.setCurrentIndex(0)  # Remettre à l'index vide
+                    # Mettre à jour la combobox avec le nom de la nouvelle table
+                    table_combo = self.mapping_table.cellWidget(row, 2)
+                    if table_combo:
+                        # Sauvegarder l'état actuel
+                        current_items = [table_combo.itemText(i) for i in range(table_combo.count())]
+                        
+                        # Ajouter la nouvelle table si elle n'existe pas
+                        if table_name not in current_items:
+                            table_combo.insertItem(table_combo.count() - 1, table_name)  # Insérer avant "+ Nouvelle table..."
+                        
+                        # Sélectionner la nouvelle table
+                        table_combo.setCurrentText(table_name)
+                        
+                        QgsMessageLog.logMessage(f"Nouvelle table '{table_name}' ajoutée au mapping ligne {row}", "Transformer", Qgis.Info)
+                else:
+                    # Annuler - remettre à vide
+                    table_combo = self.mapping_table.cellWidget(row, 2)
+                    if table_combo:
+                        table_combo.setCurrentIndex(0)  # Remettre à l'index vide
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Error in handle_table_selection: {str(e)}", "Transformer", Qgis.Warning)
     
-
-    
-
+    def update_table_combo_simple(self, row, schema_name):
+        """Met à jour les tables disponibles selon le schéma sélectionné"""
+        try:
+            table_combo = self.mapping_table.cellWidget(row, 2)
+            if table_combo:
+                table_combo.clear()
+                table_combo.addItems(["", "+ Nouvelle table..."])
+                
+                # Ajouter les tables du schéma si disponibles
+                if schema_name and schema_name in self.tables_by_schema:
+                    tables = self.tables_by_schema[schema_name]
+                    for table in tables:
+                        table_combo.insertItem(table_combo.count() - 1, table)
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Error updating table combo: {str(e)}", "Transformer", Qgis.Warning)
     
     def refresh_schemas(self):
         """Rafraîchit la liste des schémas et tables PostgreSQL (silencieux)"""
@@ -1996,6 +1701,9 @@ class PostgreSQLMappingWidget(QWidget):
             # Mettre à jour les ComboBox dans le tableau si nécessaire
             self.update_all_schema_combos()
             
+            # Charger automatiquement les mappings existants maintenant que la connexion est établie
+            self.auto_load_existing_mappings()
+            
             # Notify main dialog to update stats
             try:
                 parent_dialog = self.parent()
@@ -2010,6 +1718,101 @@ class PostgreSQLMappingWidget(QWidget):
             log_critical(f"Failed to refresh schemas: {str(e)}")
         except Exception as e:
             log_critical(f"Schema refresh error: {str(e)}")
+    
+    def auto_load_existing_mappings(self):
+        """Charge automatiquement les mappings pour les layers existants dans QGIS"""
+        try:
+            # Path to the detailed mappings file
+            plugin_dir = os.path.dirname(__file__)
+            config_path = os.path.join(plugin_dir, "postgresql_detailed_mappings.json")
+            
+            if not os.path.exists(config_path):
+                return
+            
+            # Load all mappings
+            with open(config_path, 'r') as f:
+                all_mappings = json.load(f)
+            
+            if not all_mappings:
+                return
+            
+            # Get current QGIS project layers
+            project = QgsProject.instance()
+            layer_names = [layer.name() for layer in project.mapLayers().values()]
+            
+            loaded_count = 0
+            for mapping in all_mappings:
+                layer_name = mapping.get("layer_name", "")
+                schema = mapping.get("schema", "")
+                table = mapping.get("table", "")
+                
+                # Check if this layer exists in QGIS and is not already mapped
+                if layer_name in layer_names:
+                    # Check if mapping already exists in table
+                    already_mapped = False
+                    for row in range(self.mapping_table.rowCount()):
+                        layer_widget = self.mapping_table.cellWidget(row, 0)
+                        if layer_widget and hasattr(layer_widget, 'currentText'):
+                            if layer_widget.currentText() == layer_name:
+                                already_mapped = True
+                                break
+                    
+                    if not already_mapped:
+                        # Add this mapping to the table
+                        row = self.mapping_table.rowCount()
+                        self.mapping_table.insertRow(row)
+                        
+                        # Layer combo
+                        layer_combo = QComboBox()
+                        layer_combo.setEditable(True)
+                        layer_combo.addItem("")
+                        layer_combo.addItems(layer_names)
+                        layer_combo.setCurrentText(layer_name)
+                        self.mapping_table.setCellWidget(row, 0, layer_combo)
+                        
+                        # Schema combo
+                        schema_combo = QComboBox()
+                        schema_combo.setEditable(True)
+                        schema_combo.addItem("")
+                        if self.available_schemas:
+                            schema_combo.addItems(self.available_schemas)
+                        schema_combo.setCurrentText(schema)
+                        schema_combo.currentTextChanged.connect(
+                            lambda text, r=row: self.on_schema_changed(r, text)
+                        )
+                        self.mapping_table.setCellWidget(row, 1, schema_combo)
+                        
+                        # Table combo
+                        table_combo = QComboBox()
+                        table_combo.setEditable(True)
+                        table_combo.addItem("")
+                        
+                        # Load tables for this schema if necessary
+                        if schema and schema not in self.available_tables:
+                            self.load_tables_for_schema(schema)
+                        
+                        # Add available tables
+                        if schema in self.available_tables:
+                            table_combo.addItems(self.available_tables[schema])
+                        
+                        table_combo.setCurrentText(table)
+                        self.mapping_table.setCellWidget(row, 2, table_combo)
+                        
+                        loaded_count += 1
+            
+            if loaded_count > 0:
+                QgsMessageLog.logMessage(
+                    f"Auto-loaded {loaded_count} existing mapping(s) for layers in current project", 
+                    "Transformer", 
+                    Qgis.Success
+                )
+                
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"Error auto-loading existing mappings: {str(e)}", 
+                "Transformer", 
+                Qgis.Warning
+            )
     
     def update_all_schema_combos(self):
         """Update all schema ComboBoxes in table w/ complete schema list"""
@@ -3433,98 +3236,76 @@ class PostgreSQLMappingWidget(QWidget):
             return False
     
     def save_mappings(self, checked=None):
-        """Enregistre les mappings courants dans un fichier JSON avec tous les détails
+        """Save basic table mappings (layer_name, schema, table) to postgresql_detailed_mappings.json
         
         Args:
             checked: Optional parameter that can be passed by a signal (e.g: QPushButton.clicked)
         """
         try:
-            QgsMessageLog.logMessage("Saving complete PostgreSQL mappings...", "Transformer", Qgis.Info)
-            
-            # Use the existing method to extract mappings (with debug logs)
+            # Get current mappings from the UI table
             basic_mappings = self.get_current_mappings()
             
-            # Extract ALL field mapping details for each layer
-            detailed_mappings = []
+            if not basic_mappings:
+                QgsMessageLog.logMessage("No mappings to save", "Transformer", Qgis.Warning)
+                return False
             
-            # First look for confirmation dialog if it exists
-            if hasattr(self, 'confirmation_dialog') and self.confirmation_dialog:
-                for tab_index in range(self.confirmation_dialog.tabs.count()):
-                    tab_widget = self.confirmation_dialog.tabs.widget(tab_index)
-                    tab_text = self.confirmation_dialog.tabs.tabText(tab_index)
-                    
-                    if tab_widget and hasattr(tab_widget, 'get_complete_mapping_info'):
-                        complete_info = tab_widget.get_complete_mapping_info()
-                        
-                        # Find the corresponding base mapping
-                        base_mapping = None
-                        for bm in basic_mappings:
-                            if bm['transformed'] in tab_text:
-                                base_mapping = bm
-                                break
-                        
-                        if base_mapping:
-                            detailed_mapping = {
-                                "layer_name": base_mapping['transformed'],
-                                "schema": base_mapping['schema'],
-                                "table": base_mapping['table'],
-                                "field_mappings": complete_info.get('field_mapping', {}),
-                                "forced_types": complete_info.get('forced_types', {}),
-                                "custom_fields": complete_info.get('custom_fields', {}),
-                                "timestamp": datetime.now().isoformat()
-                            }
-                            detailed_mappings.append(detailed_mapping)
-            
-            # If no detailed mappings in the confirmation dialog, check the temporary cache
-            if not detailed_mappings and hasattr(self, '_temp_detailed_mappings'):
-                detailed_mappings = self._temp_detailed_mappings
-                QgsMessageLog.logMessage(f"Récupération de {len(detailed_mappings)} mappings détaillés depuis le cache temporaire", "Transformer", Qgis.Info)
-            
-            # If still no detailed mappings, automatically generate from the base mappings
-            if not detailed_mappings and basic_mappings:
-                detailed_mappings = self._generate_detailed_mappings_from_basic(basic_mappings)
-                QgsMessageLog.logMessage(f"Génération automatique de {len(detailed_mappings)} mappings détaillés", "Transformer", Qgis.Info)
-            
-            # Save the base mappings (compatibility)
+            # Path to the detailed mappings file (single source of truth)
             plugin_dir = os.path.dirname(__file__)
-            basic_config_path = os.path.join(plugin_dir, "transformer_postgresql_mappings.json")
-            
-            # Save the detailed mappings (new file)
             detailed_config_path = os.path.join(plugin_dir, "postgresql_detailed_mappings.json")
             
-            # Read existing detailed mappings
+            # Load existing detailed mappings
             existing_detailed = []
             if os.path.exists(detailed_config_path):
                 try:
                     with open(detailed_config_path, 'r') as f:
                         existing_detailed = json.load(f)
-                except json.JSONDecodeError:
+                        if not isinstance(existing_detailed, list):
+                            existing_detailed = []
+                except Exception:
                     existing_detailed = []
             
-            # Merge the detailed mappings (replace if same layer/schema/table)
-            updated_detailed = list(existing_detailed)  # Copy to avoid in-place modifications
+            # Add or update basic mappings
+            for mapping in basic_mappings:
+                layer_name = mapping.get("transformed", "")
+                schema = mapping.get("schema", "")
+                table = mapping.get("table", "")
+                
+                if not all([layer_name, schema, table]):
+                    continue  # Skip incomplete mappings
+                
+                # Look for existing mapping for this layer
+                found_index = -1
+                for i, existing in enumerate(existing_detailed):
+                    if existing.get("layer_name") == layer_name:
+                        found_index = i
+                        break
+                
+                if found_index >= 0:
+                    # Update existing mapping (preserve field details if they exist)
+                    existing_detailed[found_index].update({
+                        "layer_name": layer_name,
+                        "schema": schema,
+                        "table": table,
+                        "timestamp": datetime.now().isoformat(),
+                        "auto_generated": False
+                    })
+                else:
+                    # Add new basic mapping
+                    new_mapping = {
+                        "layer_name": layer_name,
+                        "schema": schema,
+                        "table": table,
+                        "timestamp": datetime.now().isoformat(),
+                        "auto_generated": False
+                    }
+                    existing_detailed.append(new_mapping)
             
-            # Add/update the new detailed mappings
-            for new_detailed in detailed_mappings:
-                # Remove old mappings for this combination
-                updated_detailed = [ed for ed in updated_detailed 
-                                   if not (ed.get('layer_name') == new_detailed.get('layer_name') and
-                                          ed.get('schema') == new_detailed.get('schema') and
-                                          ed.get('table') == new_detailed.get('table'))]
-                updated_detailed.append(new_detailed)
-            
-            # Save the base mappings for compatibility
-            with open(basic_config_path, 'w') as f:
-                json.dump(basic_mappings, f, indent=2)
-            
-            # Save the detailed mappings
+            # Save to single JSON file
             with open(detailed_config_path, 'w') as f:
-                json.dump(updated_detailed, f, indent=2)
+                json.dump(existing_detailed, f, indent=2)
             
             saved_count = len(basic_mappings)
-            detailed_count = len(detailed_mappings)
-            
-            QgsMessageLog.logMessage(f"PostgreSQL mappings saved: {saved_count} base mappings and {detailed_count} detailed mappings saved successfully", "Transformer", Qgis.Success)
+            QgsMessageLog.logMessage(f"Basic table mappings saved: {saved_count} mapping(s) saved to {os.path.basename(detailed_config_path)}", "Transformer", Qgis.Success)
             
             return True
         except Exception as e:
@@ -3696,11 +3477,11 @@ class PostgreSQLMappingWidget(QWidget):
         return detailed_mappings
             
     def find_mapping_for_layer(self, layer_name):
-        """Find a saved mapping for a specific layer (compatibility)"""
+        """Find a saved mapping for a specific layer using unified JSON file"""
         try:
-            # Path to the mappings file
+            # Path to the unified mappings file
             plugin_dir = os.path.dirname(__file__)
-            config_path = os.path.join(plugin_dir, "transformer_postgresql_mappings.json")
+            config_path = os.path.join(plugin_dir, "postgresql_detailed_mappings.json")
             
             if not os.path.exists(config_path):
                 return None
@@ -3714,7 +3495,7 @@ class PostgreSQLMappingWidget(QWidget):
             
             # Search for a mapping for this layer
             for mapping in all_mappings:
-                if mapping.get("transformed", "") == layer_name:
+                if mapping.get("layer_name", "") == layer_name:
                     return mapping
             
             return None
@@ -3878,33 +3659,34 @@ class PostgreSQLMappingWidget(QWidget):
     def load_mappings(self):
         """Load saved mappings and allow selection by table"""
         try:
-            # Path to the mappings file
+            # Path to the detailed mappings file (single source of truth)
             plugin_dir = os.path.dirname(__file__)
-            config_path = os.path.join(plugin_dir, "transformer_postgresql_mappings.json")
+            config_path = os.path.join(plugin_dir, "postgresql_detailed_mappings.json")
             
             if not os.path.exists(config_path):
-                QMessageBox.warning(self, "No mappings", "The mappings file does not exist.")
+                QgsMessageLog.logMessage("No detailed mappings file found", "Transformer", Qgis.Warning)
                 return
             
-            # Load all mappings
+            # Load all detailed mappings
             with open(config_path, 'r') as f:
                 all_mappings = json.load(f)
             
             if not all_mappings:
-                QMessageBox.warning(self, "No mappings", "The mappings file exists but contains no mappings.")
+                QgsMessageLog.logMessage("The detailed mappings file exists but contains no mappings", "Transformer", Qgis.Warning)
                 return
             
             # Organize mappings by table to facilitate selection
             tables_dict = {}
             for mapping in all_mappings:
-                transformed = mapping.get("transformed", "")
+                layer_name = mapping.get("layer_name", "")
                 schema = mapping.get("schema", "")
                 table = mapping.get("table", "")
                 
-                # Créer une clé unique qui inclut schema et table
-                key = f"{schema}.{table}"
-                label = f"{transformed} → {schema}.{table}"
+                if not all([layer_name, schema, table]):
+                    continue  # Skip incomplete mappings
                 
+                # Create unique key and label
+                label = f"{layer_name} → {schema}.{table}"
                 tables_dict[label] = mapping
             
             # Sort the keys for better presentation
@@ -3952,7 +3734,7 @@ class PostgreSQLMappingWidget(QWidget):
                 layer_combo.addItem(layer.name())
             
             # Select the layer from the mapping
-            layer_name = selected_mapping.get("transformed", "")
+            layer_name = selected_mapping.get("layer_name", "")
             if layer_name:
                 layer_combo.setCurrentText(layer_name)
             
