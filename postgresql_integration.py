@@ -1,0 +1,3853 @@
+# -*- coding: utf-8 -*-
+"""
+PostgreSQL integration module for Transformer
+Mapping & export of transformed tables to PostgreSQL
+"""
+
+import os
+import json
+from typing import Dict, List, Optional, Any
+from pathlib import Path
+
+from qgis.PyQt.QtCore import Qt, pyqtSignal, QVariant
+from qgis.PyQt.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTextEdit,
+    QComboBox, QCheckBox, QSpinBox, QTableWidget, QTableWidgetItem, QHeaderView,
+    QMessageBox, QDialog, QDialogButtonBox, QFormLayout, QGroupBox, QSplitter,
+    QFrame, QScrollArea, QTabWidget, QTreeWidget, QTreeWidgetItem, QGridLayout,
+    QApplication, QDesktopWidget, QPlainTextEdit, QProgressBar, QSlider, QCompleter,
+    QInputDialog, QStyle
+)
+
+# Import QSizePolicy with fallback
+try:
+    from qgis.PyQt.QtWidgets import QSizePolicy
+except ImportError:
+    try:
+        from PyQt5.QtWidgets import QSizePolicy
+    except ImportError:
+        class QSizePolicy:
+            Expanding = 7
+            Preferred = 5
+            def __init__(self, h=None, v=None):
+                pass
+from qgis.PyQt.QtCore import Qt, QThread, pyqtSignal, QStringListModel
+
+# Import QTimer with fallback
+try:
+    from qgis.PyQt.QtCore import QTimer
+except ImportError:
+    try:
+        from PyQt5.QtCore import QTimer
+    except ImportError:
+        class QTimer:
+            @staticmethod
+            def singleShot(msec, func):
+                try:
+                    func()
+                except:
+                    pass
+from qgis.PyQt.QtGui import QPixmap, QIcon, QTextCursor, QSyntaxHighlighter, QTextCharFormat, QColor
+
+# Import QFont with fallback
+try:
+    from qgis.PyQt.QtGui import QFont
+except ImportError:
+    try:
+        from PyQt5.QtGui import QFont
+    except ImportError:
+        class QFont:
+            def __init__(self, family="Arial", size=9, weight=None):
+                pass
+            class Bold:
+                pass
+from qgis.core import (
+    QgsProject, QgsVectorLayer, QgsDataSourceUri, QgsCredentials, QgsMessageLog, Qgis,
+    QgsApplication, QgsAuthManager, QgsVectorFileWriter, QgsCoordinateReferenceSystem,
+    QgsField, QgsFields, QgsFeature, QgsGeometry, QgsPointXY, QgsWkbTypes, QgsExpression,
+    QgsExpressionContext, QgsExpressionContextUtils, QgsFeatureRequest, QgsSettings,
+    QgsCoordinateTransform, QgsCoordinateTransformContext, QgsVectorLayerExporter
+)
+from qgis.gui import QgsMessageBar
+from qgis.utils import iface
+import json
+import os
+import logging
+from datetime import datetime
+from .logger import log_info, log_success, log_warning, log_error, log_critical
+
+# Import PostgreSQL dependencies
+try:
+    import psycopg2
+    from psycopg2 import sql
+    POSTGRESQL_AVAILABLE = True
+except ImportError:
+    POSTGRESQL_AVAILABLE = False
+    QgsMessageLog.logMessage("psycopg2 not available. PostgreSQL features will be limited.", "Transformer", Qgis.Warning)
+
+
+class IntegrationConfirmationDialog(QDialog):
+    """Interactive dialog for PostgreSQL mapping confirmation"""
+    
+    def __init__(self, compatibility_info, available_schemas=None, parent=None):
+        super().__init__(parent)
+        self.compatibility_info = compatibility_info
+        self.available_schemas = available_schemas or []
+        self.modified_mappings = {}  # Stockage des modifications
+        self.original_mappings = {}  # Mappings originaux pour comparaison
+        self.mapping_widgets = {}  # Widgets de mapping pour chaque couche
+        self.dont_show_again = False  # Attribut manquant
+        
+        # Sauvegarder les mappings originaux
+        for info in compatibility_info:
+            key = info['layer']
+            self.original_mappings[key] = {
+                'schema': info['schema'],
+                'table': info['table']
+            }
+            
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the UI for the PostgreSQL mapping dialog"""
+        self.setWindowTitle("PostgreSQL Field Mapping")
+        self.setModal(True)
+        
+        # Optimized size for the mapping table
+        self.resize(1100, 750)
+        self.setMinimumSize(1000, 650)
+        
+        # Main layout
+        layout = QVBoxLayout()
+        layout.setContentsMargins(20, 15, 20, 15)
+        layout.setSpacing(15)
+        
+        # Title and instructions - NATIVE QGIS STYLE
+        title_label = QLabel("Mapping fields for PostgreSQL integration")
+        title_label.setAlignment(Qt.AlignCenter)
+        title_font = QFont()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        title_label.setFont(title_font)
+        layout.addWidget(title_label)
+        
+        subtitle_label = QLabel("Verify and modify the automatic field mapping if necessary")
+        subtitle_label.setAlignment(Qt.AlignCenter)
+        subtitle_font = QFont()
+        subtitle_font.setPointSize(10)
+        subtitle_label.setFont(subtitle_font)
+        layout.addWidget(subtitle_label)
+        
+        # Tabs for each layer - NATIVE QGIS STYLE
+        self.tabs = QTabWidget()
+        # Remove all custom CSS - use native QGIS styling
+        
+        # Create a tab for each layer
+        for i, info in enumerate(self.compatibility_info):
+            tab_widget = self._create_field_mapping_table(info)
+            self.tabs.addTab(tab_widget, f"{info['layer']}")
+        
+        layout.addWidget(self.tabs)
+        
+        # Statistiques de mapping - NATIVE QGIS STYLE
+        stats_layout = QHBoxLayout()
+        self.stats_label = QLabel()
+        # Create native frame for stats
+        stats_frame = QFrame()
+        stats_frame.setFrameStyle(QFrame.Box | QFrame.Raised)
+        stats_frame.setLineWidth(1)
+        stats_frame_layout = QHBoxLayout(stats_frame)
+        stats_frame_layout.addWidget(self.stats_label)
+        stats_layout.addWidget(stats_frame)
+        stats_layout.addStretch()
+        
+        # Quick action buttons - NATIVE QGIS STYLE
+        self.auto_map_btn = QPushButton("Auto-mapping")
+        self.clear_btn = QPushButton("Clear all")
+        self.add_field_btn = QPushButton("Add custom field")
+        
+        # Use native QGIS button styling - no custom CSS
+        self.auto_map_btn.setMinimumHeight(26)
+        self.clear_btn.setMinimumHeight(26)
+        self.add_field_btn.setMinimumHeight(26)
+        
+        stats_layout.addWidget(self.auto_map_btn)
+        stats_layout.addWidget(self.clear_btn)
+        stats_layout.addWidget(self.add_field_btn)
+        layout.addLayout(stats_layout)
+        
+        # Case à cocher "Ne plus afficher" - NATIVE QGIS STYLE
+        checkbox_container = QHBoxLayout()
+        self.dont_show_checkbox = QCheckBox("Do not show this window for future integrations")
+        # Use native QGIS checkbox styling - no custom CSS
+        checkbox_container.addWidget(self.dont_show_checkbox)
+        checkbox_container.addStretch()
+        layout.addLayout(checkbox_container)
+        
+        # Main buttons - NATIVE QGIS STYLE
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(15)
+        
+        self.reset_btn = QPushButton("Reset")
+        self.save_column_config_btn = QPushButton("Save Column Config")
+        self.cancel_btn = QPushButton("Cancel")
+        self.proceed_btn = QPushButton("Apply mapping")
+        
+        # Native QGIS button sizes - no custom styling
+        self.reset_btn.setMinimumSize(130, 35)
+        self.save_column_config_btn.setMinimumSize(160, 35)
+        self.cancel_btn.setMinimumSize(120, 35)
+        self.proceed_btn.setMinimumSize(180, 35)
+        
+        # Make proceed button the default
+        self.proceed_btn.setDefault(True)
+        
+        buttons_layout.addWidget(self.reset_btn)
+        buttons_layout.addWidget(self.save_column_config_btn)
+        buttons_layout.addStretch()
+        buttons_layout.addWidget(self.cancel_btn)
+        buttons_layout.addWidget(self.proceed_btn)
+        
+        layout.addLayout(buttons_layout)
+        self.setLayout(layout)
+        
+        # Connexions
+        self.tabs.currentChanged.connect(self._update_stats)
+        self.auto_map_btn.clicked.connect(self._auto_map_current_layer)
+        self.clear_btn.clicked.connect(self._clear_current_mapping)
+        self.add_field_btn.clicked.connect(self._add_custom_field)
+        self.reset_btn.clicked.connect(self._reset_mappings)
+        self.save_column_config_btn.clicked.connect(self._save_column_config)
+        self.cancel_btn.clicked.connect(self.reject)
+        self.proceed_btn.clicked.connect(self.accept)
+        self.dont_show_checkbox.toggled.connect(self._on_dont_show_toggled)
+        
+        # Update initial stats
+        self._update_stats()
+        
+    def _create_field_mapping_table(self, info):
+        """Create the field mapping table for a layer"""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
+        
+        # En-tête avec informations sur la couche - NATIVE QGIS STYLE
+        header_frame = QFrame()
+        header_frame.setFrameStyle(QFrame.StyledPanel | QFrame.Raised)
+        header_layout = QHBoxLayout(header_frame)
+        
+        layer_info = QLabel(f"Layer: {info['layer']} → Destination: {info['schema']}.{info['table']}")
+        layer_font = QFont()
+        layer_font.setBold(True)
+        layer_font.setPointSize(11)
+        layer_info.setFont(layer_font)
+        header_layout.addWidget(layer_info)
+        layout.addWidget(header_frame)
+        
+        # Table for field mapping
+        table = QTableWidget()
+        table.setColumnCount(7)  # Add a column for deletion
+        table.setHorizontalHeaderLabels([
+            "Source field", 
+            "Source type", 
+            "Destination field", 
+            "Destination type", 
+            "Forced type", 
+            "Status",
+            "Action"
+        ])
+        
+        # Use native QGIS table styling - remove all custom CSS
+        
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.verticalHeader().setVisible(False)
+        
+        # Column configuration
+        header = table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.Fixed)  # Source field
+        header.setSectionResizeMode(1, QHeaderView.Fixed)  # Source type
+        header.setSectionResizeMode(2, QHeaderView.Stretch) # Destination field (modifiable)
+        header.setSectionResizeMode(3, QHeaderView.Fixed)  # Destination type
+        header.setSectionResizeMode(4, QHeaderView.Fixed)  # Forced type
+        header.setSectionResizeMode(5, QHeaderView.Fixed)  # Status
+        header.setSectionResizeMode(6, QHeaderView.Fixed)  # Action
+        
+        # Column widths
+        table.setColumnWidth(0, 160)  # Source field
+        table.setColumnWidth(1, 90)   # Source type
+        table.setColumnWidth(3, 110)  # Destination type
+        table.setColumnWidth(4, 110)  # Forced type
+        table.setColumnWidth(5, 60)   # Status
+        table.setColumnWidth(6, 70)   # Action
+        
+        # Field source and destination retrieval
+        source_fields = info.get('source_fields', [])
+        dest_fields = info.get('dest_fields', [])
+        field_matches = info.get('field_matches', {})
+        
+        # Add rows for each source field
+        table.setRowCount(len(source_fields))
+        
+        for row, source_field in enumerate(source_fields):
+            # Source field (read-only)
+            source_item = QTableWidgetItem(source_field['name'])
+            source_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            
+            # Set icon only if it exists
+            icon = self._get_field_icon(source_field['type'])
+            if icon:
+                source_item.setIcon(icon)
+                
+            table.setItem(row, 0, source_item)
+            
+            # Source type (read-only)
+            type_item = QTableWidgetItem(source_field['type'])
+            type_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            table.setItem(row, 1, type_item)
+            
+            # Destination field (ComboBox modifiable)
+            dest_combo = QComboBox()
+            dest_combo.addItem("<Non mappé>", "")
+            
+            # Add all available destination fields
+            for dest_field in dest_fields:
+                dest_combo.addItem(dest_field['name'], dest_field['name'])
+            
+            # Select automatic mapping if it exists
+            if source_field['name'] in field_matches:
+                matched_field = field_matches[source_field['name']]
+                index = dest_combo.findData(matched_field)
+                if index >= 0:
+                    dest_combo.setCurrentIndex(index)
+            
+            dest_combo.currentTextChanged.connect(
+                lambda text, r=row: self._on_field_mapping_changed(r)
+            )
+            
+            table.setCellWidget(row, 2, dest_combo)
+            
+            # Destination type (read-only, automatically updated)
+            dest_type_item = QTableWidgetItem()
+            dest_type_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            self._update_dest_type(dest_type_item, dest_combo.currentData(), dest_fields)
+            table.setItem(row, 3, dest_type_item)
+            
+            # Forced type (ComboBox modifiable)
+            forced_type_combo = QComboBox()
+            forced_type_combo.addItems([
+                "<Auto>",  # Default value - uses the destination type
+                "character varying",
+                "text", 
+                "integer",
+                "bigint",
+                "double precision",
+                "real",
+                "boolean",
+                "date",
+                "timestamp",
+                "uuid"
+            ])
+            
+            forced_type_combo.currentTextChanged.connect(
+                lambda text, r=row: self._on_field_mapping_changed(r)
+            )
+            
+            table.setCellWidget(row, 4, forced_type_combo)
+            
+            # Compatibility status
+            status_item = QTableWidgetItem()
+            status_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            self._update_compatibility_status(status_item, source_field, dest_combo.currentData(), dest_fields)
+            table.setItem(row, 5, status_item)
+            
+            # Delete button (only for non-essential fields) - NATIVE QGIS STYLE
+            delete_btn = QPushButton("Delete")
+            delete_btn.setMaximumSize(60, 25)
+            delete_btn.setToolTip("Delete this field mapping")
+            # Use native QGIS button styling - no custom CSS
+            delete_btn.clicked.connect(lambda checked, r=row: self._delete_field_mapping(r))
+            table.setCellWidget(row, 6, delete_btn)
+        
+        layout.addWidget(table)
+        
+        # Save table reference
+        layer_key = info['layer']
+        self.mapping_widgets[layer_key] = {
+            'table': table,
+            'info': info,
+            'source_fields': source_fields,
+            'dest_fields': dest_fields
+        }
+        
+        return widget
+    
+    def _get_field_icon(self, field_type):
+        """Return an appropriate icon for the field type"""
+        # This method could be extended with real icons
+        return None
+    
+    def _update_dest_type(self, item, dest_field_name, dest_fields):
+        """Update the destination field type"""
+        if not dest_field_name:
+            item.setText("-")
+            return
+            
+        for field in dest_fields:
+            if field['name'] == dest_field_name:
+                item.setText(field['type'])
+                return
+                
+        item.setText("Inconnu")
+    
+    def _update_compatibility_status(self, item, source_field, dest_field_name, dest_fields):
+        """Update the compatibility status"""
+        if not dest_field_name:
+            item.setText("NOK")
+            item.setToolTip("Field not mapped")
+            return
+            
+        # Search for the destination field
+        dest_field = None
+        for field in dest_fields:
+            if field['name'] == dest_field_name:
+                dest_field = field
+                break
+        
+        if not dest_field:
+            item.setText("ERR")
+            item.setToolTip("Destination field not found")
+            return
+        
+        # Check type compatibility
+        if self._are_types_compatible(source_field['type'], dest_field['type']):
+            item.setText("OK")
+            item.setToolTip("Types compatible")
+        else:
+            item.setText("WARN")
+            item.setToolTip(f"Attention: {source_field['type']} -> {dest_field['type']}")
+    
+    def _are_types_compatible(self, source_type, dest_type):
+        """Vérifie si deux types de champs sont compatibles"""
+        # Mapping des types compatibles
+        compatibility_map = {
+            'String': ['character varying', 'text', 'varchar', 'char'],
+            'Integer': ['integer', 'bigint', 'smallint', 'int4', 'int8'],
+            'Real': ['double precision', 'real', 'numeric', 'float8', 'float4'],
+            'Date': ['date', 'timestamp', 'timestamptz'],
+            'DateTime': ['timestamp', 'timestamptz', 'date'],
+            'Boolean': ['boolean', 'bool']
+        }
+        
+        dest_type_lower = dest_type.lower()
+        
+        if source_type in compatibility_map:
+            return any(compat.lower() in dest_type_lower for compat in compatibility_map[source_type])
+        
+        # By default, consider as compatible if same name
+        return source_type.lower() == dest_type_lower
+    
+    def _update_compatibility_status_with_forced_type(self, item, source_field, dest_field_name, dest_fields, forced_type):
+        """Update the compatibility status taking into account the forced type"""
+        if not dest_field_name:
+            item.setText("NOK")
+            item.setToolTip("Field not mapped")
+            return
+            
+        # If a forced type is defined, always compatible (force conversion)
+        if forced_type != "<Auto>":
+            item.setText("FORCE")
+            item.setToolTip(f"Conversion forcée: {source_field['type']} -> {forced_type}")
+            return
+            
+        # Otherwise, use normal logic
+        dest_field = None
+        for field in dest_fields:
+            if field['name'] == dest_field_name:
+                dest_field = field
+                break
+        
+        if not dest_field:
+            item.setText("ERR")
+            item.setToolTip("Destination field not found")
+            return
+        
+        # Check type compatibility
+        if self._are_types_compatible(source_field['type'], dest_field['type']):
+            item.setText("OK")
+            item.setToolTip("Types compatibles")
+        else:
+            item.setText("WARN")
+            item.setToolTip(f"Attention: {source_field['type']} -> {dest_field['type']} - Utilisez Type Forcé si nécessaire")
+    
+    def _on_field_mapping_changed(self, row):
+        """Called when a field mapping is modified"""
+        current_tab = self.tabs.currentIndex()
+        if current_tab < 0:
+            return
+            
+        layer_key = list(self.mapping_widgets.keys())[current_tab]
+        widgets = self.mapping_widgets[layer_key]
+        table = widgets['table']
+        dest_fields = widgets['dest_fields']
+        
+        # Récupération du nouveau mapping
+        combo = table.cellWidget(row, 2)
+        if not combo:
+            return
+            
+        dest_field_name = combo.currentData()
+        
+        # Vérifier si c'est un champ personnalisé ou un champ source normal
+        if row < len(widgets['source_fields']):
+            # Champ source normal
+            source_field = widgets['source_fields'][row]
+        else:
+            # Champ personnalisé - créer une structure compatible
+            source_item = table.item(row, 0)
+            type_item = table.item(row, 1)
+            if source_item and type_item:
+                source_field = {
+                    'name': source_item.text(),
+                    'type': type_item.text()
+                }
+            else:
+                return  # Impossible de traiter cette ligne
+        
+        # Mise à jour du type de destination
+        dest_type_item = table.item(row, 3)
+        if dest_type_item:
+            self._update_dest_type(dest_type_item, dest_field_name, dest_fields)
+        
+        # Mise à jour du statut de compatibilité (reste colonne 5)
+        status_item = table.item(row, 5)
+        if status_item:
+            # Prendre en compte le type forcé si défini
+            forced_type_combo = table.cellWidget(row, 4)
+            forced_type = forced_type_combo.currentText() if forced_type_combo else "<Auto>"
+            
+            self._update_compatibility_status_with_forced_type(status_item, source_field, dest_field_name, dest_fields, forced_type)
+        
+        # Update statistics
+        self._update_stats()
+    
+    def _update_stats(self):
+        """Update mapping statistics"""
+        if not self.mapping_widgets:
+            return
+            
+        current_tab = self.tabs.currentIndex()
+        if current_tab < 0:
+            return
+            
+        layer_key = list(self.mapping_widgets.keys())[current_tab]
+        widgets = self.mapping_widgets[layer_key]
+        table = widgets['table']
+        
+        total_fields = table.rowCount()
+        mapped_fields = 0
+        compatible_fields = 0
+        
+        for row in range(total_fields):
+            combo = table.cellWidget(row, 2)
+            status_item = table.item(row, 5)  # Statut en colonne 5 maintenant
+            
+            if combo and combo.currentData():
+                mapped_fields += 1
+                
+                if status_item and status_item.text() in ["OK", "FORCE"]:
+                    compatible_fields += 1
+        
+        mapping_percentage = (mapped_fields / total_fields * 100) if total_fields > 0 else 0
+        compatibility_percentage = (compatible_fields / mapped_fields * 100) if mapped_fields > 0 else 0
+        
+        stats_text = (
+            f"{layer_key}: "
+            f"{mapped_fields}/{total_fields} champs mappés ({mapping_percentage:.1f}%) | "
+            f"{compatible_fields}/{mapped_fields} compatibles ({compatibility_percentage:.1f}%)"
+        )
+        
+        self.stats_label.setText(stats_text)
+    
+    def _auto_map_current_layer(self):
+        """Apply automatic mapping to the current layer"""
+        current_tab = self.tabs.currentIndex()
+        if current_tab < 0:
+            return
+            
+        layer_key = list(self.mapping_widgets.keys())[current_tab]
+        widgets = self.mapping_widgets[layer_key]
+        table = widgets['table']
+        source_fields = widgets['source_fields']
+        dest_fields = widgets['dest_fields']
+        
+        for row in range(len(source_fields)):
+            source_field = source_fields[row]
+            combo = table.cellWidget(row, 2)
+            
+            if not combo:
+                continue
+                
+            # Recherche du meilleur match automatique
+            best_match = self._find_best_field_match(source_field, dest_fields)
+            if best_match:
+                index = combo.findData(best_match)
+                if index >= 0:
+                    combo.setCurrentIndex(index)
+    
+    def _find_best_field_match(self, source_field, dest_fields):
+        """Find the best automatic match for a field"""
+        source_name = source_field['name'].lower()
+        
+        # Exact match first
+        for dest_field in dest_fields:
+            if dest_field['name'].lower() == source_name:
+                return dest_field['name']
+        
+        # Recherche par similarité de nom
+        for dest_field in dest_fields:
+            dest_name = dest_field['name'].lower()
+            if source_name in dest_name or dest_name in source_name:
+                return dest_field['name']
+        
+        return None
+    
+    def _clear_current_mapping(self):
+        """Clear the mapping of the current layer"""
+        current_tab = self.tabs.currentIndex()
+        if current_tab < 0:
+            return
+            
+        layer_key = list(self.mapping_widgets.keys())[current_tab]
+        widgets = self.mapping_widgets[layer_key]
+        table = widgets['table']
+        
+        for row in range(table.rowCount()):
+            combo = table.cellWidget(row, 2)
+            if combo:
+                combo.setCurrentIndex(0)  # "<Non mappé>"
+    
+    def _reset_mappings(self):
+        """Reset all mappings to their initial state"""
+        for layer_key, widgets in self.mapping_widgets.items():
+            table = widgets['table']
+            info = widgets['info']
+            field_matches = info.get('field_matches', {})
+            
+            for row in range(table.rowCount()):
+                combo = table.cellWidget(row, 2)
+                if not combo:
+                    continue
+                    
+                source_field_name = widgets['source_fields'][row]['name']
+                
+                # Remettre le mapping automatique original
+                if source_field_name in field_matches:
+                    matched_field = field_matches[source_field_name]
+                    index = combo.findData(matched_field)
+                    if index >= 0:
+                        combo.setCurrentIndex(index)
+                    else:
+                        combo.setCurrentIndex(0)
+                else:
+                    combo.setCurrentIndex(0)
+    
+    def _add_custom_field(self):
+        """Add a custom field with default value"""
+        current_tab = self.tabs.currentIndex()
+        if current_tab < 0:
+            QMessageBox.warning(self, "Warning", "Please select a layer")
+            return
+            
+        # Dialogue for entering the custom field name and default value
+        field_name, ok1 = QInputDialog.getText(self, 
+            "Field name", 
+            "Enter the name of the custom field:")
+            
+        if not ok1 or not field_name.strip():
+            return
+            
+        field_name = field_name.strip()
+        
+        # Dialogue for entering the default value
+        default_value, ok2 = QInputDialog.getText(self, 
+            "Default value", 
+            f"Enter the default value for '{field_name}':")
+            
+        if not ok2:
+            return
+            
+        # Dialogue for entering the PostgreSQL type
+        pg_types = [
+            "character varying",
+            "text", 
+            "integer",
+            "bigint",
+            "double precision",
+            "real",
+            "boolean",
+            "date",
+            "timestamp",
+            "uuid"
+        ]
+        
+        pg_type, ok3 = QInputDialog.getItem(self, 
+            "Type PostgreSQL", 
+            f"Choisissez le type PostgreSQL pour '{field_name}':",
+            pg_types, 0, False)
+            
+        if not ok3:
+            return
+            
+        # Add the custom field to the current layer table
+        layer_key = list(self.mapping_widgets.keys())[current_tab]
+        widgets = self.mapping_widgets[layer_key]
+        table = widgets['table']
+        
+        # Add a new row
+        row_count = table.rowCount()
+        table.setRowCount(row_count + 1)
+        row = row_count
+        
+        # Champ source (personnalisé)
+        source_item = QTableWidgetItem(f"[CUSTOM] {field_name}")
+        source_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+        source_item.setBackground(QColor(255, 255, 200))  # Jaune clair pour les champs personnalisés
+        table.setItem(row, 0, source_item)
+        
+        # Type source
+        type_item = QTableWidgetItem("Custom")
+        type_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+        type_item.setBackground(QColor(255, 255, 200))
+        table.setItem(row, 1, type_item)
+        
+        # Destination field (modifiable - user can choose)
+        dest_combo = QComboBox()
+        dest_combo.addItem("<Non mappé>", "")
+        
+        # Add all available destination fields
+        dest_fields = widgets['dest_fields']
+        for dest_field in dest_fields:
+            dest_combo.addItem(dest_field['name'], dest_field['name'])
+            
+        # Add the custom field name as an option
+        dest_combo.addItem(f"[NOUVEAU] {field_name}", field_name)
+        
+        # Select the new field by default
+        dest_combo.setCurrentIndex(dest_combo.count() - 1)
+        
+        # Connect for modifications
+        dest_combo.currentTextChanged.connect(
+            lambda text, r=row: self._on_field_mapping_changed(r)
+        )
+        
+        table.setCellWidget(row, 2, dest_combo)
+        
+        # Type destination
+        dest_type_item = QTableWidgetItem(pg_type)
+        dest_type_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+        dest_type_item.setBackground(QColor(255, 255, 200))
+        table.setItem(row, 3, dest_type_item)
+        
+        # Forced type (already defined)
+        forced_type_combo = QComboBox()
+        forced_type_combo.addItem(pg_type)
+        forced_type_combo.setCurrentIndex(0)
+        forced_type_combo.setEnabled(False)  # Non modifiable
+        table.setCellWidget(row, 4, forced_type_combo)
+        
+        # Custom status
+        status_item = QTableWidgetItem("CUSTOM")
+        status_item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+        status_item.setToolTip(f"Custom field: {field_name} = '{default_value}' ({pg_type})")
+        status_item.setBackground(QColor(255, 255, 200))
+        table.setItem(row, 5, status_item)
+        
+        # Delete button for custom fields - NATIVE QGIS STYLE
+        delete_btn = QPushButton("Delete")
+        delete_btn.setMaximumSize(60, 25)
+        delete_btn.setToolTip("Delete this custom field")
+        # Use native QGIS button styling - no custom CSS
+        delete_btn.clicked.connect(lambda checked, r=row: self._delete_field_mapping(r))
+        table.setCellWidget(row, 6, delete_btn)
+        
+        # Store custom field information
+        if not hasattr(widgets, 'custom_fields'):
+            widgets['custom_fields'] = []
+            
+        widgets['custom_fields'].append({
+            'name': field_name,
+            'default_value': default_value,
+            'type': pg_type,
+            'row': row
+        })
+        
+        # Update stats
+        self._update_stats()
+        
+        QgsMessageLog.logMessage(f"Custom field '{field_name}' added successfully with type {pg_type}", "Transformer", Qgis.Success)
+    
+    def _delete_field_mapping(self, row):
+        """Supprime un mapping de champ"""
+        current_tab = self.tabs.currentIndex()
+        current_widget = self.tabs.widget(current_tab)
+        
+        # Trouver la table dans le layout
+        table = None
+        for i in range(current_widget.layout().count()):
+            widget = current_widget.layout().itemAt(i).widget()
+            if isinstance(widget, QTableWidget):
+                table = widget
+                break
+                
+        if not table:
+            return
+            
+        # Confirmation de suppression
+        source_item = table.item(row, 0)
+        if source_item:
+            field_name = source_item.text()
+            reply = QMessageBox.question(
+                self, 
+                "Confirmer la suppression",
+                f"Voulez-vous vraiment supprimer le mapping pour '{field_name}' ?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                # Remove the row
+                table.removeRow(row)
+                
+                # Clean up custom fields if necessary
+                layer_key = list(self.mapping_widgets.keys())[current_tab]
+                widgets = self.mapping_widgets[layer_key]
+                
+                if hasattr(widgets, 'custom_fields'):
+                    # Mettre à jour les indices des champs personnalisés
+                    widgets['custom_fields'] = [
+                        cf for cf in widgets['custom_fields'] 
+                        if cf.get('row', -1) != row
+                    ]
+                    
+                    # Réajuster les indices
+                    for cf in widgets['custom_fields']:
+                        if cf.get('row', -1) > row:
+                            cf['row'] -= 1
+                
+                # Mise à jour des statistiques
+                self._update_stats()
+    
+    def get_modified_mappings(self):
+        """Récupère tous les mappings modifiés"""
+        mappings = {}
+        
+        for layer_key, widgets in self.mapping_widgets.items():
+            table = widgets['table']
+            source_fields = widgets['source_fields']
+            
+            field_mapping = {}
+            for row in range(table.rowCount()):
+                combo = table.cellWidget(row, 2)
+                if combo and combo.currentData():
+                    # Retrieve the source field name from the table
+                    source_item = table.item(row, 0)
+                    if source_item:
+                        source_field_name = source_item.text()
+                        # Clean the name for custom fields
+                        if source_field_name.startswith("[CUSTOM] "):
+                            source_field_name = source_field_name.replace("[CUSTOM] ", "")
+                        
+                        dest_field_name = combo.currentData()
+                        field_mapping[source_field_name] = dest_field_name
+            
+            mappings[layer_key] = field_mapping
+            
+        return mappings
+    
+    def get_complete_mapping_info(self):
+        """Récupère toutes les informations de mapping : champs, types forcés, champs personnalisés"""
+        complete_info = {}
+        
+        for layer_key, widgets in self.mapping_widgets.items():
+            table = widgets['table']
+            
+            mapping_info = {
+                'field_mapping': {},
+                'forced_types': {},
+                'custom_fields': getattr(widgets, 'custom_fields', [])
+            }
+            
+            for row in range(table.rowCount()):
+                # Retrieve the widgets of the row
+                source_item = table.item(row, 0)
+                dest_combo = table.cellWidget(row, 2)
+                forced_type_combo = table.cellWidget(row, 4)
+                
+                if source_item and dest_combo and dest_combo.currentData():
+                    source_field_name = source_item.text()
+                    # Clean the name for custom fields
+                    if source_field_name.startswith("[CUSTOM] "):
+                        source_field_name = source_field_name.replace("[CUSTOM] ", "")
+                    
+                    dest_field_name = dest_combo.currentData()
+                    mapping_info['field_mapping'][source_field_name] = dest_field_name
+                    
+                    # Retrieve the forced type if defined
+                    if forced_type_combo and forced_type_combo.currentText() != "<Auto>":
+                        mapping_info['forced_types'][source_field_name] = forced_type_combo.currentText()
+            
+            complete_info[layer_key] = mapping_info
+        
+        return complete_info
+    
+    def _on_dont_show_toggled(self, checked):
+        """Handle the 'do not show again' checkbox"""
+        self.dont_show_again = checked
+    
+    def _save_column_config(self):
+        """Save complete column configuration to postgresql_detailed_mappings.json"""
+        try:
+            # Get complete mapping info from all tabs
+            detailed_mappings = []
+            
+            for tab_index in range(self.tabs.count()):
+                # Temporarily switch to each tab to extract its data
+                current_tab = self.tabs.currentIndex()
+                self.tabs.setCurrentIndex(tab_index)
+                
+                tab_widget = self.tabs.widget(tab_index)
+                tab_text = self.tabs.tabText(tab_index)
+                
+                if tab_widget and hasattr(tab_widget, 'children'):
+                    # Extract complete mapping info
+                    complete_info = self.get_complete_mapping_info()
+                    
+                    # Find corresponding layer info
+                    layer_info = None
+                    for info in self.compatibility_info:
+                        if info['layer'] == tab_text:
+                            layer_info = info
+                            break
+                    
+                    if layer_info:
+                        detailed_mapping = {
+                            "layer_name": layer_info['layer'],
+                            "schema": layer_info['schema'],
+                            "table": layer_info['table'],
+                            "field_mappings": complete_info.get('field_mapping', {}),
+                            "forced_types": complete_info.get('forced_types', {}),
+                            "custom_fields": complete_info.get('custom_fields', {}),
+                            "timestamp": datetime.now().isoformat(),
+                            "auto_generated": False
+                        }
+                        detailed_mappings.append(detailed_mapping)
+                
+                # Restore original tab selection
+                self.tabs.setCurrentIndex(current_tab)
+            
+            if not detailed_mappings:
+                QgsMessageLog.logMessage("No column configurations to save", "Transformer", Qgis.Warning)
+                return
+            
+            # Path to the detailed mappings file
+            plugin_dir = os.path.dirname(__file__)
+            config_path = os.path.join(plugin_dir, "postgresql_detailed_mappings.json")
+            
+            # Load existing mappings
+            existing_mappings = []
+            if os.path.exists(config_path):
+                try:
+                    with open(config_path, 'r') as f:
+                        existing_mappings = json.load(f)
+                        if not isinstance(existing_mappings, list):
+                            existing_mappings = []
+                except Exception:
+                    existing_mappings = []
+            
+            # Update existing mappings with complete column configurations
+            for new_mapping in detailed_mappings:
+                layer_name = new_mapping["layer_name"]
+                schema = new_mapping["schema"]
+                table = new_mapping["table"]
+                
+                # Find existing mapping and update it completely
+                found_index = -1
+                for i, existing in enumerate(existing_mappings):
+                    if (existing.get("layer_name") == layer_name and
+                        existing.get("schema") == schema and
+                        existing.get("table") == table):
+                        found_index = i
+                        break
+                
+                if found_index >= 0:
+                    # Update existing mapping with complete details
+                    existing_mappings[found_index] = new_mapping
+                else:
+                    # Add new complete mapping
+                    existing_mappings.append(new_mapping)
+            
+            # Save updated mappings
+            with open(config_path, 'w') as f:
+                json.dump(existing_mappings, f, indent=2)
+            
+            saved_count = len(detailed_mappings)
+            QgsMessageLog.logMessage(
+                f"Column configurations saved: {saved_count} complete mapping(s) saved to postgresql_detailed_mappings.json", 
+                "Transformer", 
+                Qgis.Success
+            )
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Error saving column configurations: {str(e)}", "Transformer", Qgis.Critical)
+        
+    def get_complete_mapping_info(self):
+        """Extrait les informations complètes de mapping depuis la boîte de dialogue
+        
+        Returns:
+            dict: Dictionnaire contenant field_mapping, forced_types et custom_fields
+        """
+        try:
+            # Obtenir le widget de l'onglet actuellement sélectionné
+            current_tab_index = self.tabs.currentIndex()
+            current_tab_widget = self.tabs.widget(current_tab_index)
+            
+            if not current_tab_widget:
+                return {'field_mapping': {}, 'forced_types': {}, 'custom_fields': {}}
+            
+            # Chercher la table de mapping dans le widget de l'onglet
+            mapping_table = None
+            for child in current_tab_widget.findChildren(QTableWidget):
+                if child.columnCount() >= 7:  # Notre table a 7 colonnes
+                    mapping_table = child
+                    break
+            
+            if not mapping_table:
+                QgsMessageLog.logMessage("Table de mapping non trouvée dans l'onglet", "Transformer", Qgis.Warning)
+                return {'field_mapping': {}, 'forced_types': {}, 'custom_fields': {}}
+            
+            field_mapping = {}
+            forced_types = {}
+            custom_fields = {}
+            
+            # Parcourir chaque ligne de la table
+            for row in range(mapping_table.rowCount()):
+                # Colonne 0: Champ source
+                source_item = mapping_table.item(row, 0)
+                if not source_item:
+                    continue
+                source_field = source_item.text().strip()
+                
+                # Colonne 2: Champ destination (ComboBox)
+                dest_combo = mapping_table.cellWidget(row, 2)
+                if not isinstance(dest_combo, QComboBox):
+                    continue
+                dest_field = dest_combo.currentData() or dest_combo.currentText().strip()
+                
+                # Colonne 4: Type forcé (ComboBox)
+                forced_type_combo = mapping_table.cellWidget(row, 4)
+                forced_type = "<Auto>"  # Valeur par défaut
+                if isinstance(forced_type_combo, QComboBox):
+                    forced_type = forced_type_combo.currentText().strip()
+                
+                # Seulement ajouter si il y a un mapping valide
+                if source_field and dest_field and dest_field != "<Non mappé>":
+                    field_mapping[source_field] = dest_field
+                    
+                    # Ajouter le type forcé seulement s'il n'est pas "<Auto>"
+                    if forced_type and forced_type != "<Auto>":
+                        forced_types[source_field] = forced_type
+            
+            # Log pour debugging
+            QgsMessageLog.logMessage(
+                f"Extraction mapping: {len(field_mapping)} champs, {len(forced_types)} types forcés", 
+                "Transformer", Qgis.Info
+            )
+            
+            return {
+                'field_mapping': field_mapping,
+                'forced_types': forced_types,
+                'custom_fields': custom_fields  # À implémenter plus tard si nécessaire
+            }
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"Erreur lors de l'extraction des informations de mapping: {str(e)}", 
+                "Transformer", Qgis.Warning
+            )
+            return {'field_mapping': {}, 'forced_types': {}, 'custom_fields': {}}
+
+class PostgreSQLConfigWidget(QWidget):
+    """Minimal PostgreSQL configuration"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Basic PostgreSQL setup"""
+        layout = QVBoxLayout()
+        
+        # Config group
+        config_group = QGroupBox("PostgreSQL Configuration")
+        config_layout = QFormLayout()
+        
+        # Config fields
+        self.host_edit = QLineEdit("localhost")
+        self.port_edit = QSpinBox()
+        self.port_edit.setRange(1, 65535)
+        self.port_edit.setValue(5432)
+        self.database_edit = QLineEdit()
+        self.username_edit = QLineEdit()
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.Password)
+        
+        config_layout.addRow("Host:", self.host_edit)
+        config_layout.addRow("Port:", self.port_edit)
+        config_layout.addRow("Database:", self.database_edit)
+        config_layout.addRow("Username:", self.username_edit)
+        config_layout.addRow("Password:", self.password_edit)
+        
+        # Connection status indicator
+        status_layout = QHBoxLayout()
+        # Native QGIS status indicator - no custom CSS
+        self.status_indicator = QLabel("●")
+        self.status_indicator.setFixedSize(12, 12)
+        self.status_indicator.setAlignment(Qt.AlignCenter)
+        
+        self.status_label = QLabel("Not tested")
+        # Use native QGIS font and colors - no custom CSS
+        font = self.status_label.font()
+        font.setItalic(True)
+        font.setPointSize(9)
+        self.status_label.setFont(font)
+        
+        # Set initial palette color
+        palette = self.status_label.palette()
+        palette.setColor(self.status_label.foregroundRole(), QColor(102, 102, 102))  # Gray
+        self.status_label.setPalette(palette)
+        
+        # Add spacing without CSS
+        self.status_label.setContentsMargins(5, 0, 0, 0)
+        
+        status_layout.addWidget(self.status_indicator)
+        status_layout.addWidget(self.status_label)
+        config_layout.addRow("Status:", status_layout)
+        
+        # Buttons
+        button_layout = QHBoxLayout()
+        
+        # Save config button
+        save_btn = QPushButton("Save Config")
+        save_btn.clicked.connect(self.save_config)
+        button_layout.addWidget(save_btn)
+        
+        # Load config button
+        load_btn = QPushButton("Load Config")
+        load_btn.clicked.connect(self.load_config)
+        button_layout.addWidget(load_btn)
+        
+        # Test connection button
+        test_btn = QPushButton("Test Connection")
+        test_btn.clicked.connect(self.test_connection)
+        button_layout.addWidget(test_btn)
+        
+        # Add stretch to push Help button to the right
+        button_layout.addStretch()
+        
+        # Help button - separated to the right
+        help_btn = QPushButton("Help")
+        help_btn.clicked.connect(self.show_help)
+        button_layout.addWidget(help_btn)
+        config_layout.addRow("", button_layout)
+        
+        # Finalize the group box and main layout
+        config_group.setLayout(config_layout)
+        layout.addWidget(config_group)
+        
+        # Set the main layout for the widget
+        self.setLayout(layout)
+        
+        # Auto-load configuration on startup
+        self.auto_load_config()
+        
+    def auto_load_config(self):
+        """Automatically load configuration on widget initialization"""
+        try:
+            config_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), 
+                "transformer_postgresql.json"
+            )
+            
+            if os.path.exists(config_file):
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                
+                # Load configuration into UI fields silently
+                if "host" in config:
+                    self.host_edit.setText(config["host"])
+                if "port" in config:
+                    self.port_edit.setValue(config["port"])
+                if "database" in config:
+                    self.database_edit.setText(config["database"])
+                if "username" in config:
+                    self.username_edit.setText(config["username"])
+                if "password" in config:
+                    self.password_edit.setText(config["password"])
+                
+                QgsMessageLog.logMessage(
+                    f"PostgreSQL configuration auto-loaded from {os.path.basename(config_file)}", 
+                    "Transformer", 
+                    Qgis.Info
+                )
+                
+                # Auto-test connection after loading config
+                QTimer.singleShot(500, self.auto_test_connection)
+                
+        except Exception as e:
+            # Silent fail for auto-load - don't bother user with startup errors
+            pass
+    
+    def auto_test_connection(self):
+        """Automatically test connection after config is loaded"""
+        try:
+            if (self.host_edit.text() and 
+                self.database_edit.text() and 
+                self.username_edit.text() and 
+                self.password_edit.text()):
+                
+                self.test_connection(silent=True)
+                
+        except Exception:
+            # Silent fail for auto-test
+            pass
+        
+    def update_status(self, status):
+        """Update connection status indicator
+        
+        Args:
+            status (str): 'connected' (green), 'error' (orange), 'failed' (red), 'not_tested' (gray)
+        """
+        # Use direct stylesheet approach for reliable color display
+        if status == "connected":
+            self.status_indicator.setText("●")
+            self.status_label.setText("Connected")
+            self.status_indicator.setStyleSheet("color: #28a745; font-size: 14px; font-weight: bold;")  # Green
+            self.status_label.setStyleSheet("color: #28a745;")
+        elif status == "error":
+            self.status_indicator.setText("●")
+            self.status_label.setText("Connection issue")
+            self.status_indicator.setStyleSheet("color: #ff8c00; font-size: 14px; font-weight: bold;")  # Orange
+            self.status_label.setStyleSheet("color: #ff8c00;")
+        elif status == "failed":
+            self.status_indicator.setText("●")
+            self.status_label.setText("Invalid credentials")
+            self.status_indicator.setStyleSheet("color: #dc3545; font-size: 14px; font-weight: bold;")  # Red
+            self.status_label.setStyleSheet("color: #dc3545;")
+        else:  # not_tested
+            self.status_indicator.setText("●")
+            self.status_label.setText("Not tested")
+            self.status_indicator.setStyleSheet("color: #999999; font-size: 14px; font-weight: bold;")  # Gray
+            self.status_label.setStyleSheet("color: #999999;")
+    
+    def test_connection(self, silent=False):
+        """Test PostgreSQL connection with minimal UI"""
+        try:
+            if not POSTGRESQL_AVAILABLE:
+                if not silent:
+                    QgsMessageLog.logMessage("psycopg2 is not installed", "Transformer", Qgis.Warning)
+                self.update_status("failed")
+                return False
+                
+            # Get connection parameters
+            host = self.host_edit.text()
+            port = self.port_edit.value()
+            database = self.database_edit.text()
+            username = self.username_edit.text()
+            password = self.password_edit.text()
+            
+            if not all([host, database, username, password]):
+                if not silent:
+                    QgsMessageLog.logMessage("Please fill in all connection fields", "Transformer", Qgis.Warning)
+                self.update_status("not_tested")
+                return False
+            
+            # Test connection
+            import psycopg2
+            conn = psycopg2.connect(
+                host=host,
+                port=port,
+                database=database,
+                user=username,
+                password=password,
+                connect_timeout=10
+            )
+            conn.close()
+            
+            # Connection successful
+            self.update_status("connected")
+            if not silent:
+                QgsMessageLog.logMessage(
+                    f"PostgreSQL connection established: {database}@{host}:{port} (user: {username})",
+                    "Transformer", 
+                    Qgis.Success
+                )
+            
+            # Auto-load schemas for mapping widget if available
+            self.trigger_schema_refresh()
+            
+            return True
+            
+        except Exception as e:
+            self.update_status("failed")
+            if not silent:
+                QgsMessageLog.logMessage(f"PostgreSQL connection failed: {str(e)}", "Transformer", Qgis.Critical)
+            return False
+
+    def trigger_schema_refresh(self):
+        """Trigger schema refresh in mapping widget after successful connection"""
+        try:
+            # Find the parent PostgreSQL integration widget
+            parent_widget = self.parent()
+            if hasattr(parent_widget, 'mapping_widget'):
+                # Schedule schema refresh after a short delay to allow connection to stabilize
+                QTimer.singleShot(1000, parent_widget.mapping_widget.refresh_schemas)
+        except Exception:
+            # Silent fail - this is just a convenience feature
+            pass
+    
+    def show_help(self):
+        """Show native QGIS help dialog"""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Table Mapping Help")
+        msg.setIcon(QMessageBox.Information)
+        
+        # Native QGIS help text - no HTML styling
+        help_text = """PostgreSQL Table Mapping
+
+Prerequisites:
+• Fill in PostgreSQL connection details
+• Click 'Test Connection' to verify access
+• Use 'Refresh Schemas' to load database schemas
+
+Mapping Configuration:
+• Transformed: QGIS layer name to export
+• Schema: destination PostgreSQL schema
+• Table: target table name
+
+Workflow:
+• Use 'Add Mapping' to create new mappings
+• Use 'Save Current' to store configurations
+• Auto-mapping loads saved configurations automatically"""
+        
+        msg.setText(help_text)
+        msg.setTextFormat(Qt.PlainText)
+        msg.setStandardButtons(QMessageBox.Ok)
+        msg.resize(500, 400)
+        msg.exec_()
+
+    def save_config(self):
+        """Save PostgreSQL connection configuration to file"""
+        try:
+            config = {
+                "host": self.host_edit.text(),
+                "port": self.port_edit.value(),
+                "database": self.database_edit.text(),
+                "username": self.username_edit.text(),
+                "password": self.password_edit.text(),  # Save password for convenience
+            }
+            
+            config_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), 
+                "transformer_postgresql.json"
+            )
+            
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2)
+            
+            QgsMessageLog.logMessage(
+                f"PostgreSQL configuration saved to {os.path.basename(config_file)}", 
+                "Transformer", 
+                Qgis.Success
+            )
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"Error saving PostgreSQL configuration: {str(e)}", 
+                "Transformer", 
+                Qgis.Critical
+            )
+    
+    def load_config(self):
+        """Load PostgreSQL connection configuration from file"""
+        try:
+            config_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), 
+                "transformer_postgresql.json"
+            )
+            
+            if not os.path.exists(config_file):
+                QgsMessageLog.logMessage(
+                    "No saved PostgreSQL configuration found", 
+                    "Transformer", 
+                    Qgis.Warning
+                )
+                return
+            
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            
+            # Load configuration into UI fields
+            if "host" in config:
+                self.host_edit.setText(config["host"])
+            if "port" in config:
+                self.port_edit.setValue(config["port"])
+            if "database" in config:
+                self.database_edit.setText(config["database"])
+            if "username" in config:
+                self.username_edit.setText(config["username"])
+            if "password" in config:
+                self.password_edit.setText(config["password"])
+            
+            QgsMessageLog.logMessage(
+                f"PostgreSQL configuration loaded from {os.path.basename(config_file)}", 
+                "Transformer", 
+                Qgis.Success
+            )
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"Error loading PostgreSQL configuration: {str(e)}", 
+                "Transformer", 
+                Qgis.Critical
+            )
+
+class PostgreSQLMappingWidget(QWidget):
+    """Widget pour le mapping des couches vers PostgreSQL"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.config_widget = None
+        self.available_schemas = []
+        self.available_tables = {}
+        self.auto_connect = True  # Enable auto-connect functionality
+        self.setup_ui()
+        
+        # Essayer de charger automatiquement les mappings existants au démarrage
+        self.auto_load_existing_mappings()
+    
+    def setup_ui(self):
+        """Setup native QGIS mapping interface"""
+        layout = QVBoxLayout(self)
+        
+        # Title with native QGIS font
+        title = QLabel("Layer to PostgreSQL")
+        title_font = title.font()
+        title_font.setBold(True)
+        title_font.setPointSize(12)
+        title.setFont(title_font)
+        layout.addWidget(title)
+        
+        # Toolbar
+        toolbar_layout = QHBoxLayout()
+        
+        # Add mapping button
+        add_btn = QPushButton("Add Mapping")
+        add_btn.clicked.connect(self.add_mapping)
+        toolbar_layout.addWidget(add_btn)
+        
+        # Remove mapping button
+        remove_btn = QPushButton("Remove Selected")
+        remove_btn.clicked.connect(self.remove_selected)
+        toolbar_layout.addWidget(remove_btn)
+        
+        # Refresh schemas button
+        refresh_btn = QPushButton("Refresh Schemas")
+        refresh_btn.clicked.connect(self.refresh_schemas)
+        toolbar_layout.addWidget(refresh_btn)
+        
+        # Add separator
+        toolbar_layout.addWidget(QWidget())  # Spacer
+        
+        # Save Mapping button
+        save_mapping_btn = QPushButton("Save Mapping")
+        save_mapping_btn.clicked.connect(self.save_mappings)
+        toolbar_layout.addWidget(save_mapping_btn)
+        
+        # Load Mapping button
+        load_mapping_btn = QPushButton("Load Mapping")
+        load_mapping_btn.clicked.connect(self.load_mappings)
+        toolbar_layout.addWidget(load_mapping_btn)
+        
+        # Export PostgreSQL button
+        export_btn = QPushButton("Export PostgreSQL")
+        export_btn.clicked.connect(self.export_to_postgresql)
+        toolbar_layout.addWidget(export_btn)
+        
+        toolbar_layout.addStretch()
+        layout.addLayout(toolbar_layout)
+        
+        # Mapping table
+        self.mapping_table = QTableWidget()
+        self.mapping_table.setColumnCount(3)
+        self.mapping_table.setHorizontalHeaderLabels(["QGIS Layer", "Schema", "Table"])
+        
+        # Set column widths
+        header = self.mapping_table.horizontalHeader()
+        header.setStretchLastSection(True)
+        
+        layout.addWidget(self.mapping_table)
+    
+    def add_mapping(self):
+        """Ajoute une nouvelle ligne de mapping"""
+        try:
+            row = self.mapping_table.rowCount()
+            self.mapping_table.insertRow(row)
+            
+            # Obtenir les couches du projet
+            layer_names = [""]
+            project = QgsProject.instance()
+            if project:
+                layers = [layer for layer in project.mapLayers().values() if hasattr(layer, 'name')]
+                for layer in layers:
+                    if hasattr(layer, 'name') and layer.name():
+                        layer_names.append(layer.name())
+            
+            layer_combo = QComboBox()
+            layer_combo.addItems(layer_names)
+            self.mapping_table.setCellWidget(row, 0, layer_combo)
+            
+            # Colonne 1: ComboBox avec les schémas PostgreSQL
+            schema_combo = QComboBox()
+            schema_combo.setEditable(True)
+            
+            # Charger les schémas si possible
+            if not self.available_schemas and self.config_widget:
+                try:
+                    self.refresh_schemas()
+                except Exception:
+                    pass  # Ignore les erreurs de connexion
+            
+            # Remplir la combobox des schémas
+            schema_items = [""]
+            if self.available_schemas:
+                schema_items.extend(self.available_schemas)
+            else:
+                schema_items.append("public")
+            
+            schema_combo.addItems(schema_items)
+            self.mapping_table.setCellWidget(row, 1, schema_combo)
+            
+            # Colonne 2: ComboBox avec les tables (avec option de création)
+            table_combo = QComboBox()
+            table_combo.setEditable(True)
+            table_combo.addItems(["", "+ Nouvelle table..."])
+            self.mapping_table.setCellWidget(row, 2, table_combo)
+            
+            # Connecter les signaux
+            # 1. Signal de changement de schéma pour mettre à jour les tables
+            schema_combo.currentTextChanged.connect(lambda text, r=row: self.update_table_combo_simple(r, text))
+            # 2. Signal de création de nouvelle table
+            table_combo.currentTextChanged.connect(lambda text, r=row: self.handle_table_selection(r, text))
+            
+            QgsMessageLog.logMessage(f"Nouveau mapping ajouté à la ligne {row}", "Transformer", Qgis.Info)
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Erreur lors de l'ajout du mapping: {str(e)}", "Transformer", Qgis.Critical)
+            QMessageBox.critical(self, "Erreur", f"Impossible d'ajouter le mapping:\n{str(e)}")
+    
+    def remove_selected(self):
+        """Supprime le mapping sélectionné"""
+        current_row = self.mapping_table.currentRow()
+        if current_row >= 0:
+            self.mapping_table.removeRow(current_row)
+    
+    def handle_table_selection(self, row, text):
+        """Gère la sélection de table, incluant la création de nouvelles tables"""
+        try:
+            if text == "+ Nouvelle table...":
+                table_name, ok = QInputDialog.getText(
+                    self, 
+                    "Nouvelle table", 
+                    "Nom de la nouvelle table:",
+                    text=""
+                )
+                
+                if ok and table_name.strip():
+                    table_name = table_name.strip()
+                    
+                    # Mettre à jour la combobox avec le nom de la nouvelle table
+                    table_combo = self.mapping_table.cellWidget(row, 2)
+                    if table_combo:
+                        # Sauvegarder l'état actuel
+                        current_items = [table_combo.itemText(i) for i in range(table_combo.count())]
+                        
+                        # Ajouter la nouvelle table si elle n'existe pas
+                        if table_name not in current_items:
+                            table_combo.insertItem(table_combo.count() - 1, table_name)  # Insérer avant "+ Nouvelle table..."
+                        
+                        # Sélectionner la nouvelle table
+                        table_combo.setCurrentText(table_name)
+                        
+                        QgsMessageLog.logMessage(f"Nouvelle table '{table_name}' ajoutée au mapping ligne {row}", "Transformer", Qgis.Info)
+                else:
+                    # Annuler - remettre à vide
+                    table_combo = self.mapping_table.cellWidget(row, 2)
+                    if table_combo:
+                        table_combo.setCurrentIndex(0)  # Remettre à l'index vide
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Error in handle_table_selection: {str(e)}", "Transformer", Qgis.Warning)
+    
+    def update_table_combo_simple(self, row, schema_name):
+        """Met à jour les tables disponibles selon le schéma sélectionné"""
+        try:
+            table_combo = self.mapping_table.cellWidget(row, 2)
+            if not table_combo or not schema_name:
+                return
+            
+            # If tables for this schema are already available, use them
+            if schema_name in self.available_tables:
+                current_text = table_combo.currentText()
+                table_combo.clear()
+                table_combo.addItem("")  # Option vide
+                
+                # Ajouter toutes les tables existantes
+                for table in self.available_tables[schema_name]:
+                    table_combo.addItem(table)
+                
+                # Ajouter l'option pour nouvelle table à la fin
+                table_combo.addItem("+ Nouvelle table...")
+                
+                # Restaurer la sélection si possible
+                if current_text in self.available_tables[schema_name] or current_text == "":
+                    table_combo.setCurrentText(current_text)
+                elif current_text == "+ Nouvelle table...":
+                    table_combo.setCurrentText("+ Nouvelle table...")
+                    
+                log_success(f"Tables chargées pour schéma '{schema_name}': {len(self.available_tables[schema_name])} tables disponibles")
+            else:
+                # Chargement automatique des tables pour ce schéma
+                log_info(f"Chargement automatique des tables pour le schéma '{schema_name}'...")
+                self.load_tables_for_schema(schema_name, table_combo)
+                
+        except Exception as e:
+            log_critical(f"Erreur mise à jour combo tables: {str(e)}")
+    
+    def refresh_schemas(self):
+        """Rafraîchit la liste des schémas et tables PostgreSQL (silencieux)"""
+        if not POSTGRESQL_AVAILABLE:
+            QgsMessageLog.logMessage("psycopg2 is not installed", "Transformer", Qgis.Warning)
+            return
+        
+        if not self.config_widget:
+            QgsMessageLog.logMessage("No configuration widget available", "Transformer", Qgis.Warning)
+            return
+        
+        try:
+            # Paramètres de connexion depuis le widget de config
+            conn_params = {
+                'host': self.config_widget.host_edit.text() or 'localhost',
+                'port': self.config_widget.port_edit.value(),
+                'database': self.config_widget.database_edit.text(),
+                'user': self.config_widget.username_edit.text(),
+                'password': self.config_widget.password_edit.text(),
+                'connect_timeout': 5  # Timeout pour éviter les attentes trop longues
+            }
+            
+            # Validation des paramètres essentiels
+            if not conn_params['database']:
+                QgsMessageLog.logMessage("Database name is required", "Transformer", Qgis.Warning)
+                return
+            
+            if not conn_params['user']:
+                QgsMessageLog.logMessage("Username is required", "Transformer", Qgis.Warning)
+                return
+            
+            # Connexion à PostgreSQL
+            conn = psycopg2.connect(**conn_params)
+            cursor = conn.cursor()
+            
+            # Récupérer TOUS les schémas (sans LIMIT)
+            cursor.execute("""
+                SELECT schema_name 
+                FROM information_schema.schemata 
+                WHERE schema_name NOT IN ('information_schema', 'pg_catalog')
+                  AND schema_name NOT LIKE 'pg_temp%'
+                  AND schema_name NOT LIKE 'pg_toast%'
+                ORDER BY schema_name
+            """)
+            schemas = [row[0] for row in cursor.fetchall()]
+            
+            # Pour les tables, ne charger que si nécessaire (pas automatiquement)
+            tables_by_schema = {}
+            # On n'initialise que 'public' par défaut
+            if 'public' in schemas:
+                cursor.execute("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+                    ORDER BY table_name
+                """)
+                tables_by_schema['public'] = [row[0] for row in cursor.fetchall()]
+                
+                # Récupérer aussi les vues pour le schéma public
+                cursor.execute("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_type = 'VIEW'
+                    ORDER BY table_name
+                """)
+                views = [row[0] for row in cursor.fetchall()]
+                if views:
+                    tables_by_schema['public'].extend([f"[Vue] {view}" for view in views])
+            
+            cursor.close()
+            conn.close()
+            
+            # Stocker les résultats
+            self.available_schemas = schemas
+            self.available_tables = tables_by_schema
+            
+            # Log détaillé des résultats
+            schemas_info = f"Connected to {conn_params['database']}@{conn_params['host']} - Loaded {len(schemas)} schemas"
+            if 'public' in schemas:
+                tables_count = len(tables_by_schema.get('public', []))
+                schemas_info += f" (public: {tables_count} tables)"
+            log_success(schemas_info)
+            
+            # Mettre à jour les ComboBox dans le tableau si nécessaire
+            self.update_all_schema_combos()
+            
+            # Charger automatiquement les mappings existants maintenant que la connexion est établie
+            self.auto_load_existing_mappings()
+            
+            # Notify main dialog to update stats
+            try:
+                parent_dialog = self.parent()
+                while parent_dialog and not hasattr(parent_dialog, 'update_statistics'):
+                    parent_dialog = parent_dialog.parent()
+                if parent_dialog and hasattr(parent_dialog, 'update_statistics'):
+                    parent_dialog.update_statistics()
+            except Exception:
+                pass  # Ignore notification errors
+                
+        except psycopg2.Error as e:
+            log_critical(f"Failed to refresh schemas: {str(e)}")
+        except Exception as e:
+            log_critical(f"Schema refresh error: {str(e)}")
+    
+    def auto_load_existing_mappings(self):
+        """Charge automatiquement les mappings pour les layers existants dans QGIS"""
+        try:
+            # Path to the detailed mappings file
+            plugin_dir = os.path.dirname(__file__)
+            config_path = os.path.join(plugin_dir, "postgresql_detailed_mappings.json")
+            
+            if not os.path.exists(config_path):
+                return
+            
+            # Load all mappings
+            with open(config_path, 'r') as f:
+                all_mappings = json.load(f)
+            
+            if not all_mappings:
+                return
+            
+            # Get current QGIS project layers
+            project = QgsProject.instance()
+            layer_names = [layer.name() for layer in project.mapLayers().values()]
+            
+            loaded_count = 0
+            for mapping in all_mappings:
+                layer_name = mapping.get("layer_name", "")
+                schema = mapping.get("schema", "")
+                table = mapping.get("table", "")
+                
+                # Check if this layer exists in QGIS and is not already mapped
+                if layer_name in layer_names:
+                    # Check if mapping already exists in table
+                    already_mapped = False
+                    for row in range(self.mapping_table.rowCount()):
+                        layer_widget = self.mapping_table.cellWidget(row, 0)
+                        if layer_widget and hasattr(layer_widget, 'currentText'):
+                            if layer_widget.currentText() == layer_name:
+                                already_mapped = True
+                                break
+                    
+                    if not already_mapped:
+                        # Add this mapping to the table
+                        row = self.mapping_table.rowCount()
+                        self.mapping_table.insertRow(row)
+                        
+                        # Layer combo
+                        layer_combo = QComboBox()
+                        layer_combo.setEditable(True)
+                        layer_combo.addItem("")
+                        layer_combo.addItems(layer_names)
+                        layer_combo.setCurrentText(layer_name)
+                        self.mapping_table.setCellWidget(row, 0, layer_combo)
+                        
+                        # Schema combo
+                        schema_combo = QComboBox()
+                        schema_combo.setEditable(True)
+                        schema_combo.addItem("")
+                        if self.available_schemas:
+                            schema_combo.addItems(self.available_schemas)
+                        schema_combo.setCurrentText(schema)
+                        schema_combo.currentTextChanged.connect(
+                            lambda text, r=row: self.on_schema_changed(r, text)
+                        )
+                        self.mapping_table.setCellWidget(row, 1, schema_combo)
+                        
+                        # Table combo
+                        table_combo = QComboBox()
+                        table_combo.setEditable(True)
+                        table_combo.addItem("")
+                        
+                        # Load tables for this schema if necessary
+                        if schema and schema not in self.available_tables:
+                            self.load_tables_for_schema(schema)
+                        
+                        # Add available tables
+                        if schema in self.available_tables:
+                            table_combo.addItems(self.available_tables[schema])
+                        
+                        table_combo.setCurrentText(table)
+                        self.mapping_table.setCellWidget(row, 2, table_combo)
+                        
+                        loaded_count += 1
+            
+            if loaded_count > 0:
+                QgsMessageLog.logMessage(
+                    f"Auto-loaded {loaded_count} existing mapping(s) for layers in current project", 
+                    "Transformer", 
+                    Qgis.Success
+                )
+                
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"Error auto-loading existing mappings: {str(e)}", 
+                "Transformer", 
+                Qgis.Warning
+            )
+    
+    def update_all_schema_combos(self):
+        """Update all schema ComboBoxes in table w/ complete schema list"""
+        if not self.available_schemas:
+            return
+            
+        try:
+            # Browse all table rows
+            for row in range(self.mapping_table.rowCount()):
+                # Get schema ComboBox for this row
+                schema_combo = self.mapping_table.cellWidget(row, 1)
+                if not schema_combo:
+                    continue
+                    
+                # Save current selection
+                current_schema = schema_combo.currentText()
+                
+                # Determine ComboBox type and update accordingly
+                if isinstance(schema_combo, SearchableComboBox):
+                    # For ComboBoxes with advanced search
+                    schema_combo.clear()
+                    schema_combo.addItems(self.available_schemas)
+                    
+                    # Configure completion model
+                    if hasattr(schema_combo, 'completer'):
+                        model = QStringListModel(self.available_schemas)
+                        schema_combo.completer.setModel(model)
+                else:
+                    # Pour les ComboBox standard
+                    schema_combo.clear()
+                    schema_combo.addItems(self.available_schemas)
+                
+                # Restaurer la sélection précédente si possible
+                if current_schema and current_schema in self.available_schemas:
+                    schema_combo.setCurrentText(current_schema)
+                elif "public" in self.available_schemas:
+                    # Select 'public' by default
+                    schema_combo.setCurrentText("public")
+            
+            QgsMessageLog.logMessage(
+                f"All schema ComboBoxes updated with {len(self.available_schemas)} schemas",
+                "Transformer",
+                Qgis.Info
+            )
+                
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"Error updating schema ComboBoxes: {str(e)}",
+                "Transformer",
+                Qgis.Warning
+            )
+    
+    
+    def load_tables_for_schema(self, schema_name, target_combo=None):
+        """Load tables for a specific schema
+        
+        Args:
+            schema_name (str): PostgreSQL schema name
+            target_combo (QComboBox, optional): ComboBox to update with loaded tables. None if only loading in memory.
+        """
+        if not POSTGRESQL_AVAILABLE:
+            QgsMessageLog.logMessage(f"PostgreSQL not available. psycopg2 module missing.", "Transformer", Qgis.Warning)
+            return
+        
+        if not self.config_widget:
+            QgsMessageLog.logMessage(f"PostgreSQL configuration not available.", "Transformer", Qgis.Warning)
+            return
+            
+        if not schema_name:
+            QgsMessageLog.logMessage(f"Empty schema name.", "Transformer", Qgis.Warning)
+            return
+            
+        try:
+            # Paramètres de connexion
+            conn_params = {
+                'host': self.config_widget.host_edit.text() or 'localhost',
+                'port': self.config_widget.port_edit.value(),
+                'database': self.config_widget.database_edit.text(),
+                'user': self.config_widget.username_edit.text(),
+                'password': self.config_widget.password_edit.text(),
+                'connect_timeout': 5
+            }
+            
+            # Validation minimale
+            if not conn_params['database'] or not conn_params['user']:
+                return
+            
+            # Connexion
+            conn = psycopg2.connect(**conn_params)
+            cursor = conn.cursor()
+            
+            # Récupérer TOUTES les tables pour ce schéma (pas de LIMIT)
+            cursor.execute("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = %s AND table_type = 'BASE TABLE'
+                ORDER BY table_name
+            """, (schema_name,))
+            
+            tables = [row[0] for row in cursor.fetchall()]
+            
+            # Récupérer aussi les vues (utiles pour intégration)
+            cursor.execute("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = %s AND table_type = 'VIEW'
+                ORDER BY table_name
+            """, (schema_name,))
+            
+            views = [row[0] for row in cursor.fetchall()]
+            if views:
+                # Ajouter les vues avec un préfixe pour les distinguer
+                tables.extend([f"[Vue] {view}" for view in views])
+            
+            cursor.close()
+            conn.close()
+            
+            # Stocker les tables
+            self.available_tables[schema_name] = tables
+            
+            # Mettre à jour le combo si fourni
+            if target_combo:
+                # Pour les ComboBox standard
+                current_text = target_combo.currentText()
+                target_combo.clear()
+                
+                # Ajouter option vide en premier
+                target_combo.addItem("")
+                
+                # Ajouter toutes les tables existantes
+                for table in tables:
+                    target_combo.addItem(table)
+                
+                # Ajouter l'option nouvelle table à la fin
+                target_combo.addItem("+ Nouvelle table...")
+                
+                # Restaurer la sélection si possible
+                if current_text in tables or current_text == "":
+                    target_combo.setCurrentText(current_text)
+                elif current_text == "+ Nouvelle table...":
+                    target_combo.setCurrentText("+ Nouvelle table...")
+            
+            QgsMessageLog.logMessage(
+                f"Tables chargées pour le schéma '{schema_name}': {len(tables)} tables/vues disponibles", 
+                "Transformer", 
+                Qgis.Info
+            )
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Error loading tables for schema '{schema_name}': {str(e)}", "Transformer", Qgis.Critical)
+    
+
+    
+    def handle_table_creation(self, table_name):
+        """Gère la création d'une nouvelle table dans PostgreSQL"""
+        try:
+            # Récupérer le schéma courant
+            current_row = self.mapping_table.currentRow()
+            schema = 'public'  # défaut
+            
+            if current_row >= 0:
+                schema_combo = self.mapping_table.cellWidget(current_row, 1)
+                if schema_combo and schema_combo.currentText().strip():
+                    schema = schema_combo.currentText().strip()
+            
+            # Récupérer la couche source pour analyser sa structure
+            layer_combo = self.mapping_table.cellWidget(current_row, 0)
+            if not layer_combo:
+                QgsMessageLog.logMessage("Aucune couche source sélectionnée", "Transformer", Qgis.Warning)
+                return
+                
+            layer_name = layer_combo.currentText().strip()
+            if not layer_name:
+                QgsMessageLog.logMessage("Nom de couche vide", "Transformer", Qgis.Warning)
+                return
+                
+            # Traitement de la création de table pour la couche sélectionnée
+            QgsMessageLog.logMessage(f"Création de table '{table_name}' pour la couche '{layer_name}' dans le schéma '{schema}'", "Transformer", Qgis.Info)
+            
+            # Log du résultat
+            QgsMessageLog.logMessage(f"Table creation handled for {table_name}", "Transformer", Qgis.Info)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Auto Map Error", f"Failed to auto-map: {str(e)}")
+    
+    def get_current_mappings(self):
+        """Récupère les mappings actuels depuis les ComboBox"""
+        mappings = []
+        row_count = self.mapping_table.rowCount()
+        
+        for row in range(row_count):
+            # Récupérer les valeurs des ComboBox
+            layer_combo = self.mapping_table.cellWidget(row, 0)
+            schema_combo = self.mapping_table.cellWidget(row, 1)
+            table_combo = self.mapping_table.cellWidget(row, 2)
+            
+            if (isinstance(layer_combo, QComboBox) and 
+                isinstance(schema_combo, QComboBox) and 
+                isinstance(table_combo, QComboBox)):
+                
+                transformed = layer_combo.currentText().strip()
+                schema = schema_combo.currentText().strip()
+                table = table_combo.currentText().strip()
+                
+                # Vérifier que toutes les valeurs sont renseignées (et exclure les valeurs spéciales)
+                if (transformed and schema and table and 
+                    table != "+ Nouvelle table..." and
+                    transformed != "" and schema != ""):
+                    mapping = {
+                        "transformed": transformed,
+                        "schema": schema,
+                        "table": table
+                    }
+                    mappings.append(mapping)
+                
+        return mappings
+    
+    def export_to_postgresql(self):
+        """Export vers PostgreSQL avec vérifications de compatibilité"""
+        try:
+            mappings = self.get_current_mappings()
+            
+            if not mappings:
+                QMessageBox.warning(self, "Warning", "Aucun mapping défini")
+                return
+            
+            # Vérification de la disponibilité de PostgreSQL
+            if not POSTGRESQL_AVAILABLE:
+                QMessageBox.critical(self, "Erreur", "psycopg2 n'est pas installé")
+                return
+                
+            # Vérification de la configuration PostgreSQL
+            if not self.config_widget:
+                QMessageBox.critical(self, "Erreur", "Configuration PostgreSQL non disponible")
+                return
+                
+            # Analyser la compatibilité de chaque mapping
+            QgsMessageLog.logMessage("Analyse de compatibilité en cours...", "Transformer", Qgis.Info)
+            compatibility_info = []
+            failed_mappings = []
+            
+            for mapping in mappings:
+                layer_name = mapping['transformed']
+                schema = mapping['schema']
+                table = mapping['table']
+                
+                # Analyser ce mapping spécifique
+                table_compatibility = self._analyze_table_compatibility(layer_name, schema, table)
+                if table_compatibility:
+                    compatibility_info.append(table_compatibility)
+                    QgsMessageLog.logMessage(f"Table {schema}.{table} ready for integration", "Transformer", Qgis.Success)
+                else:
+                    failed_mappings.append(f"{schema}.{table} (layer: {layer_name})")
+                    QgsMessageLog.logMessage(f"Failed to prepare table {schema}.{table} for layer {layer_name}", "Transformer", Qgis.Warning)
+                    
+            if not compatibility_info:
+                # Fournir des détails sur les échecs
+                if failed_mappings:
+                    error_details = "\n".join([f"• {mapping}" for mapping in failed_mappings])
+                    QMessageBox.warning(self, "Integration Error", 
+                                      f"Failed to prepare tables for integration:\n\n{error_details}\n\n"
+                                      "Possible causes:\n"
+                                      "• Layer not found in QGIS project\n"
+                                      "• PostgreSQL connection failed\n"
+                                      "• Insufficient database permissions\n"
+                                      "• Invalid schema/table names")
+                else:
+                    QMessageBox.warning(self, "No Mappings", "No table mappings are configured for export.")
+                return
+                
+            # Vérifier les préférences utilisateur pour la fenêtre de confirmation
+            # Générer une clé unique pour ce set de mappings
+            mapping_key = self._generate_mapping_key(compatibility_info)
+            show_confirmation = self._should_show_confirmation_for_mapping(mapping_key)
+            
+            if show_confirmation:
+                # Afficher la fenêtre de mapping interactif avec les détails
+                available_schemas = list(self.available_schemas) if self.available_schemas else []
+                confirm_dialog = IntegrationConfirmationDialog(compatibility_info, available_schemas, self)
+                
+                # Stocker la référence pour la sauvegarde des mappings
+                self.confirmation_dialog = confirm_dialog
+                
+                if confirm_dialog.exec() != QDialog.Accepted:
+                    QgsMessageLog.logMessage("Intégration annulée par l'utilisateur", "Transformer", Qgis.Info)
+                    # Nettoyer la référence
+                    self.confirmation_dialog = None
+                    return
+                    
+                # Save the preference if the user checked "Do not show again"
+                if confirm_dialog.dont_show_again:
+                    self._save_confirmation_preference_for_mapping(mapping_key, False)
+                    
+                # Extract and store temporarily the detailed mappings
+                temp_detailed_mappings = []
+                try:
+                    for tab_index in range(confirm_dialog.tabs.count()):
+                        tab_widget = confirm_dialog.tabs.widget(tab_index)
+                        tab_text = confirm_dialog.tabs.tabText(tab_index)
+                        
+                        if tab_widget:
+                            # Select temporarily this tab to extract its data
+                            current_tab = confirm_dialog.tabs.currentIndex()
+                            confirm_dialog.tabs.setCurrentIndex(tab_index)
+                            
+                            # Extract mapping information from the dialog
+                            complete_info = confirm_dialog.get_complete_mapping_info()
+                            
+                            # Restore the previously selected tab
+                            confirm_dialog.tabs.setCurrentIndex(current_tab)
+                            
+                            # Find the base mapping corresponding to this tab
+                            base_mapping = None
+                            for mapping in mappings:
+                                if mapping['transformed'] in tab_text:
+                                    base_mapping = mapping
+                                    break
+                            
+                            if base_mapping:
+                                detailed_mapping = {
+                                    "layer_name": base_mapping['transformed'],
+                                    "schema": base_mapping['schema'],
+                                    "table": base_mapping['table'],
+                                    "field_mappings": complete_info.get('field_mapping', {}),
+                                    "forced_types": complete_info.get('forced_types', {}),
+                                    "custom_fields": complete_info.get('custom_fields', {}),
+                                    "timestamp": datetime.now().isoformat()
+                                }
+                                temp_detailed_mappings.append(detailed_mapping)
+                                
+                                # Log for debug
+                                QgsMessageLog.logMessage(
+                                    f"Mapping detailed extracted for {base_mapping['transformed']}: "
+                                    f"{len(complete_info.get('field_mapping', {}))} fields, "
+                                    f"{len(complete_info.get('forced_types', {}))} forced types",
+                                    "Transformer", Qgis.Info
+                                )
+                                 
+                    # Stocker dans le cache temporaire pour la sauvegarde
+                    self._temp_detailed_mappings = temp_detailed_mappings
+                    QgsMessageLog.logMessage(f"Stockage temporaire de {len(temp_detailed_mappings)} mappings détaillés", "Transformer", Qgis.Info)
+                    
+                except Exception as e:
+                    QgsMessageLog.logMessage(f"Erreur lors de l'extraction des mappings détaillés: {str(e)}", "Transformer", Qgis.Warning)
+                    self._temp_detailed_mappings = []
+                        
+            # Procéder à l'intégration réelle
+            success_count = 0
+            error_count = 0
+            
+            for table_info in compatibility_info:
+                try:
+                    result = self._perform_integration(table_info)
+                    if result:
+                        success_count += 1
+                    else:
+                        error_count += 1
+                        log_critical(f"Integration failed for table {table_info['schema']}.{table_info['table']}")
+                except Exception as e:
+                    error_count += 1
+                    log_critical(f"Integration error for table {table_info['schema']}.{table_info['table']}: {str(e)}")
+                    
+            # Save mappings for reuse (detailed mappings are in _temp_detailed_mappings)
+            self.save_mappings()
+            
+            # Clean temporary references
+            if hasattr(self, 'confirmation_dialog'):
+                self.confirmation_dialog = None
+            if hasattr(self, '_temp_detailed_mappings'):
+                self._temp_detailed_mappings = []
+                
+            # Final report in plugin Activity Log
+            if success_count > 0:
+                log_success(f"PostgreSQL integration completed: {success_count} table(s) integrated successfully")
+                if error_count > 0:
+                    log_warning(f"Integration completed with {error_count} error(s)")
+            elif error_count > 0:
+                log_critical(f"PostgreSQL integration failed: {error_count} error(s)")
+            else:
+                log_warning("No PostgreSQL integration performed")
+            
+        except Exception as e:
+            log_critical(f"PostgreSQL export error: {str(e)}")
+            QMessageBox.critical(self, "Export error", f"Export failed: {str(e)}")
+    
+    def _perform_integration(self, table_info):
+        """Perform the actual table integration with detailed ETL logging"""
+        try:
+            layer_name = table_info['layer']
+            schema = table_info['schema']
+            table = table_info['table']
+            
+            # Start integration with clear table identification
+            log_info(f"Integrating table {schema}.{table} from layer '{layer_name}'")
+            
+            # Get the QGIS source layer
+            project = QgsProject.instance()
+            source_layer = None
+            
+            for layer in project.mapLayers().values():
+                if layer.name() == layer_name:
+                    source_layer = layer
+                    break
+                    
+            if not source_layer:
+                log_critical(f"Source layer '{layer_name}' not found in project")
+                return False
+                
+            if not isinstance(source_layer, QgsVectorLayer):
+                log_critical(f"Layer '{layer_name}' is not a vector layer")
+                return False
+            
+            # Get source layer details for final summary
+            feature_count = source_layer.featureCount()
+            field_count = len(source_layer.fields())
+            geom_type = QgsWkbTypes.geometryDisplayString(source_layer.geometryType())
+            
+            # Connect to PostgreSQL
+            if not self.config_widget:
+                log_critical("PostgreSQL configuration not available")
+                return False
+                
+            conn_params = {
+                'host': self.config_widget.host_edit.text() or 'localhost',
+                'port': self.config_widget.port_edit.value(),
+                'database': self.config_widget.database_edit.text(),
+                'user': self.config_widget.username_edit.text(),
+                'password': self.config_widget.password_edit.text()
+            }
+            
+            # Test connection before integration
+            try:
+                conn = psycopg2.connect(**conn_params)
+                cursor = conn.cursor()
+            except psycopg2.Error as e:
+                log_critical(f"Database connection failed: {str(e)}")
+                return False
+            
+            # Check if table exists and prepare for data insertion
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = %s AND table_name = %s", (schema, table))
+                table_exists = cursor.fetchone()[0] > 0
+                
+                if table_exists:
+                    # Check current row count
+                    cursor.execute(f'SELECT COUNT(*) FROM "{schema}"."{table}"')
+                    existing_count = cursor.fetchone()[0]
+                else:
+                    log_warning(f"Target table {schema}.{table} does not exist - cannot integrate")
+                    cursor.close()
+                    conn.close()
+                    return False
+                    
+            except psycopg2.Error as e:
+                log_critical(f"Failed to check target table: {str(e)}")
+                cursor.close()
+                conn.close()
+                return False
+            
+            # Begin data transfer (no intermediate log for cleaner output)
+            
+            # Use QgsVectorLayerExporter for efficient bulk data transfer
+            provider_uri = QgsDataSourceUri()
+            provider_uri.setConnection(conn_params['host'], str(conn_params['port']), conn_params['database'], 
+                                     conn_params['user'], conn_params['password'])
+            provider_uri.setDataSource(schema, table, "geom")
+            
+            # Configure export options
+            options = QgsVectorFileWriter.SaveVectorOptions()
+            options.actionOnExistingFile = QgsVectorFileWriter.AppendToLayerNoNewFields
+            options.layerName = table
+            options.overrideGeometryType = source_layer.geometryType()
+            options.forceMulti = False
+            
+            # Execute the export
+            error, error_string = QgsVectorLayerExporter.exportLayer(
+                source_layer,
+                provider_uri.uri(),
+                "postgres",
+                source_layer.crs(),
+                False,  # onlySelected
+                options
+            )
+            
+            if error == QgsVectorLayerExporter.NoError:
+                # Verify the transfer by counting records
+                try:
+                    cursor.execute(f'SELECT COUNT(*) FROM "{schema}"."{table}"')
+                    final_count = cursor.fetchone()[0]
+                    transferred_count = final_count - (existing_count if table_exists else 0)
+                    
+                    log_success(f"Table {schema}.{table}: {transferred_count} records integrated successfully")
+                    
+                    cursor.close()
+                    conn.close()
+                    return True
+                    
+                except psycopg2.Error as e:
+                    log_warning(f"Transfer verification failed: {str(e)}")
+                    cursor.close()
+                    conn.close()
+                    return True  # Transfer probably succeeded even if verification failed
+                    
+            else:
+                log_critical(f"Table {schema}.{table} integration failed: {error_string}")
+                cursor.close()
+                conn.close()
+                return False
+                
+        except Exception as e:
+            log_critical(f"Integration error for {layer_name}: {str(e)}")
+            return False
+    
+    def _analyze_table_compatibility(self, layer_name, schema, table):
+        """Analyse the compatibility between a QGIS layer and a PostgreSQL table"""
+        try:
+            # Get the QGIS layer
+            project = QgsProject.instance()
+            source_layer = None
+            
+            for layer in project.mapLayers().values():
+                if layer.name() == layer_name:
+                    source_layer = layer
+                    break
+                    
+            if not source_layer:
+                QgsMessageLog.logMessage(f"❌ Layer '{layer_name}' not found in QGIS project", "Transformer", Qgis.Warning)
+                return None
+                
+            if not isinstance(source_layer, QgsVectorLayer):
+                QgsMessageLog.logMessage(f"❌ Layer '{layer_name}' is not a vector layer (type: {type(source_layer).__name__})", "Transformer", Qgis.Warning)
+                return None
+                
+            # Informations de base
+            table_info = {
+                'layer': layer_name,  # Clé changée pour correspondre à l'interface
+                'schema': schema,
+                'table': table,
+                'geometry_compatible': False,
+                'crs_compatible': False,
+                'geometry_info': '',
+                'crs_info': '',
+                'matching_fields': 0,
+                'total_fields': 0,
+                'field_details': [],
+                'source_fields': [],
+                'dest_fields': [],
+                'field_matches': {}
+            }
+            
+            # Analyse the geometry and CRS of the source
+            source_geom_type = source_layer.geometryType()
+            source_crs = source_layer.crs()
+            
+            # Connect to PostgreSQL to analyze the target table
+            target_info = self._get_postgresql_table_info(schema, table)
+            
+            # If the table does not exist, it's a new table to create
+            if not target_info:
+                QgsMessageLog.logMessage(f"🔨 Table {schema}.{table} does not exist - creating automatically for layer '{layer_name}'", "Transformer", Qgis.Info)
+                
+                # Create the table based on the source layer structure
+                if self._create_postgresql_table(schema, table, source_layer):
+                    QgsMessageLog.logMessage(f"Table {schema}.{table} created successfully", "Transformer", Qgis.Success)
+                    
+                    # Now retrieve the information of the newly created table
+                    target_info = self._get_postgresql_table_info(schema, table)
+                    
+                    if not target_info:
+                        QgsMessageLog.logMessage(f"❌ Failed to retrieve info for newly created table {schema}.{table}", "Transformer", Qgis.Critical)
+                        return None
+                else:
+                    QgsMessageLog.logMessage(f"❌ Failed to create table {schema}.{table} - check permissions and connection", "Transformer", Qgis.Critical)
+                    return None
+            
+            if target_info:
+                # Comparaison géométrique
+                target_geom_type = target_info.get('geometry_type', '')
+                source_geom_name = QgsWkbTypes.geometryDisplayString(source_geom_type)
+                
+                # Vérification de compatibilité géométrique
+                geom_compatible = self._check_geometry_compatibility(source_layer, target_geom_type)
+                
+                # If the geometry types do not match, recreate the table
+                if not geom_compatible:
+                    QgsMessageLog.logMessage(
+                        f"Incompatibility detected for {schema}.{table}: {source_geom_name} vs {target_geom_type}",
+                        "Transformer", Qgis.Warning
+                    )
+                    QgsMessageLog.logMessage(
+                        f"Suppression et recréation de la table {schema}.{table} avec le bon type géométrique",
+                        "Transformer", Qgis.Info
+                    )
+                    
+                    # Supprimer et recréer la table
+                    if self._drop_and_recreate_table(schema, table, source_layer):
+                        QgsMessageLog.logMessage(f"Table {schema}.{table} recreated successfully", "Transformer", Qgis.Success)
+                        
+                        # Retrieve the new information
+                        target_info = self._get_postgresql_table_info(schema, table)
+                        if target_info:
+                            target_geom_type = target_info.get('geometry_type', '')
+                            geom_compatible = True  # Now compatible
+                    else:
+                        QgsMessageLog.logMessage(f"Failed to recreate table {schema}.{table}", "Transformer", Qgis.Critical)
+                        return None
+                
+                table_info['geometry_compatible'] = geom_compatible
+                table_info['geometry_info'] = f"Source: {source_geom_name}, Cible: {target_geom_type}"
+                    
+                # Comparaison CRS
+                target_srid = target_info.get('srid', 0)
+                source_srid = source_crs.postgisSrid()
+                
+                crs_compatible = (source_srid == target_srid) or target_srid == 0
+                table_info['crs_compatible'] = crs_compatible
+                table_info['crs_info'] = f"Source SRID: {source_srid}, Cible SRID: {target_srid}"
+                
+                # Comparaison fields - detailed format for the mapping interface
+                source_fields_list = []
+                for field in source_layer.fields():
+                    source_fields_list.append({
+                        'name': field.name(),
+                        'type': field.typeName()
+                    })
+                    
+                target_fields = target_info.get('fields', [])
+                
+                table_info['total_fields'] = len(source_fields_list)
+                table_info['source_fields'] = source_fields_list
+                table_info['dest_fields'] = target_fields
+                
+                # Automatic field mapping
+                field_matches = {}
+                matching_fields = 0
+                field_details = []
+                
+                for source_field in source_fields_list:
+                    source_field_name = source_field['name']
+                    # Find a match in the target fields
+                    field_match = self._find_field_match(source_field_name, target_fields)
+                    
+                    if field_match:
+                        matching_fields += 1
+                        field_matches[source_field_name] = field_match['name']
+                        field_details.append({
+                            'source_name': source_field_name,
+                            'compatible': True,
+                            'status': f"Correspond à '{field_match['name']}' ({field_match['type']})"
+                        })
+                    else:
+                        field_details.append({
+                            'source_name': source_field_name,
+                            'compatible': False,
+                            'status': "Aucune correspondance trouvée"
+                        })
+                        
+                table_info['matching_fields'] = matching_fields
+                table_info['field_details'] = field_details
+                table_info['field_matches'] = field_matches
+            else:
+                table_info['geometry_info'] = "Table cible inaccessible"
+                table_info['crs_info'] = "CRS non vérifiable"
+                
+            return table_info
+            
+        except Exception as e:
+            import traceback
+            QgsMessageLog.logMessage(f"Compatibility analysis failed for layer '{layer_name}' -> {schema}.{table}: {str(e)}", "Transformer", Qgis.Critical)
+            QgsMessageLog.logMessage(f"Full error trace: {traceback.format_exc()}", "Transformer", Qgis.Critical)
+            return None
+            
+    def test_mapping_compatibility(self):
+        """Test method to help diagnose PostgreSQL mapping issues"""
+        try:
+            mappings = self.get_current_mappings()
+            QgsMessageLog.logMessage(f"Testing {len(mappings)} configured mappings", "Transformer", Qgis.Info)
+            
+            if not mappings:
+                QgsMessageLog.logMessage("No mappings configured", "Transformer", Qgis.Warning)
+                return
+                
+            project = QgsProject.instance()
+            all_layers = {layer.name(): layer for layer in project.mapLayers().values()}
+            QgsMessageLog.logMessage(f"Available layers in project: {', '.join(all_layers.keys())}", "Transformer", Qgis.Info)
+            
+            for i, mapping in enumerate(mappings, 1):
+                layer_name = mapping['transformed']
+                schema = mapping['schema']
+                table = mapping['table']
+                
+                QgsMessageLog.logMessage(f"[{i}] Testing mapping: '{layer_name}' -> {schema}.{table}", "Transformer", Qgis.Info)
+                
+                # Check if layer exists
+                if layer_name in all_layers:
+                    layer = all_layers[layer_name]
+                    QgsMessageLog.logMessage(f"Layer found: {type(layer).__name__}", "Transformer", Qgis.Info)
+                    
+                    if isinstance(layer, QgsVectorLayer):
+                        QgsMessageLog.logMessage(f"Valid vector layer: {layer.featureCount()} features, {layer.fields().count()} fields", "Transformer", Qgis.Info)
+                    else:
+                        QgsMessageLog.logMessage(f"Not a vector layer: {type(layer).__name__}", "Transformer", Qgis.Warning)
+                else:
+                    QgsMessageLog.logMessage(f"Layer '{layer_name}' not found in project", "Transformer", Qgis.Warning)
+                    
+                # Test PostgreSQL connection
+                try:
+                    table_info = self._get_postgresql_table_info(schema, table)
+                    if table_info:
+                        QgsMessageLog.logMessage(f"PostgreSQL table {schema}.{table} accessible", "Transformer", Qgis.Info)
+                    else:
+                        QgsMessageLog.logMessage(f"Table {schema}.{table} doesn't exist (will be created)", "Transformer", Qgis.Info)
+                except Exception as conn_error:
+                    QgsMessageLog.logMessage(f"PostgreSQL connection failed: {str(conn_error)}", "Transformer", Qgis.Critical)
+                    
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Test failed: {str(e)}", "Transformer", Qgis.Critical)
+            
+    def _get_postgresql_table_info(self, schema, table):
+        """Récupère les informations d'une table PostgreSQL"""
+        try:
+            conn_params = {
+                'host': self.config_widget.host_edit.text() or 'localhost',
+                'port': self.config_widget.port_edit.value(),
+                'database': self.config_widget.database_edit.text(),
+                'user': self.config_widget.username_edit.text(),
+                'password': self.config_widget.password_edit.text(),
+                'connect_timeout': 5
+            }
+            
+            conn = psycopg2.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Vérifier d'abord si la table existe
+            table_exists_query = """
+                SELECT COUNT(*) 
+                FROM information_schema.tables 
+                WHERE table_schema = %s AND table_name = %s
+            """
+            cur.execute(table_exists_query, (schema, table))
+            if cur.fetchone()[0] == 0:
+                cur.close()
+                conn.close()
+                return None
+            
+            # Récupérer les informations géométriques depuis geometry_columns
+            geom_query = """
+                SELECT f_geometry_column, type, srid 
+                FROM geometry_columns 
+                WHERE f_table_schema = %s AND f_table_name = %s
+            """
+            cur.execute(geom_query, (schema, table))
+            geom_info = cur.fetchone()
+            
+            # If no entry in geometry_columns, search in the table structure
+            geom_column = None
+            geom_type = 'Unknown'
+            srid = 0
+            
+            if not geom_info:
+                # Search for geometry columns
+                geom_columns_query = """
+                    SELECT column_name, udt_name 
+                    FROM information_schema.columns 
+                    WHERE table_schema = %s AND table_name = %s 
+                    AND udt_name = 'geometry'
+                """
+                cur.execute(geom_columns_query, (schema, table))
+                geom_columns = cur.fetchall()
+                
+                if geom_columns:
+                    geom_column = geom_columns[0][0]  # Take the first geometry column
+                    
+                    # Try to retrieve the type and SRID from PostGIS
+                    try:
+                        postgis_query = f"""
+                            SELECT ST_GeometryType("{geom_column}"), ST_SRID("{geom_column}")
+                            FROM "{schema}"."{table}" 
+                            WHERE "{geom_column}" IS NOT NULL 
+                            LIMIT 1
+                        """
+                        cur.execute(postgis_query)
+                        postgis_result = cur.fetchone()
+                        if postgis_result:
+                            # Convert ST_Point -> POINT, etc.
+                            st_geom_type = postgis_result[0]
+                            if st_geom_type:
+                                geom_type = st_geom_type.replace('ST_', '').upper()
+                            srid = postgis_result[1] or 0
+                    except:
+                        pass  # Ign0rer les erreurs si la table est vide ou autre
+            else:
+                geom_column = geom_info[0]
+                geom_type = geom_info[1]
+                srid = geom_info[2]
+            
+            # Retrieve the information of the fields (except geometry)
+            fields_query = """
+                SELECT column_name, data_type, is_nullable, character_maximum_length
+                FROM information_schema.columns 
+                WHERE table_schema = %s AND table_name = %s 
+                AND column_name != %s
+                ORDER BY ordinal_position
+            """
+            cur.execute(fields_query, (schema, table, geom_column or 'geom'))
+            fields_info = cur.fetchall()
+            
+            # Build the result
+            table_info = {
+                'geometry_column': geom_column,
+                'geometry_type': geom_type,
+                'srid': srid,
+                'fields': [{
+                    'name': field[0],
+                    'type': field[1],
+                    'nullable': field[2] == 'YES',
+                    'length': field[3]
+                } for field in fields_info if field[0] not in ['id', 'gid']]  # Exclure les clés primaires auto
+            }
+            
+            cur.close()
+            conn.close()
+            
+            QgsMessageLog.logMessage(
+                f"Table {schema}.{table}: géom={geom_type}, SRID={srid}, champs={len(table_info['fields'])}",
+                "Transformer",
+                Qgis.Info
+            )
+            
+            return table_info
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Erreur récupération info table {schema}.{table}: {str(e)}", "Transformer", Qgis.Warning)
+            return None
+            
+    def _check_geometry_compatibility(self, source_layer, target_geom_type):
+        """Check the exact compatibility between geometry types"""
+        # Get the exact WKB type of the source layer
+        wkb_type = source_layer.wkbType()
+        
+        # Mapping of WKB types to PostGIS
+        wkb_type_map = {
+            QgsWkbTypes.Point: 'POINT',
+            QgsWkbTypes.MultiPoint: 'MULTIPOINT',
+            QgsWkbTypes.LineString: 'LINESTRING',
+            QgsWkbTypes.MultiLineString: 'MULTILINESTRING',
+            QgsWkbTypes.Polygon: 'POLYGON',
+            QgsWkbTypes.MultiPolygon: 'MULTIPOLYGON',
+            QgsWkbTypes.Point25D: 'POINTZ',
+            QgsWkbTypes.MultiPoint25D: 'MULTIPOINTZ',
+            QgsWkbTypes.LineString25D: 'LINESTRINGZ',
+            QgsWkbTypes.MultiLineString25D: 'MULTILINESTRINGZ',
+            QgsWkbTypes.Polygon25D: 'POLYGONZ',
+            QgsWkbTypes.MultiPolygon25D: 'MULTIPOLYGONZ'
+        }
+        
+        # Get the expected PostgreSQL type
+        expected_pg_type = wkb_type_map.get(wkb_type)
+        
+        # Debug log
+        QgsMessageLog.logMessage(
+            f"DEBUG: Geometry compatibility - WKB={wkb_type}, Expected={expected_pg_type}, Target={target_geom_type}",
+            "Transformer", Qgis.Info
+        )
+        
+        # Strict verification: the type must match exactly
+        if expected_pg_type:
+            compatible = expected_pg_type.upper() == target_geom_type.upper()
+        else:
+            # Fallback to generic types for compatibility
+            geom_type = source_layer.geometryType()
+            fallback_mapping = {
+                QgsWkbTypes.PointGeometry: 'MULTIPOINT',
+                QgsWkbTypes.LineGeometry: 'MULTILINESTRING',
+                QgsWkbTypes.PolygonGeometry: 'MULTIPOLYGON'
+            }
+            expected_pg_type = fallback_mapping.get(geom_type, 'GEOMETRY')
+            compatible = expected_pg_type.upper() == target_geom_type.upper()
+        
+        QgsMessageLog.logMessage(
+            f"DEBUG: Compatible={compatible} ({expected_pg_type} vs {target_geom_type})",
+            "Transformer", Qgis.Info
+        )
+        
+        return compatible
+        
+    def _create_postgresql_table(self, schema, table_name, source_layer):
+        """Crée une table PostgreSQL basée sur la structure d'une couche QGIS"""
+        try:
+            conn_params = {
+                'host': self.config_widget.host_edit.text() or 'localhost',
+                'port': self.config_widget.port_edit.value(),
+                'database': self.config_widget.database_edit.text(),
+                'user': self.config_widget.username_edit.text(),
+                'password': self.config_widget.password_edit.text(),
+                'connect_timeout': 10
+            }
+            
+            conn = psycopg2.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Analyze the real content of geometries to detect the exact type
+            actual_geom_types = set()
+            feature_count = 0
+            QgsMessageLog.logMessage(f"ANALYSE: Checking the real geometry type on {min(10, source_layer.featureCount())} features...", "Transformer", Qgis.Info)
+            
+            for feature in source_layer.getFeatures():
+                if feature_count >= 10:  # Limiter à 10 features pour l'analyse
+                    break
+                    
+                if feature.hasGeometry():
+                    geom = feature.geometry()
+                    if geom and not geom.isNull():
+                        actual_wkb_type = geom.wkbType()
+                        actual_geom_types.add(actual_wkb_type)
+                        QgsMessageLog.logMessage(f"Feature #{feature_count + 1}: WKB={actual_wkb_type} ({QgsWkbTypes.displayString(actual_wkb_type)})", "Transformer", Qgis.Info)
+                        feature_count += 1
+            
+            # Get the declared WKB type and the detected type
+            wkb_type = source_layer.wkbType()
+            detected_wkb_type = wkb_type
+            
+            # Detect MultiLineString cases even if the layer is declared LineString
+            if QgsWkbTypes.MultiLineString in actual_geom_types or QgsWkbTypes.MultiLineString25D in actual_geom_types:
+                detected_wkb_type = QgsWkbTypes.MultiLineString
+                QgsMessageLog.logMessage(f"🔧 CORRECTION: Type déclaré={QgsWkbTypes.displayString(wkb_type)}, Type réel détecté=MultiLineString", "Transformer", Qgis.Info)
+            elif QgsWkbTypes.MultiPoint in actual_geom_types or QgsWkbTypes.MultiPoint25D in actual_geom_types:
+                detected_wkb_type = QgsWkbTypes.MultiPoint
+                QgsMessageLog.logMessage(f"🔧 CORRECTION: Type déclaré={QgsWkbTypes.displayString(wkb_type)}, Type réel détecté=MultiPoint", "Transformer", Qgis.Info)
+            elif QgsWkbTypes.MultiPolygon in actual_geom_types or QgsWkbTypes.MultiPolygon25D in actual_geom_types:
+                detected_wkb_type = QgsWkbTypes.MultiPolygon
+                QgsMessageLog.logMessage(f"🔧 CORRECTION: Type déclaré={QgsWkbTypes.displayString(wkb_type)}, Type réel détecté=MultiPolygon", "Transformer", Qgis.Info)
+            
+            # Override the declared type with the detected real type
+            if detected_wkb_type != wkb_type:
+                wkb_type = detected_wkb_type
+                QgsMessageLog.logMessage(f"Using the real geometry type: {QgsWkbTypes.displayString(wkb_type)}", "Transformer", Qgis.Success)
+            
+            # Map WKB types to PostgreSQL with exact types
+            wkb_type_map = {
+                QgsWkbTypes.Point: 'POINT',
+                QgsWkbTypes.MultiPoint: 'MULTIPOINT',
+                QgsWkbTypes.LineString: 'LINESTRING',
+                QgsWkbTypes.MultiLineString: 'MULTILINESTRING',
+                QgsWkbTypes.Polygon: 'POLYGON',
+                QgsWkbTypes.MultiPolygon: 'MULTIPOLYGON',
+                QgsWkbTypes.Point25D: 'POINTZ',
+                QgsWkbTypes.MultiPoint25D: 'MULTIPOINTZ',
+                QgsWkbTypes.LineString25D: 'LINESTRINGZ',
+                QgsWkbTypes.MultiLineString25D: 'MULTILINESTRINGZ',
+                QgsWkbTypes.Polygon25D: 'POLYGONZ',
+                QgsWkbTypes.MultiPolygon25D: 'MULTIPOLYGONZ'
+            }
+            
+            pg_geom_type = wkb_type_map.get(wkb_type)
+            
+            # Fallback to types MULTI if the exact type is not found
+            if not pg_geom_type:
+                geom_type = source_layer.geometryType()
+                fallback_mapping = {
+                    QgsWkbTypes.PointGeometry: 'MULTIPOINT',
+                    QgsWkbTypes.LineGeometry: 'MULTILINESTRING',
+                    QgsWkbTypes.PolygonGeometry: 'MULTIPOLYGON'
+                }
+                pg_geom_type = fallback_mapping.get(geom_type, 'GEOMETRY')
+            
+            # Get the SRID
+            srid = source_layer.crs().postgisSrid()
+            
+            # Build the CREATE TABLE query
+            create_sql = f'CREATE TABLE IF NOT EXISTS "{schema}"."{table_name}" (\n'
+            create_sql += '  id SERIAL PRIMARY KEY,\n'
+            
+            # Add the fields
+            fields = source_layer.fields()
+            field_definitions = []
+            
+            for field in fields:
+                field_name = field.name()
+                field_type = field.type()
+                
+                # Mapping QGIS types to PostgreSQL
+                if field_type == QVariant.String:
+                    pg_type = f'VARCHAR({field.length() if field.length() > 0 else 255})'
+                elif field_type == QVariant.Int:
+                    pg_type = 'INTEGER'
+                elif field_type == QVariant.LongLong:
+                    pg_type = 'BIGINT'
+                elif field_type == QVariant.Double:
+                    pg_type = 'DOUBLE PRECISION'
+                elif field_type == QVariant.Date:
+                    pg_type = 'DATE'
+                elif field_type == QVariant.DateTime:
+                    pg_type = 'TIMESTAMP'
+                elif field_type == QVariant.Bool:
+                    pg_type = 'BOOLEAN'
+                else:
+                    pg_type = 'TEXT'
+                
+                field_definitions.append(f'  "{field_name}" {pg_type}')
+            
+            create_sql += ',\n'.join(field_definitions)
+            
+            # Add the geometry column
+            if srid > 0:
+                create_sql += f',\n  geom GEOMETRY({pg_geom_type}, {srid})'
+            else:
+                create_sql += f',\n  geom GEOMETRY({pg_geom_type})'
+            
+            create_sql += '\n);'
+            
+            # Create the table
+            cur.execute(create_sql)
+            
+            # Create the spatial index
+            index_sql = f'CREATE INDEX IF NOT EXISTS idx_{table_name}_geom ON "{schema}"."{table_name}" USING GIST (geom);'
+            cur.execute(index_sql)
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            QgsMessageLog.logMessage(
+                f"Table {schema}.{table_name} created with {len(field_definitions)} fields and geometry {pg_geom_type} (SRID: {srid})",
+                "Transformer", Qgis.Success
+            )
+            
+            return True
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Erreur creation table {schema}.{table_name}: {str(e)}", "Transformer", Qgis.Critical)
+            try:
+                conn.rollback()
+                cur.close()
+                conn.close()
+            except:
+                pass
+            return False
+    
+    def _drop_and_recreate_table(self, schema, table_name, source_layer):
+        """Drop and recreate a PostgreSQL table with the correct structure"""
+        try:
+            conn_params = {
+                'host': self.config_widget.host_edit.text() or 'localhost',
+                'port': self.config_widget.port_edit.value(),
+                'database': self.config_widget.database_edit.text(),
+                'user': self.config_widget.username_edit.text(),
+                'password': self.config_widget.password_edit.text(),
+                'connect_timeout': 10
+            }
+            
+            conn = psycopg2.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Drop the existing table
+            drop_sql = f'DROP TABLE IF EXISTS "{schema}"."{table_name}" CASCADE'
+            cur.execute(drop_sql)
+            
+            QgsMessageLog.logMessage(f"🗑️ Table {schema}.{table_name} dropped", "Transformer", Qgis.Info)
+            
+            conn.commit()
+            cur.close()
+            conn.close()
+            
+            # Recreate the table with the correct structure
+            return self._create_postgresql_table(schema, table_name, source_layer)
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Error dropping table {schema}.{table_name}: {str(e)}", "Transformer", Qgis.Critical)
+            try:
+                conn.rollback()
+                cur.close()
+                conn.close()
+            except:
+                pass
+            return False
+        
+    def _find_field_match(self, source_field_name, target_fields):
+        """Find a field match between source and target"""
+        source_lower = source_field_name.lower()
+        
+        # Exact match first
+        for target_field in target_fields:
+            if target_field['name'].lower() == source_lower:
+                return target_field
+                
+        # Approximate match (contains)
+        for target_field in target_fields:
+            if source_lower in target_field['name'].lower() or target_field['name'].lower() in source_lower:
+                return target_field
+                
+        return None
+        
+    def _generate_mapping_key(self, compatibility_info):
+        """Generate a unique key for this set of mappings"""
+        # Créer une clé basée sur les tables de destination
+        tables = [f"{info['schema']}.{info['table']}" for info in compatibility_info]
+        tables.sort()  # Assurer l'ordre pour cohérence
+        return "|".join(tables)
+    
+    def _should_show_confirmation_for_mapping(self, mapping_key):
+        """Determine if the confirmation window should be displayed for this specific mapping"""
+        try:
+            plugin_dir = os.path.dirname(os.path.realpath(__file__))
+            config_path = os.path.join(plugin_dir, "transformer_postgresql_preferences.json")
+            
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    prefs = json.load(f)
+                    # Vérifier si ce mapping spécifique a été désactivé
+                    mapping_prefs = prefs.get('mapping_confirmations', {})
+                    return mapping_prefs.get(mapping_key, True)  # Par défaut: afficher
+            else:
+                return True  # Default to showing confirmation
+        except:
+            return True
+            
+    def _save_confirmation_preference_for_mapping(self, mapping_key, show_confirmation):
+        """Save the confirmation preference for a specific mapping"""
+        try:
+            plugin_dir = os.path.dirname(os.path.realpath(__file__))
+            config_path = os.path.join(plugin_dir, "transformer_postgresql_preferences.json")
+            
+            # Charger les préférences existantes
+            prefs = {}
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    prefs = json.load(f)
+            
+            # Assurer que la section mapping_confirmations existe
+            if 'mapping_confirmations' not in prefs:
+                prefs['mapping_confirmations'] = {}
+            
+            # Sauvegarder la préférence pour ce mapping spécifique
+            prefs['mapping_confirmations'][mapping_key] = show_confirmation
+            
+            with open(config_path, 'w') as f:
+                json.dump(prefs, f, indent=2)
+                
+            log_info(f"Mapping confirmation preference saved for: {mapping_key}")
+        except Exception as e:
+            log_warning(f"Error saving mapping preference: {str(e)}")
+            
+    def _perform_integration(self, table_info):
+        """Perform the actual table integration"""
+        layer_name = table_info.get('layer', 'Unknown')
+        try:
+            schema = table_info['schema']
+            table = table_info['table']
+            
+            QgsMessageLog.logMessage(
+                f"Starting integration: {layer_name} → {schema}.{table}",
+                "Transformer", Qgis.Info
+            )
+            
+            # Get the source layer
+            project = QgsProject.instance()
+            source_layer = None
+            
+            for layer in project.mapLayers().values():
+                if layer.name() == layer_name:
+                    source_layer = layer
+                    break
+                    
+            if not source_layer:
+                raise Exception(f"Couche '{layer_name}' introuvable")
+                
+            QgsMessageLog.logMessage(
+                f"Couche trouvée: {source_layer.featureCount()} features",
+                "Transformer", Qgis.Info
+            )
+            
+            # Paramètres de connexion PostgreSQL
+            conn_params = {
+                'host': self.config_widget.host_edit.text() or 'localhost',
+                'port': self.config_widget.port_edit.value(),
+                'database': self.config_widget.database_edit.text(),
+                'user': self.config_widget.username_edit.text(),
+                'password': self.config_widget.password_edit.text(),
+                'connect_timeout': 5
+            }
+            
+            QgsMessageLog.logMessage(
+                f"Connexion PostgreSQL: {conn_params['host']}:{conn_params['port']}/{conn_params['database']}",
+                "Transformer", Qgis.Info
+            )
+            
+            # Connexion directe pour copier les données
+            conn = psycopg2.connect(**conn_params)
+            cur = conn.cursor()
+            
+            # Vérifier si la table existe, la créer si nécessaire
+            try:
+                cur.execute(f'SELECT COUNT(*) FROM "{schema}"."{table}"')
+                existing_count = cur.fetchone()[0]
+                
+                QgsMessageLog.logMessage(
+                    f"Table {schema}.{table} exists already with {existing_count} records",
+                    "Transformer", Qgis.Info
+                )
+                
+                # Critical verification: Geometry type of the existing table
+                table_info_check = self._get_postgresql_table_info(schema, table)
+                if table_info_check:
+                    current_geom_type = table_info_check.get('geometry_type', '')
+                    
+                    # Verify compatibility with our source layer
+                    geom_compatible = self._check_geometry_compatibility(source_layer, current_geom_type)
+                    
+                    QgsMessageLog.logMessage(
+                        f"Verification: Table geometry={current_geom_type}, Compatible={geom_compatible}",
+                        "Transformer", Qgis.Info
+                    )
+                    
+                    if not geom_compatible:
+                        QgsMessageLog.logMessage(
+                            f"Forced deletion of table with wrong geometry type {current_geom_type}",
+                            "Transformer", Qgis.Warning
+                        )
+                        
+                        # Forcer suppression et recréation
+                        cur.close()
+                        conn.close()
+                        
+                        # Recréer avec bon type
+                        if self._drop_and_recreate_table(schema, table, source_layer):
+                            QgsMessageLog.logMessage(f"Table {schema}.{table} recreated with correct geometry type", "Transformer", Qgis.Success)
+                            
+                            # Reconnecter
+                            conn = psycopg2.connect(**conn_params)
+                            cur = conn.cursor()
+                            cur.execute(f'SELECT COUNT(*) FROM "{schema}"."{table}"')
+                            existing_count = cur.fetchone()[0]
+                        else:
+                            raise Exception(f"Failed to recreate table {schema}.{table}")
+                
+            except psycopg2.Error as e:
+                # Table does not exist, create it
+                QgsMessageLog.logMessage(
+                    f"Table {schema}.{table} does not exist - automatic creation",
+                    "Transformer", Qgis.Info
+                )
+                
+                # Rollback of failed transaction
+                conn.rollback()
+                
+                # Create the table
+                if not self._create_postgresql_table(schema, table, source_layer):
+                    raise Exception(f"Failed to create table {schema}.{table}")
+                
+                # Verify that the table exists
+                cur.execute(f'SELECT COUNT(*) FROM "{schema}"."{table}"')
+                existing_count = cur.fetchone()[0]
+                
+                QgsMessageLog.logMessage(
+                    f"Table {schema}.{table} created successfully",
+                    "Transformer", Qgis.Success
+                )
+                
+            if existing_count > 0:
+                QgsMessageLog.logMessage(
+                    f"Table {schema}.{table} already contains {existing_count} records - deletion",
+                    "Transformer", Qgis.Warning
+                )
+                cur.execute(f'DELETE FROM "{schema}"."{table}"')
+                conn.commit()
+            
+            # Copy features
+            feature_count = 0
+            error_count = 0
+            
+            # Get list of source layer fields
+            source_fields = [field.name() for field in source_layer.fields()]
+            
+            QgsMessageLog.logMessage(
+                f"Champs à copier: {', '.join(source_fields)}",
+                "Transformer", Qgis.Info
+            )
+            
+            # Build the INSERT query (simplified version)
+            field_names = '"' + '", "'.join(source_fields) + '"'
+            placeholders = ', '.join(['%s'] * len(source_fields))
+            
+            # Query with optional geometry (no geometry parameter)
+            insert_query = f'INSERT INTO "{schema}"."{table}" ({field_names}, geom) VALUES ({placeholders}, {{}})'
+            
+            QgsMessageLog.logMessage(
+                f"Requête INSERT: {insert_query}",
+                "Transformer", Qgis.Info
+            )
+            
+            # Iterate over all features
+            for feature in source_layer.getFeatures():
+                try:
+                    # Extract attribute values with appropriate conversion
+                    values = []
+                    for field_name in source_fields:
+                        # Use QGIS native API to get the converted value
+                        field_value = feature.attribute(field_name)
+                        
+                        # Safe conversion for psycopg2
+                        if field_value is None:
+                            values.append(None)
+                        else:
+                            # Convert according to type
+                            try:
+                                if isinstance(field_value, (int, float, str, bool)):
+                                    values.append(field_value)
+                                elif hasattr(field_value, 'toPyObject'):
+                                    # Qt method for conversion
+                                    py_value = field_value.toPyObject()
+                                    values.append(py_value if py_value is not None else None)
+                                else:
+                                    # Conversion finale en string
+                                    values.append(str(field_value))
+                                    
+                            except Exception as conv_error:
+                                # Fallback sûr
+                                values.append(str(field_value) if field_value is not None else None)
+                                QgsMessageLog.logMessage(
+                                    f"Conversion '{field_name}': {str(conv_error)} - utilisé str()",
+                                    "Transformer", Qgis.Warning
+                                )
+                    
+                    # Handle geometry
+                    geom = feature.geometry()
+                    if geom and not geom.isEmpty():
+                        # Convert to WKT (Well-Known Text) for PostgreSQL
+                        wkt_geom = geom.asWkt()
+                        srid = source_layer.crs().postgisSrid()
+                        
+                        # Create the PostgreSQL geometry with SRID
+                        if srid > 0:
+                            geom_sql = f"ST_GeomFromText('{wkt_geom}', {srid})"
+                        else:
+                            geom_sql = f"ST_GeomFromText('{wkt_geom}')"
+                    else:
+                        # Insert a null geometry
+                        geom_sql = "NULL"
+                    
+                    # Build the complete query with the geometry
+                    final_query = insert_query.format(geom_sql)
+                    
+                    # Execute the insertion (only with field values)
+                    cur.execute(final_query, values)
+                    feature_count += 1
+                    
+                    # Log periodically
+                    if feature_count % 50 == 0:
+                        QgsMessageLog.logMessage(
+                            f"📊 {feature_count} features copied...",
+                            "Transformer", Qgis.Info
+                        )
+                        
+                except Exception as feature_error:
+                    error_count += 1
+                    QgsMessageLog.logMessage(
+                        f"Erreur feature #{feature_count + error_count}: {str(feature_error)}",
+                        "Transformer", Qgis.Critical
+                    )
+                    if error_count > 10:
+                        raise Exception(f"Too many errors ({error_count}) - integration stopped")
+                    continue
+            
+            # Commit the changes
+            conn.commit()
+            
+            # Verify the result
+            cur.execute(f'SELECT COUNT(*) FROM "{schema}"."{table}"')
+            final_count = cur.fetchone()[0]
+            
+            cur.close()
+            conn.close()
+            
+            QgsMessageLog.logMessage(
+                f"INTÉGRATION TERMINÉE: {final_count} enregistrements dans {schema}.{table}",
+                "Transformer", Qgis.Success
+            )
+            
+            if final_count == 0:
+                raise Exception("Aucun enregistrement inséré dans la table")
+                
+            return True
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"ERREUR INTÉGRATION {layer_name}: {str(e)}",
+                "Transformer", Qgis.Critical
+            )
+            return False
+    
+    def save_mappings(self, checked=None):
+        """Save basic table mappings (layer_name, schema, table) to postgresql_detailed_mappings.json
+        
+        Args:
+            checked: Optional parameter that can be passed by a signal (e.g: QPushButton.clicked)
+        """
+        try:
+            # Get current mappings from the UI table
+            basic_mappings = self.get_current_mappings()
+            
+            if not basic_mappings:
+                QgsMessageLog.logMessage("No mappings to save", "Transformer", Qgis.Warning)
+                return False
+            
+            # Path to the detailed mappings file (single source of truth)
+            plugin_dir = os.path.dirname(__file__)
+            detailed_config_path = os.path.join(plugin_dir, "postgresql_detailed_mappings.json")
+            
+            # Load existing detailed mappings
+            existing_detailed = []
+            if os.path.exists(detailed_config_path):
+                try:
+                    with open(detailed_config_path, 'r') as f:
+                        existing_detailed = json.load(f)
+                        if not isinstance(existing_detailed, list):
+                            existing_detailed = []
+                except Exception:
+                    existing_detailed = []
+            
+            # Add or update basic mappings
+            for mapping in basic_mappings:
+                layer_name = mapping.get("transformed", "")
+                schema = mapping.get("schema", "")
+                table = mapping.get("table", "")
+                
+                if not all([layer_name, schema, table]):
+                    continue  # Skip incomplete mappings
+                
+                # Look for existing mapping for this layer
+                found_index = -1
+                for i, existing in enumerate(existing_detailed):
+                    if existing.get("layer_name") == layer_name:
+                        found_index = i
+                        break
+                
+                if found_index >= 0:
+                    # Update existing mapping (preserve field details if they exist)
+                    existing_detailed[found_index].update({
+                        "layer_name": layer_name,
+                        "schema": schema,
+                        "table": table,
+                        "timestamp": datetime.now().isoformat(),
+                        "auto_generated": False
+                    })
+                else:
+                    # Add new basic mapping
+                    new_mapping = {
+                        "layer_name": layer_name,
+                        "schema": schema,
+                        "table": table,
+                        "timestamp": datetime.now().isoformat(),
+                        "auto_generated": False
+                    }
+                    existing_detailed.append(new_mapping)
+            
+            # Save to single JSON file
+            with open(detailed_config_path, 'w') as f:
+                json.dump(existing_detailed, f, indent=2)
+            
+            saved_count = len(basic_mappings)
+            QgsMessageLog.logMessage(f"Basic table mappings saved: {saved_count} mapping(s) saved to {os.path.basename(detailed_config_path)}", "Transformer", Qgis.Success)
+            
+            return True
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Failed to save mappings: {str(e)}", "Transformer", Qgis.Critical)
+            QMessageBox.critical(self, "Error", f"Failed to save mappings:\n{str(e)}")
+            return False
+
+    def find_detailed_mapping(self, layer_name, schema, table):
+        """Find a saved detailed mapping for a layer/schema/table combination"""
+        try:
+            plugin_dir = os.path.dirname(__file__)
+            detailed_config_path = os.path.join(plugin_dir, "postgresql_detailed_mappings.json")
+            
+            if not os.path.exists(detailed_config_path):
+                return None
+            
+            # Load all detailed mappings
+            with open(detailed_config_path, 'r') as f:
+                all_detailed_mappings = json.load(f)
+            
+            if not all_detailed_mappings:
+                return None
+            
+            # Rechercher un mapping détaillé pour cette combinaison
+            for detailed_mapping in all_detailed_mappings:
+                if (detailed_mapping.get("layer_name", "") == layer_name and
+                    detailed_mapping.get("schema", "") == schema and
+                    detailed_mapping.get("table", "") == table):
+                    return detailed_mapping
+            
+            return None
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Failed to find detailed mapping: {str(e)}", "Transformer", Qgis.Warning)
+            return None
+    
+    def auto_load_detailed_mapping(self, layer_name, schema, table):
+        """Automatically load a detailed mapping if available"""
+        detailed_mapping = self.find_detailed_mapping(layer_name, schema, table)
+        
+        if detailed_mapping:
+            QgsMessageLog.logMessage(
+                f"Detailed mapping found for {layer_name} → {schema}.{table}",
+                "Transformer", Qgis.Info
+            )
+            
+            # Apply the detailed mapping automatically
+            self.apply_detailed_mapping_to_dialog(detailed_mapping)
+            return True
+        
+        return False
+    
+    def apply_detailed_mapping_to_dialog(self, detailed_mapping):
+        """Apply a detailed mapping to the confirmation dialog"""
+        if not hasattr(self, 'confirmation_dialog') or not self.confirmation_dialog:
+            return
+        
+        try:
+            layer_name = detailed_mapping.get('layer_name', '')
+            field_mappings = detailed_mapping.get('field_mappings', {})
+            forced_types = detailed_mapping.get('forced_types', {})
+            custom_fields = detailed_mapping.get('custom_fields', {})
+            
+            QgsMessageLog.logMessage(
+                f"APPLICATION MAPPING: {len(field_mappings)} champs, {len(forced_types)} types forcés, {len(custom_fields)} champs personnalisés",
+                "Transformer", Qgis.Info
+            )
+            
+            # Trouver l'onglet correspondant à la couche
+            for tab_index in range(self.confirmation_dialog.tabs.count()):
+                tab_text = self.confirmation_dialog.tabs.tabText(tab_index)
+                if layer_name in tab_text:
+                    tab_widget = self.confirmation_dialog.tabs.widget(tab_index)
+                    
+                    if tab_widget and hasattr(tab_widget, 'apply_detailed_mapping'):
+                        tab_widget.apply_detailed_mapping(field_mappings, forced_types, custom_fields)
+                        
+                        # Select this tab
+                        self.confirmation_dialog.tabs.setCurrentIndex(tab_index)
+                        
+                        QgsMessageLog.logMessage(
+                            f"Detailed mapping applied successfully for {layer_name}",
+                            "Transformer", Qgis.Success
+                        )
+                        break
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"Failed to apply detailed mapping: {str(e)}",
+                "Transformer", Qgis.Warning
+            )
+    
+    def _generate_detailed_mappings_from_basic(self, basic_mappings):
+        """Generate automatically detailed mappings from base mappings"""
+        detailed_mappings = []
+        
+        try:
+            project = QgsProject.instance()
+            
+            for basic_mapping in basic_mappings:
+                layer_name = basic_mapping['transformed']
+                schema = basic_mapping['schema']
+                table = basic_mapping['table']
+                
+                # Find the corresponding QGIS layer
+                source_layer = None
+                for layer in project.mapLayers().values():
+                    if layer.name() == layer_name:
+                        source_layer = layer
+                        break
+                        
+                if not source_layer or not isinstance(source_layer, QgsVectorLayer):
+                    QgsMessageLog.logMessage(
+                        f"Layer '{layer_name}' not found for detailed mapping generation",
+                        "Transformer", Qgis.Warning
+                    )
+                    continue
+                
+                # Retrieve PostgreSQL table information
+                table_info = self._get_postgresql_table_info(schema, table)
+                
+                if not table_info:
+                    QgsMessageLog.logMessage(
+                        f"Unable to retrieve table info for {schema}.{table}",
+                        "Transformer", Qgis.Warning
+                    )
+                    continue
+                
+                # Generate automatic field mappings
+                field_mappings = {}
+                source_fields = source_layer.fields()
+                target_fields = table_info.get('fields', [])
+                
+                for field in source_fields:
+                    source_field_name = field.name()
+                    # Find a match in the target fields
+                    field_match = self._find_field_match(source_field_name, target_fields)
+                    
+                    if field_match:
+                        field_mappings[source_field_name] = field_match['name']
+                    else:
+                        # If no match, map to the same name (create field)
+                        field_mappings[source_field_name] = source_field_name
+                
+                # Create the detailed mapping
+                detailed_mapping = {
+                    "layer_name": layer_name,
+                    "schema": schema,
+                    "table": table,
+                    "field_mappings": field_mappings,
+                    "forced_types": {},  # No forced types by default
+                    "custom_fields": {},  # No custom fields by default
+                    "timestamp": datetime.now().isoformat(),
+                    "auto_generated": True  # Mark as automatically generated
+                }
+                
+                detailed_mappings.append(detailed_mapping)
+                
+                QgsMessageLog.logMessage(
+                    f"Detailed mapping generated for {layer_name}: {len(field_mappings)} fields mapped",
+                    "Transformer", Qgis.Info
+                )
+                
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"Failed to generate detailed mappings: {str(e)}",
+                "Transformer", Qgis.Warning
+            )
+            
+        return detailed_mappings
+            
+    def find_mapping_for_layer(self, layer_name):
+        """Find a saved mapping for a specific layer using unified JSON file"""
+        try:
+            # Path to the unified mappings file
+            plugin_dir = os.path.dirname(__file__)
+            config_path = os.path.join(plugin_dir, "postgresql_detailed_mappings.json")
+            
+            if not os.path.exists(config_path):
+                return None
+            
+            # Load all mappings
+            with open(config_path, 'r') as f:
+                all_mappings = json.load(f)
+            
+            if not all_mappings:
+                return None
+            
+            # Search for a mapping for this layer
+            for mapping in all_mappings:
+                if mapping.get("layer_name", "") == layer_name:
+                    return mapping
+            
+            return None
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Failed to find mapping for layer: {str(e)}", "Transformer", Qgis.Warning)
+            return None
+    
+    def auto_connect_for_layer(self, layer_name):
+        """Auto-connect to PostgreSQL and load the mapping for a layer"""
+        if not self.auto_connect:
+            return False
+        
+        # Check if this layer is already mapped to prevent duplicates
+        for i in range(self.mapping_table.rowCount()):
+            layer_widget = self.mapping_table.cellWidget(i, 0)
+            if layer_widget and hasattr(layer_widget, 'currentText'):
+                if layer_widget.currentText() == layer_name:
+                    QgsMessageLog.logMessage(f"DEBUG: Layer {layer_name} already has mapping in row {i} - skipping", "Transformer", Qgis.Info)
+                    return True  # Already mapped, consider it a success
+            
+        QgsMessageLog.logMessage(f"Auto-connect to PostgreSQL and load the mapping for a layer {layer_name}", "Transformer", Qgis.Info)
+        
+        # Search for a mapping for this layer
+        mapping = self.find_mapping_for_layer(layer_name)
+        if not mapping:
+            QgsMessageLog.logMessage(f"No mapping found for layer {layer_name}", "Transformer", Qgis.Info)
+            return False
+        
+        # Load the PostgreSQL configuration
+        if self.config_widget:
+            QgsMessageLog.logMessage("Auto-loading PostgreSQL configuration", "Transformer", Qgis.Info)
+            self.config_widget.load_config()
+            
+            # Test the connection and refresh schemas
+            if self.config_widget.test_connection():
+                # The connection test will automatically trigger refresh_schemas()
+                
+                # Add the mapping to the table
+                schema = mapping.get("schema", "")
+                table = mapping.get("table", "")
+                
+                QgsMessageLog.logMessage(f"Mapping automatically loaded: {layer_name} → {schema}.{table}", "Transformer", Qgis.Success)
+                
+                # Check if mapping already exists for this layer
+                existing_row = -1
+                for i in range(self.mapping_table.rowCount()):
+                    layer_widget = self.mapping_table.cellWidget(i, 0)
+                    if layer_widget and hasattr(layer_widget, 'currentText'):
+                        if layer_widget.currentText() == layer_name:
+                            existing_row = i
+                            break
+                
+                # Use existing row or add new one
+                if existing_row >= 0:
+                    row = existing_row
+                    QgsMessageLog.logMessage(f"DEBUG: Reusing existing row {row} for layer {layer_name}", "Transformer", Qgis.Info)
+                else:
+                    row = self.mapping_table.rowCount()
+                    self.mapping_table.insertRow(row)
+                    QgsMessageLog.logMessage(f"DEBUG: Added new row {row} for layer {layer_name}", "Transformer", Qgis.Info)
+                
+                # Colonne 0: ComboBox avec la couche transformée
+                layer_combo = QComboBox()
+                project = QgsProject.instance()
+                layers = [layer for layer in project.mapLayers().values() if hasattr(layer, 'name')]
+                
+                layer_names = [""]
+                for layer in layers:
+                    layer_names.append(layer.name())
+                
+                layer_combo.addItems(layer_names)
+                layer_combo.setCurrentText(layer_name)
+                self.mapping_table.setCellWidget(row, 0, layer_combo)
+                
+                # Colonne 1: ComboBox avec le schéma PostgreSQL
+                schema_combo = QComboBox()
+                schema_items = [""]
+                if self.available_schemas:
+                    schema_items.extend(self.available_schemas)
+                
+                schema_combo.addItems(schema_items)
+                schema_combo.setCurrentText(schema)
+                self.mapping_table.setCellWidget(row, 1, schema_combo)
+                
+                # Colonne 2: ComboBox with the table
+                table_combo = QComboBox()
+                table_combo.setEditable(True)
+                
+                # Load tables for this schema if necessary
+                if schema not in self.available_tables:
+                    self.load_tables_for_schema(schema)
+                
+                table_items = [""]
+                if schema in self.available_tables:
+                    table_items.extend(self.available_tables[schema])
+                
+                table_combo.addItems(table_items)
+                table_combo.setCurrentText(table)
+                self.mapping_table.setCellWidget(row, 2, table_combo)
+                
+                # Connect the schema change
+                schema_combo.currentTextChanged.connect(lambda text, r=row: self.update_table_combo_simple(r, text))
+                
+                from qgis.utils import iface
+                if iface:
+                    iface.messageBar().pushMessage("PostgreSQL", f"Mapping automatically loaded: {layer_name} → {schema}.{table}", level=Qgis.Info, duration=5)
+                
+                return True
+        
+        return False
+        
+    def check_auto_connect(self, specific_layers=None):
+        """Check if existing transformed layers have saved mappings
+        
+        Args:
+            specific_layers (list, optional): Liste des noms de couches spécifiques à vérifier. 
+                                             Si None, vérifie toutes les couches du projet.
+        """
+        if not self.auto_connect:
+            return
+            
+        # Get all layers from the project or specific layers
+        project = QgsProject.instance()
+        if specific_layers:
+            # Vérifier uniquement les couches spécifiées
+            all_project_layers = project.mapLayers().values()
+            layers = [layer for layer in all_project_layers 
+                     if hasattr(layer, 'name') and layer.name() in specific_layers]
+            QgsMessageLog.logMessage(f"Checking auto-connect for specific layers: {specific_layers}", "Transformer", Qgis.Info)
+        else:
+            # Vérifier toutes les couches du projet
+            layers = [layer for layer in project.mapLayers().values() if hasattr(layer, 'name')]
+        
+        # Compter les mappings trouvés et chargés
+        mappings_found = 0
+        mappings_loaded = 0
+        
+        # Search for a mapping for each layer
+        for layer in layers:
+            mapping = self.find_mapping_for_layer(layer.name())
+            if mapping:
+                mappings_found += 1
+                QgsMessageLog.logMessage(f"Mapping found for {layer.name()} - Auto-connecting", "Transformer", Qgis.Info)
+                success = self.auto_connect_for_layer(layer.name())
+                if success:
+                    mappings_loaded += 1
+                    
+        # Afficher un message récapitulatif si des mappings ont été trouvés
+        if mappings_found > 0:
+            from qgis.utils import iface
+            if iface:
+                if mappings_loaded > 0:
+                    message = f"{mappings_loaded} mapping(s) PostgreSQL chargé(s) automatiquement"
+                    iface.messageBar().pushMessage("PostgreSQL Auto-Load", message, level=Qgis.Success, duration=8)
+                else:
+                    message = f"{mappings_found} mapping(s) trouvé(s) mais aucun chargé"
+                    iface.messageBar().pushMessage("PostgreSQL Auto-Load", message, level=Qgis.Warning, duration=5)
+                    
+        return mappings_loaded
+    
+    def load_mappings(self):
+        """Load saved mappings and allow selection by table"""
+        try:
+            # Path to the detailed mappings file (single source of truth)
+            plugin_dir = os.path.dirname(__file__)
+            config_path = os.path.join(plugin_dir, "postgresql_detailed_mappings.json")
+            
+            if not os.path.exists(config_path):
+                QgsMessageLog.logMessage("No detailed mappings file found", "Transformer", Qgis.Warning)
+                return
+            
+            # Load all detailed mappings
+            with open(config_path, 'r') as f:
+                all_mappings = json.load(f)
+            
+            if not all_mappings:
+                QgsMessageLog.logMessage("The detailed mappings file exists but contains no mappings", "Transformer", Qgis.Warning)
+                return
+            
+            # Organize mappings by table to facilitate selection
+            tables_dict = {}
+            for mapping in all_mappings:
+                layer_name = mapping.get("layer_name", "")
+                schema = mapping.get("schema", "")
+                table = mapping.get("table", "")
+                
+                if not all([layer_name, schema, table]):
+                    continue  # Skip incomplete mappings
+                
+                # Create unique key and label
+                label = f"{layer_name} → {schema}.{table}"
+                tables_dict[label] = mapping
+            
+            # Sort the keys for better presentation
+            sorted_labels = sorted(tables_dict.keys())
+            
+            if not sorted_labels:
+                QMessageBox.warning(self, "No valid mappings", "The saved mappings are incomplete or invalid.")
+                return
+            
+            # Ask the user to select a mapping
+            selected_label, ok = QInputDialog.getItem(
+                self, "Load a mapping", 
+                "Select a mapping to load:", 
+                sorted_labels, 0, False
+            )
+            
+            if not ok or not selected_label:
+                return  # User cancelled
+            
+            # Get the selected mapping
+            selected_mapping = tables_dict.get(selected_label)
+            if not selected_mapping:
+                QMessageBox.critical(self, "Error", "Unable to find the selected mapping.")
+                return
+            
+            # Debug: Log current table state
+            current_rows = self.mapping_table.rowCount()
+            QgsMessageLog.logMessage(f"DEBUG: Current mapping table has {current_rows} rows before loading", "Transformer", Qgis.Info)
+            
+            # Clear the table first to avoid duplicates
+            self.mapping_table.setRowCount(0)
+            QgsMessageLog.logMessage(f"DEBUG: Cleared mapping table, now adding mapping", "Transformer", Qgis.Info)
+            
+            # Add exactly one row for the loaded mapping
+            row = 0
+            self.mapping_table.insertRow(row)
+            
+            # Column 0: ComboBox with transformed layers
+            layer_combo = QComboBox()
+            project = QgsProject.instance()
+            layers = [layer for layer in project.mapLayers().values() if hasattr(layer, 'name')]
+            
+            layer_combo.addItem("")  # Option vide
+            for layer in layers:
+                layer_combo.addItem(layer.name())
+            
+            # Select the layer from the mapping
+            layer_name = selected_mapping.get("layer_name", "")
+            if layer_name:
+                layer_combo.setCurrentText(layer_name)
+            
+            self.mapping_table.setCellWidget(row, 0, layer_combo)
+            
+            # Column 1: ComboBox with PostgreSQL schemas
+            schema_combo = QComboBox()
+            schema_items = [""]
+            if self.available_schemas:
+                schema_items.extend(self.available_schemas)
+            else:
+                schema_items.append("public")
+            
+            schema_combo.addItems(schema_items)
+            schema_name = selected_mapping.get("schema", "")
+            if schema_name:
+                schema_combo.setCurrentText(schema_name)
+            
+            self.mapping_table.setCellWidget(row, 1, schema_combo)
+            
+            # Column 2: ComboBox with tables
+            table_combo = QComboBox()
+            table_combo.setEditable(True)
+            table_combo.addItems([""])  # Start with an empty option
+            
+            # If the schema is available, load the corresponding tables
+            if schema_name in self.available_tables:
+                for table_name in self.available_tables[schema_name]:
+                    table_combo.addItem(table_name)
+            
+            # Select the table from the mapping
+            table_name = selected_mapping.get("table", "")
+            if table_name:
+                table_combo.setCurrentText(table_name)
+            
+            self.mapping_table.setCellWidget(row, 2, table_combo)
+            
+            # Connect the schema change to update the tables
+            schema_combo.currentTextChanged.connect(lambda text, r=row: self.update_table_combo_simple(r, text))
+            
+            QgsMessageLog.logMessage(
+                f"Mapping loaded successfully: {layer_name} → {schema_name}.{table_name}",
+                "Transformer", Qgis.Success
+            )
+            QgsMessageLog.logMessage(f"PostgreSQL mapping loaded: {layer_name} → {schema_name}.{table_name}", "Transformer", Qgis.Success)
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(f"Error loading mappings: {str(e)}", "Transformer", Qgis.Critical)
+            QMessageBox.critical(self, "Error", f"Unable to load mappings:\n{str(e)}")
+    
+    def trigger_auto_mapping_check(self, layer_names=None):
+        """Méthode publique pour déclencher la vérification automatique des mappings
+        
+        Args:
+            layer_names (list, optional): Liste des noms de couches à vérifier.
+                                         Si None, vérifie toutes les couches.
+        Returns:
+            int: Nombre de mappings chargés avec succès
+        """
+        try:
+            QgsMessageLog.logMessage(
+                f"Triggering auto-mapping check for layers: {layer_names or 'all layers'}", 
+                "Transformer", Qgis.Info
+            )
+            
+            # Déclencher la vérification automatique
+            mappings_loaded = self.check_auto_connect(layer_names)
+            
+            QgsMessageLog.logMessage(
+                f"Auto-mapping check completed: {mappings_loaded} mapping(s) loaded", 
+                "Transformer", Qgis.Info
+            )
+            
+            return mappings_loaded
+            
+        except Exception as e:
+            QgsMessageLog.logMessage(
+                f"Error during auto-mapping check: {str(e)}", 
+                "Transformer", Qgis.Warning
+            )
+            return 0
+
+
+
+class PostgreSQLIntegrationWidget(QWidget):
+    """Widget principal d'intégration PostgreSQL with splitter"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Configuration de l'interface"""
+        layout = QVBoxLayout(self)
+        
+        # Vertical splitter to divide config and mapping
+        splitter = QSplitter(Qt.Vertical)
+        
+        # Configuration widget (1/3 of the space)
+        self.config_widget = PostgreSQLConfigWidget()
+        
+        # Mapping widget (2/3 of the space)
+        self.mapping_widget = PostgreSQLMappingWidget()
+        
+        # Link widgets so mapping can access config
+        self.mapping_widget.config_widget = self.config_widget
+        
+        # Add to splitter
+        splitter.addWidget(self.config_widget)
+        splitter.addWidget(self.mapping_widget)
+        
+        # Distribution: 1/3 config, 2/3 mapping
+        splitter.setSizes([100, 200])
+        
+        layout.addWidget(splitter)
+    
+    def trigger_auto_mapping_check(self, layer_names=None):
+        """Trigger automatic check of mappings for transformed layers
+        
+        Args:
+            layer_names (list, optional): List of layer names to check.
+                                         If None, checks all layers.
+        Returns:
+            int: Number of mappings loaded successfully
+        """
+        if hasattr(self, 'mapping_widget') and self.mapping_widget:
+            return self.mapping_widget.trigger_auto_mapping_check(layer_names)
+        return 0
