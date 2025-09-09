@@ -130,7 +130,7 @@ except ImportError:
 
 from qgis.PyQt.QtGui import (
     QIcon, QColor, QPalette, QPixmap, QPainter, QBrush, QPen, QFontMetrics,
-    QKeySequence, QShortcut, QDesktopServices, QClipboard, QDrag, QValidator,
+    QKeySequence, QDesktopServices, QClipboard, QDrag, QValidator,
     QIntValidator, QDoubleValidator, QRegExpValidator, QStandardItemModel,
     QStandardItem, QMovie, QCursor, QPolygon, QLinearGradient, QRadialGradient,
     QConicalGradient, QTextCharFormat, QTextCursor, QTextDocument, QSyntaxHighlighter,
@@ -139,6 +139,38 @@ from qgis.PyQt.QtGui import (
     QHideEvent, QCloseEvent, QKeyEvent, QMouseEvent, QWheelEvent, QContextMenuEvent,
     QFocusEvent, QMoveEvent, QDropEvent, QDragEnterEvent, QDragMoveEvent, QDragLeaveEvent
 )
+
+# Import QShortcut with multi-version compatibility
+QShortcut = None
+try:
+    from qgis.PyQt.QtWidgets import QShortcut  # Recent versions
+except ImportError:
+    try:
+        from qgis.PyQt.QtGui import QShortcut  # Older versions  
+    except ImportError:
+        try:
+            from PyQt5.QtWidgets import QShortcut  # Direct PyQt5
+        except ImportError:
+            try:
+                from PyQt5.QtGui import QShortcut  # PyQt5 legacy
+            except ImportError:
+                # Fallback class if QShortcut unavailable
+                class QShortcut:
+                    def __init__(self, key_sequence, parent):
+                        self.key_sequence = key_sequence
+                        self.parent = parent
+                        print(f"QShortcut not available - shortcut {key_sequence} disabled")
+                    
+                    def setContext(self, context):
+                        pass
+                        
+                    class MockSignal:
+                        def connect(self, callback):
+                            pass
+                            
+                    @property 
+                    def activated(self):
+                        return self.MockSignal()
 
 # Import QFont with fallback
 try:
@@ -196,8 +228,7 @@ from qgis.gui import (
     QgsCheckableComboBox, QgsLayerTreeView, QgsLayerTreeMapCanvasBridge,
     QgsMapLayerAction, QgsRasterLayerSaveAsDialog,
     QgsMessageBar, QgsMessageBarItem, QgsMessageViewer, QgsCredentialDialog,
-    QgsNewHttpConnection, 
-    QgsProjectionSelectionDialog, QgsCoordinateReferenceSystemProxyModel,
+    QgsNewHttpConnection, QgsProjectionSelectionDialog,
     QgsHighlight, QgsAttributeTableModel, QgsAttributeTableView, QgsAttributeTableDelegate,
     QgsAttributeTableFilterModel, QgsFeatureSelectionModel, QgsIFeatureSelectionManager,
     QgsActionMenu, QgsAttributeForm, QgsAttributeDialog,
@@ -205,6 +236,19 @@ from qgis.gui import (
 
 
 )
+
+# Import QgsCoordinateReferenceSystemProxyModel with fallback
+try:
+    from qgis.gui import QgsCoordinateReferenceSystemProxyModel
+except ImportError:
+    try:
+        from qgis.core import QgsCoordinateReferenceSystemProxyModel
+    except ImportError:
+        # Fallback class if not available
+        class QgsCoordinateReferenceSystemProxyModel:
+            def __init__(self, parent=None):
+                self.parent = parent
+                print("QgsCoordinateReferenceSystemProxyModel not available - using fallback")
 
 # Support conditionnel for different QGIS versions
 try:

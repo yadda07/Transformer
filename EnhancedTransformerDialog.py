@@ -88,8 +88,40 @@ except ImportError:
                 pass
 
 from qgis.PyQt.QtGui import (
-    QIcon, QColor, QKeySequence, QShortcut, QCursor
+    QIcon, QColor, QKeySequence, QCursor
 )
+
+# Import QShortcut with multi-version compatibility
+QShortcut = None
+try:
+    from qgis.PyQt.QtWidgets import QShortcut  # Recent versions
+except ImportError:
+    try:
+        from qgis.PyQt.QtGui import QShortcut  # Older versions  
+    except ImportError:
+        try:
+            from PyQt5.QtWidgets import QShortcut  # Direct PyQt5
+        except ImportError:
+            try:
+                from PyQt5.QtGui import QShortcut  # PyQt5 legacy
+            except ImportError:
+                # Fallback class if QShortcut unavailable
+                class QShortcut:
+                    def __init__(self, key_sequence, parent):
+                        self.key_sequence = key_sequence
+                        self.parent = parent
+                        print(f"QShortcut not available - shortcut {key_sequence} disabled")
+                    
+                    def setContext(self, context):
+                        pass
+                        
+                    class MockSignal:
+                        def connect(self, callback):
+                            pass
+                            
+                    @property 
+                    def activated(self):
+                        return self.MockSignal()
 
 # Import QFont separately to handle import issues
 try:
@@ -120,9 +152,21 @@ from qgis.core import (
 
 from qgis.gui import (
     QgsExpressionBuilderDialog, QgsProjectionSelectionWidget, QgsMapLayerComboBox,
-    QgsProjectionSelectionDialog, QgsCoordinateReferenceSystemProxyModel,
-    QgsMessageBar
+    QgsProjectionSelectionDialog, QgsMessageBar
 )
+
+# Import QgsCoordinateReferenceSystemProxyModel with fallback
+try:
+    from qgis.gui import QgsCoordinateReferenceSystemProxyModel
+except ImportError:
+    try:
+        from qgis.core import QgsCoordinateReferenceSystemProxyModel
+    except ImportError:
+        # Fallback class if not available
+        class QgsCoordinateReferenceSystemProxyModel:
+            def __init__(self, parent=None):
+                self.parent = parent
+                print("QgsCoordinateReferenceSystemProxyModel not available - using fallback")
 
 # Import des widgets directement pour éviter les imports circulaires
 from .AdvancedExpressionWidget import AdvancedExpressionWidget

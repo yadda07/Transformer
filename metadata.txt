@@ -1,9 +1,9 @@
 ; QGIS Plugin Configuration
 [general]
 name=Transformer
-qgisMinimumVersion=3.10
+qgisMinimumVersion=3.28
 description=ETL components for vector data transformation. Provides Reader+AttributeManager+Reprojector+Writer functionality with workflow persistence.
-version=1.2.2
+version=1.2.3
 author=Yadda
 email=youcef.geodesien@gmail.com
 
@@ -38,6 +38,12 @@ qgisMaximumVersion=3.45
 
 ; Changelog
 changelog=
+    Version 1.2.3 (2025-09-02):
+    - Attempted to improve compatibility with older QGIS versions
+    - Minor adjustments for different QGIS installations
+    - Small fixes for field creation that may help on some systems
+    - Efforts to address user compatibility feedback
+    
     Version 1.2.2 (2025-08-30):
     - Enhanced native QGIS CSS styling for improved visual consistency
     - Removed external file loading capabilities - now exclusively QGIS layer-based
