@@ -1,3 +1,15 @@
+<<<<<<< HEAD
 *.json
 __pycache__/
 *.pyc
+=======
+__pycache__/ 
+*.pyc 
+*.pyo 
+*.pyd 
+.Python 
+env/ 
+venv/ 
+.vscode/ 
+*.log 
+>>>>>>> 773906f23a32700cb82f79b0cbd69695cc4ca612

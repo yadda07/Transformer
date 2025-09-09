@@ -17,6 +17,60 @@ from qgis.core import (
 )
 from qgis.PyQt.QtCore import QVariant, QMetaType
 
+# Compatibility for QgsField creation across QGIS versions
+def create_compatible_field(field_name: str, field_type: str, length: int = 0, precision: int = 0) -> 'QgsField':
+    """Create QgsField with compatibility across QGIS versions"""
+    try:
+        # Try string-based type name approach first (most compatible)
+        field = QgsField(field_name)
+        if field_type == 'bool':
+            field.setTypeName("bool")
+        elif field_type == 'int':
+            field.setTypeName("integer")
+        elif field_type == 'double':
+            field.setTypeName("double")
+        elif field_type == 'datetime':
+            field.setTypeName("datetime")
+        else:
+            field.setTypeName("text")
+            
+        if length > 0:
+            field.setLength(length)
+        if precision > 0:
+            field.setPrecision(precision)
+            
+        return field
+        
+    except Exception:
+        # Fallback: try QMetaType approach for newer QGIS
+        try:
+            field = QgsField(field_name)
+            if hasattr(QMetaType, 'Type'):
+                if field_type == 'bool':
+                    field.setType(QMetaType.Type.Bool)
+                elif field_type == 'int':
+                    field.setType(QMetaType.Type.Int)
+                elif field_type == 'double':
+                    field.setType(QMetaType.Type.Double)
+                elif field_type == 'datetime':
+                    field.setType(QMetaType.Type.QDateTime)
+                else:
+                    field.setType(QMetaType.Type.QString)
+            else:
+                # Even older fallback
+                field.setTypeName("text")
+                
+            if length > 0:
+                field.setLength(length)
+            if precision > 0:
+                field.setPrecision(precision)
+                
+            return field
+        except Exception:
+            # Ultimate fallback - basic string field
+            field = QgsField(field_name)
+            return field
+
 
 class SimpleTransformer:
     """Transforms vector files using QGIS calculated fields with filter support"""
@@ -41,25 +95,18 @@ class SimpleTransformer:
                     
                     if not expression.hasEvalError() and result is not None:
                         if isinstance(result, bool):
-                            return QgsField("temp", QMetaType.Type.Bool)
+                            return create_compatible_field("temp", "bool")
                         elif isinstance(result, int):
-                            field = QgsField("temp", QMetaType.Type.Int)
-                            field.setLength(10)
-                            return field
+                            return create_compatible_field("temp", "int", 10)
                         elif isinstance(result, float):
-                            field = QgsField("temp", QMetaType.Type.Double)
-                            field.setLength(20)
-                            field.setPrecision(6)
-                            return field
+                            return create_compatible_field("temp", "double", 20, 6)
                         elif hasattr(result, 'date'):
-                            return QgsField("temp", QMetaType.Type.QDateTime)
+                            return create_compatible_field("temp", "datetime")
         
         except Exception:
             pass
         
-        field = QgsField("temp", QMetaType.Type.QString)
-        field.setLength(255)
-        return field
+        return create_compatible_field("temp", "string", 255)
     
     def test_filter_expression(self, filter_expression: str, source_layer: QgsVectorLayer) -> Tuple[bool, str, int]:
         """Test filter expression and return validity, message, and filtered count"""
@@ -366,10 +413,17 @@ class SimpleTransformer:
             for field_name, expression_text in calculated_fields.items():
                 template_field = self.get_field_type_from_expression_result(expression_text, source_layer)
                 
-                field = QgsField(field_name, template_field.type())
-                field.setTypeName(template_field.typeName())
-                field.setLength(template_field.length())
-                field.setPrecision(template_field.precision())
+                # Use compatible field creation based on template
+                if template_field.typeName().lower() in ['bool', 'boolean']:
+                    field = create_compatible_field(field_name, "bool")
+                elif template_field.typeName().lower() in ['int', 'integer']:
+                    field = create_compatible_field(field_name, "int", template_field.length())
+                elif template_field.typeName().lower() in ['double', 'real', 'float']:
+                    field = create_compatible_field(field_name, "double", template_field.length(), template_field.precision())
+                elif template_field.typeName().lower() in ['datetime', 'timestamp']:
+                    field = create_compatible_field(field_name, "datetime")
+                else:
+                    field = create_compatible_field(field_name, "string", template_field.length())
                 fields_to_add.append(field)
                 
                 QgsMessageLog.logMessage(f"Champ '{field_name}': {template_field.typeName()}", "Transformer", Qgis.Info)
@@ -752,16 +806,50 @@ class SimpleTransformer:
                     QgsMessageLog.logMessage(f"Skipping geometry field - handled by geometry_expression: {expression}", "Transformer", Qgis.Info)
                     continue
                     
-                field = QgsField(field_name, QMetaType.Type.QString)
+                # Create field with simple approach
+                field = QgsField(field_name)
+                field.setTypeName("text")
                 field.setLength(255)
+                QgsMessageLog.logMessage(f"Created field: {field.name()}, type: {field.typeName()}, length: {field.length()}", "Transformer", Qgis.Info)
                 field_configs.append((field, expression))
             
-            # Use edit context to add fields
-            with edit(dest_layer):
-                for field, _ in field_configs:
-                    if not dest_layer.addAttribute(field):
-                        QgsMessageLog.logMessage(f"Failed to add field: {field.name()}", "Transformer", Qgis.Warning)
+            # Add fields to destination layer
+            dest_layer.startEditing()
+            
+            # Check existing fields first
+            existing_fields = [field.name().lower() for field in dest_layer.fields()]
+            QgsMessageLog.logMessage(f"Existing fields in dest_layer: {existing_fields}", "Transformer", Qgis.Info)
+            
+            for field, _ in field_configs:
+                field_name_lower = field.name().lower()
+                QgsMessageLog.logMessage(f"Attempting to add field: {field.name()} (type: {field.typeName()}, length: {field.length()})", "Transformer", Qgis.Info)
+                
+                # Check if field already exists
+                if field_name_lower in existing_fields:
+                    QgsMessageLog.logMessage(f"Field {field.name()} already exists, skipping", "Transformer", Qgis.Info)
+                    continue
+                
+                # Try to add the field
+                if not dest_layer.addAttribute(field):
+                    QgsMessageLog.logMessage(f"Failed to add field: {field.name()}", "Transformer", Qgis.Warning)
+                    
+                    # Try alternative field creation
+                    alternative_field = QgsField(field.name(), QVariant.String, "varchar", 255)
+                    QgsMessageLog.logMessage(f"Trying alternative field creation for: {field.name()}", "Transformer", Qgis.Info)
+                    
+                    if not dest_layer.addAttribute(alternative_field):
+                        QgsMessageLog.logMessage(f"Alternative field creation also failed for: {field.name()}", "Transformer", Qgis.Warning)
+                        dest_layer.rollBack()
                         return None
+                    else:
+                        QgsMessageLog.logMessage(f"Successfully added alternative field: {field.name()}", "Transformer", Qgis.Info)
+                else:
+                    QgsMessageLog.logMessage(f"Successfully added field: {field.name()}", "Transformer", Qgis.Info)
+            
+            # Commit the field additions
+            if not dest_layer.commitChanges():
+                QgsMessageLog.logMessage(f"Failed to commit field changes", "Transformer", Qgis.Warning)
+                return None
             
             # Set up coordinate transformation if needed
             transform = None
