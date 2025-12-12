@@ -1,79 +1,34 @@
-# Transformer - QGIS ETL Plugin
+# Transformer Plugin - QGIS
 
-ETL plugin for vector layer transformation in QGIS. Calculated fields, geometry expressions, smart filtering, and PostgreSQL integration.
+A QGIS plugin for transforming vector layers with calculated fields, coordinate reprojection, and export capabilities. Works with QGIS project layers and supports PostgreSQL integration.
 
 ## Overview
 
-**Transformer** provides ETL (Extract, Transform, Load) functionality for vector data transformation within QGIS. Processes layers loaded in your QGIS project using calculated fields, geometry expressions, coordinate transformations, and database integration.
+**Transformer** provides ETL (Extract, Transform, Load) functionality for vector data transformation within QGIS. The plugin processes layers loaded in your QGIS project using calculated fields, coordinate transformations, and database integration.
 
-### Current State (v2.1.0)
+### QGIS Integration
+The plugin processes layers from your QGIS project without external file management. Components include data reading, attribute transformation, coordinate reprojection, and export functionality.
 
-The plugin processes layers from your QGIS project. Components include data reading, attribute transformation, geometry manipulation, coordinate reprojection, and export functionality.
-
-Supports 15+ vector formats: Shapefile, GeoJSON, GeoPackage, KML, DXF, GPX, CSV, etc.
+Supports QGIS-compatible vector formats including Shapefile, GeoJSON, GeoPackage, KML, DXF, GPX. Configurations can be saved and reused.
 
 ## Components
 
 - **Layer Reader**: Access to QGIS project layers
 - **Field Calculator**: QGIS expressions for field calculations and geometric operations
-- **Geometry Transform**: Geometry manipulation via expressions (centroid, buffer, simplify)
 - **Coordinate Transform**: CRS transformations using QGIS engine
-- **Smart Filter**: Expression-based filtering with templates
-- **Configuration Manager**: JSON-based config storage with bidirectional sync
 - **Output**: Memory layers added to QGIS project
-- **Logging**: Color-coded activity log with filtering
+- **Process Recording**: Save complete transformation workflows as reusable templates
+- **Logging**: Color-coded messages with filtering
 
-## Version History
+## Changes in Version 2.0
 
-### v2.1.0 (2025-12-12)
-- Bidirectional sync between Configuration Preview and Field Management
-- Validation errors display available source fields
-- Fixed dict/string handling in clear_all_fields
-
-### v2.0.0 (2025-12-01)
-- Complete UI overhaul with EnhancedTransformerDialog
-- Modular dock-based interface with layout presets
-- Smart filter widget with expression templates
-- Geometry transformation via expressions
-- Activity log with color-coded filtering
-- Keyboard shortcuts (Ctrl+1-4)
-- PostgreSQL auto-mapping after transformation
-
-### v1.x
-- Initial releases with core transformation functionality
-- QGIS project layer support
-- Universal vector format support (15+ formats)
-- PostgreSQL integration
-
-## Planned Features (Roadmap)
-
-### Reader Modes (Not Yet Implemented)
-Write modes for PostgreSQL and file outputs:
-- **APPEND**: Add features to existing layer/table
-- **UPDATE**: Update existing features by key field match
-- **REPLACE**: Drop and recreate layer/table
-
-### Joiner Module (In Development)
-Layer join operations module (`joiner_widget.py`):
-
-**Attribute Join**
-- Field-to-field matching between layers
-- Configurable join fields
-
-**Spatial Joins**
-- Intersects: Features that intersect
-- Contains: Features contained within
-- Within: Features within another
-- Nearest: Distance-based matching
-- Buffer: Buffer-based spatial matching
-- Overlay: Spatial overlay operations
-
-**Join Options**
-- Keep unmatched features
-- Field prefix/suffix for joined attributes
-- Max matches limit
-- Include distance field
-- Geometry source selection (source/target/none)
+- Works with QGIS project layers only (no external file loading)
+- Toggle to show/hide QGIS layers in interface
+- Color-coded logging (Success: Green, Warning: Orange, Error: Red)
+- Dock widget interface with repositioning
+- Layout presets available
+- Removed popup dialogs, uses inline messages
+- Auto-loading of configurations when compatible layers detected
 
 ## Features
 
@@ -123,10 +78,10 @@ Use cases:
 
 ## Technical Requirements
 
-* **QGIS**: Version 3.28 or higher
-* **Python**: 3.9+ (included with QGIS)
+* **QGIS**: Version 3.10 or higher
+* **Python**: 3.6+ (included with QGIS)
 * **System**: Windows, macOS, Linux
-* **PostgreSQL**: Optional, for database integration
+* **PostgreSQL**: Optional, for database integration features
 
 ## Installation
 
@@ -401,9 +356,8 @@ The goal is to continue developing comprehensive solutions that leverage QGIS's 
 
 **Developed by**: Yadda
 **Contact**: youcef.geodesien@gmail.com
-**Version**: 2.1.0
+**Version**: 1.1.0
 **License**: Open Source
-**Repository**: https://github.com/yadda07/transformer
 
 For technical support, please include:
 

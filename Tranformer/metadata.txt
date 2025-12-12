@@ -3,7 +3,7 @@
 name=Transformer
 qgisMinimumVersion=3.28
 description=QGIS plugin for vector layer transformation. Processes QGIS project layers with calculated fields, coordinate transformations, and PostgreSQL integration.
-version=2.1.0
+version=2.0.0
 author=Yadda
 email=youcef.geodesien@gmail.com
 
@@ -16,10 +16,10 @@ repository=https://github.com/yadda07/transformer
 ; Homepage (optional)
 homepage=https://github.com/yadda07/transformer
 
-about=ETL plugin for QGIS vector layer transformation (v2.1.0). 
-    Processes QGIS project layers with calculated fields, geometry expressions, and coordinate reprojection. 
-    Features bidirectional JSON config sync, smart filtering with templates, dock-based UI with drag-drop repositioning. 
-    Supports 15+ vector formats, PostgreSQL integration with auto-mapping, and multi-format export.
+about=QGIS plugin for vector layer transformation with process recording capabilities. Works with QGIS project layers using calculated fields and coordinate transformations. 
+    Records complete transformation workflows as reusable templates for automation and standardization. 
+    Features color-coded logging, dock interface with repositioning, and auto-mapping functionality. 
+    Supports QGIS vector formats with geometric operations, coordinate reprojection, and PostgreSQL integration.
 
 ; Tags separated by commas
 tags=vector,transformation,calculated fields,data processing,geojson,geopackage,kml,shapefile,export,postgresql
@@ -38,21 +38,6 @@ qgisMaximumVersion=3.45
 
 ; Changelog
 changelog=
-    Version 2.1.0 (2025-12-12):
-    - Bidirectional sync between Configuration Preview and Field Management
-    - Validation errors now display available source fields
-    - Fixed dict/string handling in clear_all_fields
-    - Enhanced error messages with field hints
-    
-    Version 2.0.0 (2025-12-01):
-    - Complete UI overhaul with EnhancedTransformerDialog
-    - Modular dock-based interface with layout presets
-    - Smart filter widget with expression templates
-    - Geometry transformation via expressions (centroid, buffer, simplify)
-    - Activity log with color-coded filtering
-    - Keyboard shortcuts (Ctrl+1-4)
-    - PostgreSQL auto-mapping after transformation
-    
     Version 1.2.3 (2025-09-02):
     - Attempted to improve compatibility with older QGIS versions
     - Minor adjustments for different QGIS installations

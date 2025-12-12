@@ -5663,7 +5663,7 @@ Errors: {len(errors)}
         """Show about information"""
         about_html = """
         <h2 style="color: #2E8B57; text-align: center; margin-bottom: 10px;">Transformer</h2>
-        <h3 style="color: #4682B4; text-align: center; margin-bottom: 20px;">Shape Edition v2.1.0</h3>
+        <h3 style="color: #4682B4; text-align: center; margin-bottom: 20px;">Shape Edition v1.1.0</h3>
 
         <p style="text-align: center; margin-bottom: 15px; color: #444;">
         <b style="color: #2E8B57;">Developed by Yadda</b>
