@@ -2,8 +2,8 @@
 [general]
 name=Transformer
 qgisMinimumVersion=3.28
-description=ETL components for vector data transformation. Provides Reader+AttributeManager+Reprojector+Writer functionality with workflow persistence.
-version=1.2.3
+description=QGIS plugin for vector layer transformation. Processes QGIS project layers with calculated fields, coordinate transformations, and PostgreSQL integration.
+version=2.0.0
 author=Yadda
 email=youcef.geodesien@gmail.com
 
@@ -16,10 +16,10 @@ repository=https://github.com/yadda07/transformer
 ; Homepage (optional)
 homepage=https://github.com/yadda07/transformer
 
-about=ETL (Extract, Transform, Load) components within QGIS for vector data transformation workflows. 
-    Provides the equivalent of Reader + AttributeManager + Reprojector + Writer components found in commercial ETL solutions. 
-    Supports 15+ vector formats (Shapefile, GeoJSON, GeoPackage, KML, etc.), coordinate reprojection, and PostgreSQL integration. 
-    Save complete transformation configurations for workflow automation and repetitive processing tasks.
+about=QGIS plugin for vector layer transformation with process recording capabilities. Works with QGIS project layers using calculated fields and coordinate transformations. 
+    Records complete transformation workflows as reusable templates for automation and standardization. 
+    Features color-coded logging, dock interface with repositioning, and auto-mapping functionality. 
+    Supports QGIS vector formats with geometric operations, coordinate reprojection, and PostgreSQL integration.
 
 ; Tags separated by commas
 tags=vector,transformation,calculated fields,data processing,geojson,geopackage,kml,shapefile,export,postgresql

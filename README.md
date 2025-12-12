@@ -1,99 +1,80 @@
 # Transformer Plugin - QGIS
 
-A QGIS plugin for transforming vector files with calculated fields, coordinate reprojection, and export capabilities. Supports all QGIS-compatible vector formats, batch processing, and PostgreSQL database integration.
+A QGIS plugin for transforming vector layers with calculated fields, coordinate reprojection, and export capabilities. Works with QGIS project layers and supports PostgreSQL integration.
 
 ## Overview
 
-**Transformer** is a ETL (Extract, Transform, Load) solution built within QGIS, providing enterprise-grade data processing capabilities through integrated components that work seamlessly together. This plugin addresses the need for powerful, accessible transformation tools by leveraging QGIS's rich API ecosystem to deliver functionality comparable to commercial ETL platforms.
+**Transformer** provides ETL (Extract, Transform, Load) functionality for vector data transformation within QGIS. The plugin processes layers loaded in your QGIS project using calculated fields, coordinate transformations, and database integration.
 
-### ETL Integration Philosophy
-The plugin combines multiple ETL components into a unified workflow: **Reader + AttributeManager + Reprojector + Writer + ConfigurationManager**, enabling complete data processing pipelines. Once configured, the entire transformation process becomes automated - users define their workflow once and execute it repeatedly with consistent results.
+### QGIS Integration
+The plugin processes layers from your QGIS project without external file management. Components include data reading, attribute transformation, coordinate reprojection, and export functionality.
 
-Supports 15+ vector formats including Shapefile, GeoJSON, GeoPackage, KML, DXF, GPX, and more. The tool emphasizes workflow automation through persistent configurations, making it ideal for organizations requiring standardized, repeatable data processing workflows.
+Supports QGIS-compatible vector formats including Shapefile, GeoJSON, GeoPackage, KML, DXF, GPX. Configurations can be saved and reused.
 
-## ETL Architecture
+## Components
 
-### Integrated Component System
-Transformer provides a cohesive ETL architecture where each component is designed to work in harmony with others, creating powerful data processing pipelines:
+- **Layer Reader**: Access to QGIS project layers
+- **Field Calculator**: QGIS expressions for field calculations and geometric operations
+- **Coordinate Transform**: CRS transformations using QGIS engine
+- **Output**: Memory layers added to QGIS project
+- **Process Recording**: Save complete transformation workflows as reusable templates
+- **Logging**: Color-coded messages with filtering
 
-- **Universal Reader**: Multi-format input support (15+ vector formats) with intelligent format detection
-- **Advanced AttributeManager**: Complex field calculations, expressions, and data type transformations
-- **Spatial Reprojector**: Coordinate system transformations and geometric operations
-- **Multi-format Writer**: Flexible output options with database integration capabilities
-- **Configuration Manager**: Persistent workflow templates for automation and standardization
-- **Batch Processor**: Scalable processing for enterprise datasets
+## Changes in Version 2.0
 
-### Workflow Automation
-Once configured, the transformation pipeline operates autonomously - eliminating manual intervention for recurring tasks. This approach transforms complex, multi-step processes into simple, one-click operations, significantly improving productivity for geospatial data workflows.
-
-## Interface Improvements (Version 1.1.1)
-
-### Workflow-Focused Design
-The interface has been refined to support continuous data processing workflows:
-
-#### **Reduced Interruptions**
-- Confirmation dialogs removed from routine operations
-- Information flows through a centralized activity log
-- Operations execute directly with feedback in the log panel
-
-#### **Modular Interface**
-- Components organized as independent dock widgets
-- Standard Qt repositioning and resizing
-- Window layouts persist between sessions
-
-#### **Activity Logging**
-- Color-coded message types for visual distinction
-- Filterable log levels (Success, Warning, Error, Info)
-- Consolidated feedback without interface clutter
+- Works with QGIS project layers only (no external file loading)
+- Toggle to show/hide QGIS layers in interface
+- Color-coded logging (Success: Green, Warning: Orange, Error: Red)
+- Dock widget interface with repositioning
+- Layout presets available
+- Removed popup dialogs, uses inline messages
+- Auto-loading of configurations when compatible layers detected
 
 ## Features
 
-### Data Transformation
+### Layer Processing
 
-* Support for multiple vector formats (Shapefile, GeoJSON, GeoPackage, KML, DXF, GPX, etc.)
-* Process layers from QGIS project or external files
-* Coordinate system transformations using QGIS reprojection engine
-* Geometric calculations through QGIS expression functions
-* Field calculations and data type transformations
-* Batch processing for multiple files with shared configurations
+* Process QGIS project layers
+* Support for vector formats compatible with QGIS
+* Coordinate system transformations
+* Geometric operations using QGIS expressions
+* Field calculations and data type handling
+* Batch processing for multiple layers
 
-### Export Options
+### Export
 
-* Export to shapefile, GeoJSON, CSV, and other formats
-* Process multiple files at once
-* Maintain consistent output structure
-* Configure field mapping rules
+* Export to shapefile, GeoJSON, CSV
+* Multiple layer processing
+* Consistent output structure
+* Field mapping configuration
 
 ### PostgreSQL Integration
 
-* Connect to PostgreSQL databases
-* Automatic field matching between source and target
-* Manual field mapping when needed
-* Handle data type conversions
+* Database connection management
+* Auto-mapping after transformations
+* Field matching between layers and tables
+* Manual mapping with type overrides
+* Data type conversions
 
-### Configuration
+### Process Recording and Automation
 
-* Save transformation settings as templates
-* Reuse configurations for similar tasks
-* Share settings between users
-* Version tracking for configuration changes
+* Record complete transformation workflows including filters, calculations, and coordinate systems
+* Save processes as JSON templates for reuse across different layers
+* Auto-load recorded processes when compatible layers are detected
+* Share transformation workflows between users and projects
+* Replay complex multi-step operations with one click
+* Bidirectional field-expression synchronization
 
 ## Use Cases
 
-This plugin can be useful for:
+Use cases:
 
-* Standardizing data formats across multiple shapefiles
-* Creating consistent export formats for regular deliveries
-* Automating repetitive transformation tasks
-* Integrating with PostgreSQL databases
-* Processing multiple files with the same transformation rules
-
-The tool is suitable for organizations that need to:
-
-* Maintain consistent export formats
-* Process data regularly with similar requirements
-* Work with PostgreSQL databases
-* Handle multiple shapefiles with standardized outputs
+* Record and replay transformation workflows for consistent processing
+* Transform QGIS project layers with calculated fields and coordinate operations
+* Automate repetitive tasks by saving complete process templates
+* Share standardized transformation workflows across teams
+* Integrate QGIS layers with PostgreSQL databases using recorded mappings
+* Apply identical processing to multiple similar layers
 
 ## Technical Requirements
 
@@ -158,11 +139,12 @@ transformer/
 
 The interface consists of three main panels:
 
-#### Left Panel - Shapefile Management
+#### Left Panel - QGIS Layer Management
 
-* **Load Files**: "Load Shapes" button to add multiple files
-* **File List**: Display loaded shapefiles with feature counts
-* **Management**: Remove or refresh loaded files
+* **Show QGIS Layers**: Toggle to display all vector layers from your QGIS project
+* **Layer List**: Display QGIS layers with visual differentiation (blue for QGIS layers)
+* **Layer Management**: Select, filter, and manage layers directly from QGIS project
+* **Auto-detection**: Automatically loads compatible configurations for known layers
 
 #### Center Panel - Transformation Configuration
 
@@ -194,12 +176,13 @@ The interface consists of three main panels:
 
 ### 3. Standard Workflow
 
-#### Step 1: Load Data
+#### Step 1: Access QGIS Layers
 
 ```
-1. Click "Load Shapes"
-2. Select one or multiple .shp files
-3. Files appear in the list with metadata
+1. Load vector layers in your QGIS project
+2. Toggle "Show QGIS Layers" in the plugin interface
+3. Layers appear with visual differentiation and metadata
+4. Compatible configurations auto-load for recognized layers
 ```
 
 #### Step 2: Configure Filters

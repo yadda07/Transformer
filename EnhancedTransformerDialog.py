@@ -11,38 +11,10 @@ from datetime import datetime
 from pathlib import Path
 
 from qgis.PyQt.QtCore import (
-    Qt, pyqtSignal, QSettings, QSize
+    Qt, pyqtSignal, QSettings, QSize, QTimer
 )
 
-# Import QTimer with fallback
-try:
-    from qgis.PyQt.QtCore import QTimer
-except ImportError:
-    try:
-        from PyQt5.QtCore import QTimer
-    except ImportError:
-        class QTimer:
-            def __init__(self, parent=None):
-                pass
-            def timeout(self):
-                class Signal:
-                    def connect(self, func):
-                        pass
-                return Signal()
-            def setSingleShot(self, single):
-                pass
-            def start(self, msec=None):
-                pass
-            def stop(self):
-                pass
-            @staticmethod
-            def singleShot(msec, func):
-                try:
-                    func()
-                except:
-                    pass
-
-from qgis.PyQt.QtGui import QPixmap, QIcon
+from qgis.PyQt.QtGui import QPixmap, QIcon, QColor, QKeySequence, QCursor, QFont
 from qgis.PyQt.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QLabel, QLineEdit, QPushButton, QTextEdit, QPlainTextEdit, QComboBox, QCheckBox,
@@ -53,95 +25,7 @@ from qgis.PyQt.QtWidgets import (
     QDockWidget, QAbstractItemView, QApplication, QDialog
 )
 
-# Import QToolBar with fallback
-try:
-    from qgis.PyQt.QtWidgets import QToolBar
-except ImportError:
-    try:
-        from PyQt5.QtWidgets import QToolBar
-    except ImportError:
-        class QToolBar:
-            def __init__(self, text="", parent=None):
-                pass
-            def setToolButtonStyle(self, style):
-                pass
-            def setIconSize(self, size):
-                pass
-            def setFloatable(self, floatable):
-                pass
-            def addAction(self, action):
-                pass
-            def setStyleSheet(self, style):
-                pass
-
-# Import QSizePolicy with fallback
-try:
-    from qgis.PyQt.QtWidgets import QSizePolicy
-except ImportError:
-    try:
-        from PyQt5.QtWidgets import QSizePolicy
-    except ImportError:
-        class QSizePolicy:
-            Expanding = 7
-            Preferred = 5
-            def __init__(self, h=None, v=None):
-                pass
-
-from qgis.PyQt.QtGui import (
-    QIcon, QColor, QKeySequence, QCursor
-)
-
-# Import QShortcut with multi-version compatibility
-QShortcut = None
-try:
-    from qgis.PyQt.QtWidgets import QShortcut  # Recent versions
-except ImportError:
-    try:
-        from qgis.PyQt.QtGui import QShortcut  # Older versions  
-    except ImportError:
-        try:
-            from PyQt5.QtWidgets import QShortcut  # Direct PyQt5
-        except ImportError:
-            try:
-                from PyQt5.QtGui import QShortcut  # PyQt5 legacy
-            except ImportError:
-                # Fallback class if QShortcut unavailable
-                class QShortcut:
-                    def __init__(self, key_sequence, parent):
-                        self.key_sequence = key_sequence
-                        self.parent = parent
-                        print(f"QShortcut not available - shortcut {key_sequence} disabled")
-                    
-                    def setContext(self, context):
-                        pass
-                        
-                    class MockSignal:
-                        def connect(self, callback):
-                            pass
-                            
-                    @property 
-                    def activated(self):
-                        return self.MockSignal()
-
-# Import QFont separately to handle import issues
-try:
-    from qgis.PyQt.QtGui import QFont
-except ImportError:
-    try:
-        from PyQt5.QtGui import QFont
-    except ImportError:
-        # Fallback: create a dummy QFont class
-        class QFont:
-            def __init__(self, family="Arial", size=9, weight=None):
-                self.family = family
-                self.size = size
-                self.weight = weight
-            
-            class Bold:
-                pass
-            
-            class Normal:
-                pass
+from qgis.PyQt.QtWidgets import QToolBar, QSizePolicy, QShortcut
 
 from qgis.core import (
     QgsVectorLayer, QgsProject, QgsCoordinateReferenceSystem,
@@ -155,77 +39,55 @@ from qgis.gui import (
     QgsProjectionSelectionDialog, QgsMessageBar
 )
 
-# Import QgsCoordinateReferenceSystemProxyModel with fallback
+# Import QgsCoordinateReferenceSystemProxyModel - optional
+QgsCoordinateReferenceSystemProxyModel = None
 try:
     from qgis.gui import QgsCoordinateReferenceSystemProxyModel
 except ImportError:
     try:
         from qgis.core import QgsCoordinateReferenceSystemProxyModel
     except ImportError:
-        # Fallback class if not available
-        class QgsCoordinateReferenceSystemProxyModel:
-            def __init__(self, parent=None):
-                self.parent = parent
-                print("QgsCoordinateReferenceSystemProxyModel not available - using fallback")
+        # Cette classe n'est pas disponible dans toutes les versions QGIS
+        pass
 
 # Import des widgets directement pour éviter les imports circulaires
 from .AdvancedExpressionWidget import AdvancedExpressionWidget
 from .SmartFilterWidget import SmartFilterWidget
 from .FieldWidget import FieldWidget
 from .ExpressionTesterDialog import ExpressionTesterDialog
-from .PreferencesDialog import PreferencesDialog
 
 # Import des fonctions de logging
 from .logger import logger as plugin_logger, log_info, log_warning, log_error, log_success
 
-# Import conditionnel du module d'export
+# Import interface configuration classes
+from .interface_config import InterfaceTheme, PanelMode, InterfaceSettings
+
+# Import additional modules with error handling
 try:
-    from .export_module import ExportWidget, ExportManager, ExportFormat, EXPORT_AVAILABLE
-    EXPORT_CLASSES_AVAILABLE = True and EXPORT_AVAILABLE
+    from .export_module import ExportWidget
+    EXPORT_CLASSES_AVAILABLE = True
 except ImportError as e:
+    QgsMessageLog.logMessage(f"Export module import error: {e}", "Transformer", Qgis.Warning)
     ExportWidget = None
-    ExportManager = None
-    ExportFormat = None
     EXPORT_CLASSES_AVAILABLE = False
 
-# Import conditionnel du module PostgreSQL
 try:
     from .postgresql_integration import PostgreSQLIntegrationWidget
     POSTGRESQL_INTEGRATION_AVAILABLE = True
 except ImportError as e:
+    QgsMessageLog.logMessage(f"PostgreSQL module import error: {e}", "Transformer", Qgis.Warning)
     PostgreSQLIntegrationWidget = None
     POSTGRESQL_INTEGRATION_AVAILABLE = False
-except Exception as e:
-    PostgreSQLIntegrationWidget = None
-    POSTGRESQL_INTEGRATION_AVAILABLE = False
 
-# Define enums locally to avoid circular imports
-from dataclasses import dataclass
-from enum import Enum
+try:
+    from .joiner_widget import JoinerWidget
+    JOINER_AVAILABLE = True
+except ImportError as e:
+    QgsMessageLog.logMessage(f"Joiner module import error: {e}", "Transformer", Qgis.Warning)
+    JoinerWidget = None
+    JOINER_AVAILABLE = False
 
-class InterfaceTheme(Enum):
-    """Available interface themes"""
-    LIGHT = "light"
-    DARK = "dark"
-    QGIS_NATIVE = "qgis_native"
-    PROFESSIONAL = "professional"
-    HIGH_CONTRAST = "high_contrast"
-
-class PanelMode(Enum):
-    """Panel display modes"""
-    COMPACT = "compact"
-    STANDARD = "standard"
-    EXTENDED = "extended"
-    DOCKED = "docked"
-
-@dataclass
-class InterfaceSettings:
-    """Interface configuration"""
-    theme: InterfaceTheme = InterfaceTheme.QGIS_NATIVE
-    panel_mode: PanelMode = PanelMode.STANDARD
-    auto_save_config: bool = True
-    show_tooltips: bool = True
-    enable_animations: bool = True
+# Core transformation components
 
 class EnhancedTransformerDialog(QMainWindow):
     """Enhanced main interface with native QGIS features"""
@@ -339,13 +201,11 @@ class EnhancedTransformerDialog(QMainWindow):
         self.main_tabs.addTab(config_tab, QIcon(":/images/themes/default/mActionConfig.svg"), "Configuration")
         
         # Export tab (integrated) - Using local imports
-        QgsMessageLog.logMessage(f" Création onglet Export - EXPORT_CLASSES_AVAILABLE: {EXPORT_CLASSES_AVAILABLE}", "Transformer", Qgis.Info)
-        
         if EXPORT_CLASSES_AVAILABLE and ExportWidget is not None:
             try:
                 self.export_widget = ExportWidget()
                 self.main_tabs.addTab(self.export_widget, QIcon(":/images/themes/default/mActionExport.svg"), "Export")
-                QgsMessageLog.logMessage("Export tab created successfully!", "Transformer", Qgis.Success)
+                self.log_message("Export tab created", "Success")  # Internal log only
             except Exception as e:
                 QgsMessageLog.logMessage(f"Error creating ExportWidget: {str(e)}", "Transformer", Qgis.Critical)
                 self.export_widget = None
@@ -355,12 +215,38 @@ class EnhancedTransformerDialog(QMainWindow):
             self.export_widget = None
             self._create_fallback_export_tab()
         
+        # Joiner tab - Advanced spatial and attribute joining
+        if JOINER_AVAILABLE and JoinerWidget is not None:
+            try:
+                self.joiner_widget = JoinerWidget()
+                self.main_tabs.addTab(self.joiner_widget, QIcon(":/images/themes/default/mActionJoin.svg"), "Joiner")
+            except Exception as e:
+                QgsMessageLog.logMessage(f"Joiner widget creation error: {str(e)}", "Transformer", Qgis.Critical)
+                # Fallback widget
+                joiner_fallback = QWidget()
+                joiner_layout = QVBoxLayout()
+                joiner_layout.addWidget(QLabel("Joiner functionality error"))
+                joiner_layout.addWidget(QLabel(f"Error creating Joiner widget: {str(e)}"))
+                joiner_layout.addWidget(QLabel("Please check the logs for more details."))
+                joiner_fallback.setLayout(joiner_layout)
+                self.main_tabs.addTab(joiner_fallback, QIcon(":/images/themes/default/mActionJoin.svg"), "Joiner")
+                self.joiner_widget = None
+        else:
+            # Widget de fallback si le module Joiner n'est pas disponible
+            joiner_fallback = QWidget()
+            joiner_layout = QVBoxLayout()
+            joiner_layout.addWidget(QLabel("Joiner module not available"))
+            joiner_layout.addWidget(QLabel("The advanced joining module could not be loaded."))
+            joiner_layout.addWidget(QLabel("Check your QGIS installation and dependencies."))
+            joiner_fallback.setLayout(joiner_layout)
+            self.main_tabs.addTab(joiner_fallback, QIcon(":/images/themes/default/mActionJoin.svg"), "Joiner")
+            self.joiner_widget = None
+
         # PostgreSQL Integration tab
         if POSTGRESQL_INTEGRATION_AVAILABLE and PostgreSQLIntegrationWidget is not None:
             try:
                 self.postgresql_widget = PostgreSQLIntegrationWidget()
                 self.main_tabs.addTab(self.postgresql_widget, QIcon(":/images/themes/default/mActionPostgreSQL.svg"), "PostgreSQL")
-                QgsMessageLog.logMessage("PostgreSQL integration loaded successfully", "Transformer", Qgis.Info)
             except Exception as e:
                 QgsMessageLog.logMessage(f"PostgreSQL widget creation error: {str(e)}", "Transformer", Qgis.Critical)
                 # Fallback widget
@@ -384,25 +270,13 @@ class EnhancedTransformerDialog(QMainWindow):
             postgresql_fallback.setLayout(postgresql_layout)
             self.main_tabs.addTab(postgresql_fallback, QIcon(":/images/themes/default/mActionPostgreSQL.svg"), "PostgreSQL")
             self.postgresql_widget = None
+
+        # Ready for core transformation components
         
         # Finalize the central layout
         central_layout.addWidget(self.main_tabs)
         central_widget.setLayout(central_layout)
         self.setCentralWidget(central_widget)
-    
-    def _create_fallback_export_tab(self):
-        """Create fallback export tab"""    
-        export_fallback = QWidget()
-        export_layout = QVBoxLayout()
-        export_layout.addWidget(QLabel("Export functionality not available"))
-        export_layout.addWidget(QLabel("The advanced export module could not be loaded."))
-        export_layout.addWidget(QLabel("You can still use the basic transformation features."))
-        export_layout.addWidget(QLabel("\nTroubleshooting:"))
-        export_layout.addWidget(QLabel("1. Restart QGIS completely"))
-        export_layout.addWidget(QLabel("2. Check QGIS logs for detailed information"))
-        export_layout.addWidget(QLabel("3. Contact support if the issue persists"))
-        export_fallback.setLayout(export_layout)
-        self.main_tabs.addTab(export_fallback, QIcon(":/images/themes/default/mActionExport.svg"), "Export")
     
     def create_configuration_tab(self):
         """Create main configuration tab"""
@@ -660,7 +534,6 @@ class EnhancedTransformerDialog(QMainWindow):
                     if action:
                         action.setChecked(visible)
             
-            self.log_message("Component visibility states restored", "Info")
         except Exception as e:
             self.log_message(f"Error restoring component visibility: {str(e)}", "Warning")
     
@@ -735,7 +608,7 @@ class EnhancedTransformerDialog(QMainWindow):
             self._setup_fallback_docks()
     
     def _setup_layout_presets(self):
-        """Setup quick layout presets for different workflows"""
+        """Setup quick layout presets for different processing needs"""
         try:
             # Add layout dropdown to toolbar if it exists
             if hasattr(self, 'toolbar'):
@@ -772,7 +645,7 @@ class EnhancedTransformerDialog(QMainWindow):
                 layout_button.setPopupMode(QToolButton.InstantPopup)
                 layout_button.setIcon(QIcon(":/images/themes/default/mActionOptions.svg"))
                 layout_button.setText("Layouts")
-                layout_button.setToolTip("Quick layout presets for different workflows")
+                layout_button.setToolTip("Quick layout presets for different processing needs")
                 self.toolbar.addWidget(layout_button)
                 
         except Exception as e:
@@ -1532,25 +1405,6 @@ class EnhancedTransformerDialog(QMainWindow):
         except Exception as e:
             log_error(f"Error setting up dock shortcuts: {str(e)}")
     
-    def test_shortcuts(self):
-        """Méthode de test pour vérifier les raccourcis - appel manuel"""
-        log_info("=== TEST DES RACCOURCIS CLAVIER ===")
-        
-        # Vérifier l'existence des docks
-        dock_names = ['help_dock', 'source_dock', 'config_dock', 'log_dock']
-        for dock_name in dock_names:
-            dock = getattr(self, dock_name, None)
-            if dock:
-                log_info(f"✓ {dock_name}: EXISTS (visible={dock.isVisible()})")
-            else:
-                log_error(f"✗ {dock_name}: MISSING")
-        
-        # Tester manuellement un toggle
-        log_info("Testing F3 (config_dock) toggle...")
-        self._toggle_dock_visibility('config_dock')
-        
-        log_info("=== FIN DU TEST ===")
-    
     def _toggle_dock_visibility(self, dock_name):
         """Toggle visibility of a specific dock"""
         try:
@@ -1715,48 +1569,6 @@ class EnhancedTransformerDialog(QMainWindow):
         """Méthode publique pour forcer l'application des styles"""
         self._apply_dock_titles_styles()
     
-    def _setup_fallback_docks(self):
-        """Setup simple fallback docks in case of error"""
-        try:
-            # Vector Sources dock (left)
-            self.source_dock = QDockWidget("Vector Files", self)
-            self.source_dock.setWidget(QLabel("Source files panel - Error loading advanced features"))
-            self.addDockWidget(Qt.LeftDockWidgetArea, self.source_dock)
-            
-            # Configuration Preview dock (right top)
-            self.config_dock = QDockWidget("Configuration Preview", self)
-            self.config_dock.setWidget(QLabel("Configuration panel - Error loading advanced features"))
-            self.addDockWidget(Qt.RightDockWidgetArea, self.config_dock)
-            
-            # Activity Monitor dock (right bottom)
-            self.log_dock = QDockWidget("Activity Monitor", self)
-            self.log_dock.setWidget(QLabel("Activity log panel - Error loading advanced features"))
-            self.addDockWidget(Qt.RightDockWidgetArea, self.log_dock)
-            self.splitDockWidget(self.config_dock, self.log_dock, Qt.Vertical)
-            
-            # Quick Help dock (tabbed)
-            self.help_dock = QDockWidget("Quick Help", self)
-            self.help_dock.setWidget(QLabel("Help panel - Error loading advanced features"))
-            
-            # Appliquer les styles APRÈS avec délai pour éviter l'écrasement par QGIS
-            QTimer.singleShot(200, self._apply_dock_titles_styles)
-            self.tabifyDockWidget(self.config_dock, self.help_dock)
-            
-            log_error("Loaded fallback dock system - some features may be unavailable")
-            
-        except Exception as e:
-            log_error(f"Failed to create fallback docks: {str(e)}")
-            # Ultimate fallback - minimal interface
-            try:
-                central_widget = QWidget()
-                central_layout = QVBoxLayout(central_widget)
-                error_label = QLabel("Critical Error: Interface failed to load properly.\nPlease restart the plugin.")
-                error_label.setStyleSheet("color: red; font-weight: bold; padding: 20px;")
-                central_layout.addWidget(error_label)
-                self.setCentralWidget(central_widget)
-            except:
-                pass  # Can't do anything more
-    
     def _debug_dock_properties(self):
         """Debug dock properties to identify drag & drop issues"""
         try:
@@ -1815,7 +1627,6 @@ class EnhancedTransformerDialog(QMainWindow):
                         )
             
             # Message de succès
-            self.log_message("Dock widgets ready - Qt native drag & drop active")
             
             # Forcer une mise à jour de l'interface
             self.update()
@@ -2055,11 +1866,7 @@ class EnhancedTransformerDialog(QMainWindow):
         
         self.config_preview = QPlainTextEdit()
         self.config_preview.setReadOnly(False)  # Allow direct editing
-        try:
-            self.config_preview.setFont(QFont("Consolas", 9))
-        except NameError:
-            from qgis.PyQt.QtGui import QFont
-            self.config_preview.setFont(QFont("Consolas", 9))
+        self.config_preview.setFont(QFont("Consolas", 9))
         
         # Configuration pour redimensionnement fluide et maximisation de l'espace
         self.config_preview.setMinimumHeight(120)  # Hauteur minimum pour bonne lisibilité
@@ -2265,11 +2072,7 @@ class EnhancedTransformerDialog(QMainWindow):
         
         self.logs_text = QPlainTextEdit()
         self.logs_text.setReadOnly(True)
-        try:
-            self.logs_text.setFont(QFont("Consolas", 6))
-        except NameError:
-            from qgis.PyQt.QtGui import QFont
-            self.logs_text.setFont(QFont("Consolas", 6))
+        self.logs_text.setFont(QFont("Consolas", 6))
         self.logs_text.setMinimumHeight(120)
         self.logs_text.setStyleSheet("""
             QPlainTextEdit {
@@ -2400,52 +2203,52 @@ class EnhancedTransformerDialog(QMainWindow):
         """)
         help_tabs.addTab(filter_help, "Filters")
         
-        # Workflow help
-        workflow_help = QTextEdit()
-        workflow_help.setReadOnly(True)
-        workflow_help.setStyleSheet("""
+        # Processing help
+        processing_help = QTextEdit()
+        processing_help.setReadOnly(True)
+        processing_help.setStyleSheet("""
             QTextEdit {
                 background-color: #f8f9fa;
                 border: none;
                 font-size: 11px;
             }
         """)
-        workflow_help.setHtml("""
+        processing_help.setHtml("""
         <div style="padding: 10px;">
-            <h3 style="color: #1976D2; margin-top: 0;">Workflow Guide</h3>
+            <h3 style="color: #1976D2; margin-top: 0;">Processing Guide</h3>
             
             <h4 style="color: #28a745;">Step-by-Step Process:</h4>
             <ol style="margin-left: 15px;">
-                <li><strong>Load Vector Files:</strong> Use the Vector Sources panel</li>
-                <li><strong>Configure Fields:</strong> Set up calculated fields in the Expression Builder</li>
-                <li><strong>Apply Filters:</strong> Add conditions to filter your data</li>
-                <li><strong>Validate:</strong> Check your configuration for errors</li>
-                <li><strong>Transform:</strong> Execute the transformation process</li>
+                <li>Load your data using the <strong>Configuration</strong> tab</li>
+                <li>Transform data in the <strong>Transformation</strong> tab</li>
+                <li>Join additional data if needed in the <strong>Joiner</strong> tab</li>
+                <li>Export results using the <strong>Export</strong> tab</li>
             </ol>
             
-            <h4 style="color: #17a2b8;">Tips & Tricks:</h4>
+            <h4 style="color: #fd7e14;">Tips & Shortcuts:</h4>
             <ul style="margin-left: 15px;">
                 <li>Use <code>Ctrl+Z</code> to undo changes</li>
                 <li>Right-click for context menus</li>
                 <li>Drag dock panels to reorganize your workspace</li>
-                <li>Use layout presets for different workflows</li>
+                <li>Use layout presets for different processing needs</li>
             </ul>
             
             <h4 style="color: #6f42c1;">Layout Presets:</h4>
             <ul style="margin-left: 15px;">
-                <li><strong>Default:</strong> Standard layout with all panels</li>
-                <li><strong>Vertical:</strong> Stacked layout for wide screens</li>
-                <li><strong>Focus Config:</strong> Maximize configuration panel</li>
-                <li><strong>Focus Monitor:</strong> Maximize activity monitoring</li>
+                <li><strong>Default:</strong> Balanced layout for general use</li>
+                <li><strong>Data Processing:</strong> Focus on transformation tools</li>
+                <li><strong>Analysis:</strong> Emphasis on filters and joins</li>
+                <li><strong>Export:</strong> Output-focused layout</li>
             </ul>
         </div>
         """)
-        help_tabs.addTab(workflow_help, "Workflow")
+        help_tabs.addTab(processing_help, "Processing")
         
         layout.addWidget(help_tabs)
         widget.setLayout(layout)
         return widget
     
+# ... (rest of the code remains the same)
     def _create_modern_dock(self, title, object_name, widget):
         """Create a modern dock widget with enhanced properties"""
         dock = QDockWidget(title, self)
@@ -2557,7 +2360,7 @@ class EnhancedTransformerDialog(QMainWindow):
         pass
     
     def _setup_layout_presets(self):
-        """Setup quick layout presets for different workflows"""
+        """Setup quick layout presets for different processing needs"""
         # This will be connected to toolbar buttons
         self.layout_presets = {
             'default': self._layout_default,
@@ -2576,19 +2379,14 @@ class EnhancedTransformerDialog(QMainWindow):
             Qt.BottomDockWidgetArea: 'Bottom'
         }
         area_name = area_names.get(area, 'Unknown')
-        self.log_message(f"Panel '{dock.windowTitle()}' moved to {area_name} area", "Info")
     
     def _on_dock_visibility_changed(self, dock, visible):
         """Handle dock visibility changes"""
-        status = "shown" if visible else "hidden"
-        self.log_message(f"Panel '{dock.windowTitle()}' {status}", "Info")
+        pass
     
     def _on_dock_floating_changed(self, dock, floating):
         """Handle dock floating state changes"""
-        if floating:
-            self.log_message(f"Panel '{dock.windowTitle()}' is now floating - drag to reposition", "Info")
-        else:
-            self.log_message(f"Panel '{dock.windowTitle()}' docked successfully", "Success")
+        pass
     
     # === LAYOUT PRESETS ===
     
@@ -2710,7 +2508,7 @@ class EnhancedTransformerDialog(QMainWindow):
         layout_preset_button = QToolButton(self)
         layout_preset_button.setText("Layouts")
         layout_preset_button.setIcon(QIcon(":/images/themes/default/mActionLayout.svg"))
-        layout_preset_button.setToolTip("Quick layout presets for different workflows")
+        layout_preset_button.setToolTip("Quick layout presets for different processing needs")
         layout_preset_button.setPopupMode(QToolButton.InstantPopup)
         
         layout_preset_menu = QMenu("Layout Presets", self)
@@ -2970,6 +2768,12 @@ class EnhancedTransformerDialog(QMainWindow):
         
         # Connections with export
         self.transformation_requested.connect(self.on_transformation_completed)
+        
+        # QGIS project layer signals for auto-update
+        project = QgsProject.instance()
+        project.layersAdded.connect(self.on_layers_added)
+        project.layersRemoved.connect(self.on_layers_removed)
+        project.layerWillBeRemoved.connect(self.on_layer_will_be_removed)
     
     def setup_centralized_logger(self):
         """Configure le logger centralisé avec le widget Activity Log"""
@@ -3004,59 +2808,6 @@ class EnhancedTransformerDialog(QMainWindow):
                     css_content = f.read()
                 self.setStyleSheet(css_content)
                 log_info("Theme applied from CSS file")
-            else:
-                # Fallback to simple integrated styles
-                self.apply_fallback_theme()
-                
-        except Exception as e:
-            log_warning(f"Error applying theme: {str(e)}")
-            self.apply_fallback_theme()
-
-    def apply_fallback_theme(self):
-        """Apply a simple fallback theme"""
-        try:
-            if self.interface_settings.theme == InterfaceTheme.QGIS_NATIVE:
-                # Simple and safe QGIS native style
-                style = """
-                QMainWindow {
-                    background-color: #f0f0f0;
-                }
-                QGroupBox {
-                    font-weight: bold;
-                    border: 2px solid #c0c0c0;
-                    border-radius: 4px;
-                    margin-top: 6px;
-                    padding-top: 6px;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 8px;
-                    padding: 0 4px 0 4px;
-                }
-                QPushButton {
-                    background-color: #e1e1e1;
-                    border: 1px solid #adadad;
-                    border-radius: 3px;
-                    padding: 4px 8px;
-                    min-height: 20px;
-                }
-                QPushButton:hover {
-                    background-color: #d4d4d4;
-                }
-                QTreeWidget, QListWidget, QTableWidget {
-                    border: 1px solid #c0c0c0;
-                    background-color: white;
-                    alternate-background-color: #f5f5f5;
-                }
-                QLineEdit {
-                    border: 1px solid #c0c0c0;
-                    border-radius: 2px;
-                    padding: 2px;
-                    background-color: white;
-                }
-                """
-                self.setStyleSheet(style)
-            
             elif self.interface_settings.theme == InterfaceTheme.PROFESSIONAL:
                 # style
                 style = """
@@ -3090,10 +2841,8 @@ class EnhancedTransformerDialog(QMainWindow):
                 # Default minimal style
                 self.setStyleSheet("")
                 
-            QgsMessageLog.logMessage("Fallback theme applied", "Transformer", Qgis.Info)
-            
         except Exception as e:
-            QgsMessageLog.logMessage(f"Error applying fallback theme: {str(e)}", "Transformer", Qgis.Warning)
+            log_error(f"Error applying theme: {str(e)}")
             # In last resort, no style
             self.setStyleSheet("")
 
@@ -3201,21 +2950,13 @@ class EnhancedTransformerDialog(QMainWindow):
             self.log_message(f"Error applying config '{table_name}': {str(e)}", "Warning")
     
     def _show_config_selector(self, table_names: list, filename: str):
-        """Show smooth transparent config selector"""
+        """Show config selector (fallback to first configuration)"""
         try:
-            if not SMOOTH_CONFIG_SELECTOR_AVAILABLE or SmoothConfigSelector is None:
-                # Fallback to first config if selector not available
-                first_table = table_names[0]
-                config = self.config_manager.get_table_config(first_table)
-                self._apply_table_config(first_table, config)
-                self.log_message(f"Multiple configurations found, loaded first: '{first_table}'", "Info")
-                return
-                
-            # Create smooth selector widget
-            selector = SmoothConfigSelector(self, table_names, filename)
-            selector.config_selected.connect(self._on_config_selected)
-            selector.config_deleted.connect(self._on_config_deleted)
-            selector.show_at_cursor()
+            # Use fallback method - load first config automatically
+            first_table = table_names[0]
+            config = self.config_manager.get_table_config(first_table)
+            self._apply_table_config(first_table, config)
+            self.log_message(f"Multiple configurations found, loaded first: '{first_table}'", "Info")
             
         except Exception as e:
             self.log_message(f"Error showing config selector: {str(e)}", "Warning")
@@ -3224,16 +2965,6 @@ class EnhancedTransformerDialog(QMainWindow):
             config = self.config_manager.get_table_config(first_table)
             self._apply_table_config(first_table, config)
     
-    def _on_config_selected(self, table_name: str, filename: str):
-        """Handle config selection from smooth selector"""
-        config = self.config_manager.get_table_config(table_name)
-        self._apply_table_config(table_name, config)
-    
-    def _on_config_deleted(self, table_name: str):
-        """Handle config deletion from smooth selector"""
-        if self.config_manager.remove_table_config(table_name):
-            self.config_manager.save_config()
-            self.log_message(f"Configuration '{table_name}' deleted", "Info")
     
     # === VECTOR FILES MANAGEMENT METHODS ===
     
@@ -3423,9 +3154,6 @@ class EnhancedTransformerDialog(QMainWindow):
     
     def refresh_shapefile_list(self):
         """Refresh the shapefile list with multiple configurations per source file"""
-        # Import QFont at the beginning to avoid local variable issues
-        from qgis.PyQt.QtGui import QFont, QColor
-        
         self.shp_tree.clear()
         
         # Group configurations by source_file
@@ -4185,26 +3913,78 @@ class EnhancedTransformerDialog(QMainWindow):
                             }
                             
                             loaded_qgis_count += 1
-                            
-                            # Log each loaded layer with format info
-                            self.log_message(
-                                f"📥 Added from QGIS: {file_format} - {layer_name} ({layer.featureCount()} features)",
-                                "Info"
-                            )
             
             # Summary message
             if loaded_qgis_count > 0:
                 self.log_message(
-                    f"Loaded {loaded_qgis_count} vector layer(s) from QGIS project", 
+                    f"Loaded {loaded_qgis_count} layer(s) from project", 
                     "Info"
                 )
-            else:
-                self.log_message("ℹ️ No compatible vector layers found in QGIS project", "Info")
+            # No compatible layers (silent)
                             
         except Exception as e:
             self.log_message(f"Error loading QGIS layers: {str(e)}", "Warning")
     
+    def on_layers_added(self, layers):
+        """Handle when new layers are added to QGIS project"""
+        vector_layers = [layer for layer in layers if isinstance(layer, QgsVectorLayer) and layer.isValid()]
+        if vector_layers:
+            self.auto_load_qgis_layers()
+            self.refresh_shapefile_list()
+            # Vector sources updated (silent)
+            
+    def on_layers_removed(self, layer_ids):
+        """Handle when layers are removed from QGIS project"""
+        if layer_ids:
+            self.log_message(f"Layers removed: {len(layer_ids)} layer(s)", "Info")
+            # Remove layers from our loaded list
+            layers_to_remove = []
+            for layer_name, layer_data in self.loaded_shapefiles.items():
+                layer = layer_data.get('layer')
+                if self.is_layer_valid(layer):
+                    if layer.id() in layer_ids:
+                        layers_to_remove.append(layer_name)
+                else:
+                    # L'objet Qt a été supprimé, le retirer de notre liste
+                    layers_to_remove.append(layer_name)
+                    self.log_message(f"Removed deleted layer reference: {layer_name}", "Debug")
+            
+            for layer_name in layers_to_remove:
+                del self.loaded_shapefiles[layer_name]
+                
+            self.refresh_shapefile_list()
+            # Vector sources updated (silent)
+            
+    def on_layer_will_be_removed(self, layer_id):
+        """Handle when a layer is about to be removed"""
+        # Check if the layer being removed is currently selected
+        current_item = self.shp_tree.currentItem()
+        if current_item:
+            item_data = current_item.data(0, Qt.UserRole)
+            
+            # Extract filename from dict or use directly if string (legacy support)
+            if isinstance(item_data, dict):
+                filename = item_data.get('source_file', '')
+            else:
+                filename = item_data if item_data else ""
+            
+            if filename and filename in self.loaded_shapefiles:
+                layer_data = self.loaded_shapefiles[filename]
+                layer = layer_data.get('layer')
+                if self.is_layer_valid(layer) and layer.id() == layer_id:
+                    self.log_message(f"Currently selected layer '{filename}' is being removed - configuration will be reset", "Warning")
+                elif not self.is_layer_valid(layer):
+                    self.log_message(f"Layer reference for '{filename}' was already deleted", "Debug")
+    
     # Removed remove_qgis_layers_from_list - not needed anymore since we only work with QGIS layers
+    
+    def is_layer_valid(self, layer):
+        """Vérifie de manière sécurisée si un objet QgsVectorLayer est encore valide"""
+        try:
+            return layer is not None and hasattr(layer, 'id') and layer.id() is not None
+        except RuntimeError:
+            # L'objet Qt a été supprimé
+            return False
     
     # === CONFIGURATION MANAGEMENT METHODS ===
     
@@ -4224,10 +4004,8 @@ class EnhancedTransformerDialog(QMainWindow):
                     source_file = item_data if item_data else ""
             
             # Get calculated fields separated from geometry
-            QgsMessageLog.logMessage(f"DEBUG: About to call get_calculated_fields_with_geometry_info(), smart_fields exists: {hasattr(self, 'smart_fields')}", "Transformer", Qgis.Info)
             if hasattr(self, 'smart_fields') and self.smart_fields:
                 calculated_fields, geometry_expression = self.smart_fields.get_calculated_fields_with_geometry_info()
-                QgsMessageLog.logMessage(f"DEBUG: After calling method, geometry_expression = '{geometry_expression}'", "Transformer", Qgis.Info)
             else:
                 QgsMessageLog.logMessage(f"ERROR: smart_fields not available!", "Transformer", Qgis.Critical)
                 calculated_fields, geometry_expression = {}, None
@@ -4401,6 +4179,9 @@ class EnhancedTransformerDialog(QMainWindow):
     def validate_configuration(self):
         """Validate the current configuration"""
         try:
+            # Sync JSON Preview → Field Management before validating
+            self._sync_preview_to_fields()
+            
             table_name = self.table_name_edit.text().strip()
             if not table_name:
                 QMessageBox.warning(self, "Validation Error", "Table name is required")
@@ -4459,7 +4240,16 @@ class EnhancedTransformerDialog(QMainWindow):
                 result_text += "ERRORS DETECTED:\n"
                 for error in errors:
                     result_text += f"  {error}\n"
-                result_text += "\nPlease fix the errors before proceeding."
+                
+                # Add available fields hint for "Field not found" errors
+                if any("not found" in e.lower() for e in errors):
+                    available_fields = [f.name() for f in layer.fields()]
+                    result_text += f"\nAVAILABLE SOURCE FIELDS ({len(available_fields)}):\n"
+                    result_text += "  " + ", ".join(available_fields[:20])
+                    if len(available_fields) > 20:
+                        result_text += f"... (+{len(available_fields)-20} more)"
+                
+                result_text += "\n\nPlease fix the errors before proceeding."
                 
                 QMessageBox.warning(self, "Validation Errors", result_text)
                 self.log_message(f"Configuration validation failed: {len(errors)} errors", "Warning")
@@ -4526,6 +4316,50 @@ class EnhancedTransformerDialog(QMainWindow):
             QMessageBox.critical(self, "Initialization Error", error_msg)
             self.log_message(error_msg, "Error")
     
+    def _sync_preview_to_fields(self):
+        """Sync Configuration Preview JSON to Field Management widget (bidirectional sync)"""
+        try:
+            json_text = self.config_preview.toPlainText().strip()
+            if not json_text:
+                return
+            
+            # Parse JSON from preview
+            try:
+                preview_config = json.loads(json_text)
+            except json.JSONDecodeError:
+                return
+            
+            # Get preview data
+            preview_fields = preview_config.get('calculated_fields', {})
+            preview_geom = preview_config.get('geometry_expression', '$geometry')
+            preview_table = preview_config.get('table_name', '')
+            
+            # Block signals to prevent update_configuration_preview from being called
+            self.smart_fields.blockSignals(True)
+            self.smart_filter.blockSignals(True)
+            
+            try:
+                # Sync table name
+                if preview_table and preview_table != self.table_name_edit.text().strip():
+                    self.table_name_edit.blockSignals(True)
+                    self.table_name_edit.setText(preview_table)
+                    self.table_name_edit.blockSignals(False)
+                
+                # Sync fields to Field Management (force update)
+                self.smart_fields.set_calculated_fields(preview_fields, preview_geom)
+                
+                # Sync filter if present
+                preview_filter = preview_config.get('filter', {})
+                if preview_filter:
+                    self.smart_filter.set_filter_config(preview_filter)
+            finally:
+                # Restore signals
+                self.smart_fields.blockSignals(False)
+                self.smart_filter.blockSignals(False)
+                
+        except Exception as e:
+            self.log_message(f"Preview sync error: {str(e)}", "Warning")
+    
     def _configurations_are_identical(self, config1, config2):
         """Compare two configurations to check if they are identical"""
         try:
@@ -4557,6 +4391,9 @@ class EnhancedTransformerDialog(QMainWindow):
     def save_current_table_config(self, skip_validation=False):
         """Save the current table configuration with duplicate check"""
         try:
+            # Sync JSON Preview → Field Management before saving
+            self._sync_preview_to_fields()
+            
             if not skip_validation and not self.validate_configuration():
                 return
             
@@ -4573,8 +4410,6 @@ class EnhancedTransformerDialog(QMainWindow):
             # Get calculated fields separated from geometry expression
             calculated_fields, geometry_expression = self.smart_fields.get_calculated_fields_with_geometry_info()
             filter_config = self.smart_filter.get_filter_config()
-            
-            QgsMessageLog.logMessage(f"DEBUG: About to save config with geometry_expression = '{geometry_expression}'", "Transformer", Qgis.Info)
             
             # Get target CRS if defined
             target_crs = None
@@ -5224,8 +5059,6 @@ Errors: {len(errors)}
                     display_text = f"🟦 {name}"
                     self.filter_combo.setItemText(i, display_text)
                     # Use Qt roles for styling
-                    from qgis.PyQt.QtCore import Qt
-                    from qgis.PyQt.QtGui import QColor
                     self.filter_combo.setItemData(i, QColor(150, 150, 150), Qt.BackgroundRole)
                     self.filter_combo.setItemData(i, QColor(200, 200, 200), Qt.ForegroundRole)
                 else:
@@ -5344,10 +5177,7 @@ Errors: {len(errors)}
                         )
                         break
             else:
-                QgsMessageLog.logMessage(
-                    "Auto-mapping check completed: no matching mappings found", 
-                    "Transformer", Qgis.Info
-                )
+                pass  # Auto-mapping check completed (silent)
                 
         except Exception as e:
             QgsMessageLog.logMessage(
@@ -5430,6 +5260,8 @@ Errors: {len(errors)}
     
     def show_preferences(self):
         """Show preferences"""
+        # Import local pour éviter l'import circulaire
+        from .PreferencesDialog import PreferencesDialog
         dialog = PreferencesDialog(self.interface_settings, self)
         if dialog.exec_() == QDialog.Accepted:
             self.interface_settings = dialog.get_settings()
@@ -5591,10 +5423,10 @@ Errors: {len(errors)}
                 <!-- Core ETL Highlight -->
                 <div style="background: linear-gradient(90deg, #0d2818 0%, #0c1c2b 100%); padding: 20px; border-bottom: 3px solid #238636;">
                 <div style="text-align: center;">
-                <h3 style="margin: 0 0 10px 0; color: #7ee787; font-size: 18px; font-weight: 600;">ETL Workflow</h3>
+                <h3 style="margin: 0 0 10px 0; color: #7ee787; font-size: 18px; font-weight: 600;">ETL Processing</h3>
                 <p style="margin: 0; color: #adbac7; font-size: 14px; font-weight: 500;">
                 Provides the equivalent of <strong style="color: #238636;">Reader + AttributeManager + Reprojector + Writer</strong><br/>
-                components found in commercial ETL solutions, with complete workflow persistence.
+                components found in commercial ETL solutions, with intuitive tabbed interface.
                 </p>
                 </div>
                 </div>
@@ -5618,8 +5450,7 @@ Errors: {len(errors)}
                 <li><strong style="color: #7ee787;">Filter system:</strong> Robust filtering with templates and suggestions</li>
                 <li><strong style="color: #7ee787;">PostgreSQL integration:</strong> Direct export to PostgreSQL databases</li>
                 <li><strong style="color: #7ee787;">Export capabilities:</strong> Multiple output formats and batch processing</li>
-                <li><strong style="color: #7ee787;">Workflow persistence:</strong> Save complete transformation pipelines</li>
-                <li><strong style="color: #7ee787;">Template system:</strong> Reusable configurations for standardized processing</li>
+                <li><strong style="color: #7ee787;">Configuration templates:</strong> Save and reuse transformation settings</li>
                 </ul>
                 </div>
 
@@ -5652,7 +5483,7 @@ Errors: {len(errors)}
                 <li><strong style="color: #79c0ff;">Expressions:</strong> Robust calculation and filtering using QGIS expressions</li>
                 <li><strong style="color: #79c0ff;">Coordinate Transformations:</strong> Reprojection and geometric operations</li>
                 <li><strong style="color: #79c0ff;">Writer:</strong> Multiple output formats and database integration</li>
-                <li><strong style="color: #79c0ff;">Workflow Persistence:</strong> Save complete processing pipelines for automation</li>
+                <li><strong style="color: #79c0ff;">Configuration Persistence:</strong> Save complete processing settings for automation</li>
                 <li><strong style="color: #79c0ff;">Batch Processing:</strong> Handle multiple datasets with same transformation logic</li>
                 </ul>
                 </div>
@@ -6308,6 +6139,8 @@ Errors: {len(errors)}
                     return
         
         self.current_crs_label.setText("Unknown")
+    
+    # Core transformation functionality
     
     # === NOUVEAUX WIDGETS MODULAIRES (transformation blocs centraux → docks) ===
  

@@ -66,32 +66,7 @@ class FieldWidget(QWidget):
         
         header_layout.addStretch()
         
-        # Column management actions - Enhanced visibility
-        # Duplicate configuration button
-        self.duplicate_config_btn = QPushButton()
-        self.duplicate_config_btn.setIcon(QIcon(":/images/themes/default/mActionDuplicateLayer.svg"))
-        self.duplicate_config_btn.setMinimumWidth(40)
-        self.duplicate_config_btn.setMinimumHeight(32)
-        self.duplicate_config_btn.setStyleSheet("""
-            QPushButton {
-                border: 1px solid palette(highlight);
-                border-radius: 4px;
-                padding: 5px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: palette(highlight);
-                color: palette(highlighted-text);
-            }
-            QPushButton:disabled {
-                background-color: palette(button);
-                color: palette(disabled-text);
-                border: 1px solid palette(disabled-text);
-            }
-        """)
-        self.duplicate_config_btn.setEnabled(False)
-        self.duplicate_config_btn.setToolTip("Duplicate current configuration with new table name")
-        
+        # Column management actions
         self.copy_all_btn = QPushButton("Copy All")
         self.copy_all_btn.setMinimumWidth(80)
         self.copy_all_btn.setMinimumHeight(32)
@@ -239,10 +214,6 @@ class FieldWidget(QWidget):
                     except AttributeError:
                         pass  # No suitable signal found
     
-    def duplicate_configuration(self):
-        """Request duplication of current configuration"""
-        self.configuration_duplicate_requested.emit()
-    
     def add_field(self):
         """Add a new calculated field"""
         # Get the expression from the QGIS native expression builder
@@ -269,7 +240,6 @@ class FieldWidget(QWidget):
             if hasattr(parent_widget, 'shp_tree') and hasattr(parent_widget, 'loaded_shapefiles'):
                 # Get all selected vector files from the tree
                 selected_items = parent_widget.shp_tree.selectedItems()
-                parent_widget.log_message(f"DEBUG Copy All: Found {len(selected_items)} selected items", "Info")
                 for item in selected_items:
                     item_data = item.data(0, Qt.UserRole)
                     if isinstance(item_data, dict):
@@ -280,9 +250,6 @@ class FieldWidget(QWidget):
                     if filename and filename in parent_widget.loaded_shapefiles:
                         layer = parent_widget.loaded_shapefiles[filename]['layer']
                         selected_layers.append((filename, layer))
-                        parent_widget.log_message(f"DEBUG Copy All: Added layer {filename}", "Info")
-                    else:
-                        parent_widget.log_message(f"DEBUG Copy All: Filename {filename} not in loaded_shapefiles", "Warning")
                 break
             parent_widget = parent_widget.parent()
         
@@ -294,7 +261,6 @@ class FieldWidget(QWidget):
         configs_created = 0
         created_configs = []  # Store created configuration names for feedback
         
-        parent_widget.log_message(f"Starting Copy All: creating {len(selected_layers)} separate configurations...", "Info")
         
         for filename, layer in selected_layers:
             try:
@@ -367,7 +333,6 @@ class FieldWidget(QWidget):
         # Auto-load the first configuration created to keep interface active
         if first_table_name and hasattr(parent_widget, 'load_table_config_by_name'):
             parent_widget.load_table_config_by_name(first_table_name)
-            parent_widget.log_message(f"Auto-loaded configuration '{first_table_name}' - Use dropdown to switch between {configs_created} configurations", "Info")
         elif configs_created == 0:
             # Only clear if no configs were created (error case)
             self.calculated_fields.clear()
@@ -386,31 +351,25 @@ class FieldWidget(QWidget):
                 # Get all selected vector files from the tree
                 selected_items = parent_widget.shp_tree.selectedItems()
                 
-                # Debug: Log selection info
-                if hasattr(parent_widget, 'log_message'):
-                    parent_widget.log_message(f"DEBUG: Found {len(selected_items)} selected items", "Info")
                 
                 for item in selected_items:
-                    filename = item.data(0, Qt.UserRole)
-                    if hasattr(parent_widget, 'log_message'):
-                        parent_widget.log_message(f"DEBUG: Processing item: {filename}", "Info")
+                    item_data = item.data(0, Qt.UserRole)
+                    # Handle both dict and string formats
+                    if isinstance(item_data, dict):
+                        filename = item_data.get('source_file', '')
+                    else:
+                        filename = item_data if item_data else ""
                     
-                    if filename in parent_widget.loaded_shapefiles:
+                    if filename and filename in parent_widget.loaded_shapefiles:
                         selected_files.append(filename)
                         
                         # Check for saved configurations for this file
                         if hasattr(parent_widget, 'config_manager'):
                             tables = parent_widget.config_manager.get_tables_for_source(filename)
-                            if hasattr(parent_widget, 'log_message'):
-                                parent_widget.log_message(f"DEBUG: Found {len(tables)} tables for {filename}: {tables}", "Info")
                             configurations_to_clear.extend(tables)
                 break
             parent_widget = parent_widget.parent()
         
-        # Debug: Log final selection
-        if hasattr(parent_widget, 'log_message'):
-            parent_widget.log_message(f"DEBUG: Selected files: {selected_files}", "Info")
-            parent_widget.log_message(f"DEBUG: Configurations to clear: {configurations_to_clear}", "Info")
         
         # If no files selected, clear current fields only
         if not selected_files:
@@ -434,8 +393,6 @@ class FieldWidget(QWidget):
                         # Force configuration preview update
                         if hasattr(parent_widget, 'update_configuration_preview'):
                             parent_widget.update_configuration_preview()
-                        if hasattr(parent_widget, 'log_message'):
-                            parent_widget.log_message("All fields cleared - auto-configuration restored", "Info")
                         break
                     parent_widget = parent_widget.parent()
             return
@@ -485,7 +442,6 @@ class FieldWidget(QWidget):
                         message = f"Cleared configurations for {files_count} file(s)"
                         if removed_configs > 0:
                             message += f" - {removed_configs} saved configuration(s) removed"
-                        parent_widget.log_message(message, "Info")
                     break
                 parent_widget = parent_widget.parent()
     
@@ -592,27 +548,6 @@ class FieldWidget(QWidget):
             else:
                 item.setIcon(0, QIcon(":/images/themes/default/mIconText.svg"))
     
-    def guess_field_type(self, expression):
-        """Guess the field type based on the expression"""
-        expression_lower = expression.lower()
-        
-        if any(func in expression_lower for func in ["area(", "perimeter(", "length(", "distance("]):
-            return "Number"
-        elif any(func in expression_lower for func in ["x(", "y(", "z(", "+", "-", "*", "/"]):
-            return "Number"
-        elif any(func in expression_lower for func in ["now(", "age(", "year(", "month(", "day("]):
-            return "DateTime"
-        elif any(func in expression_lower for func in ["date", "time"]):
-            return "DateTime"
-        elif any(func in expression_lower for func in ["upper(", "lower(", "concat(", "substr("]):
-            return "Text"
-        elif "if(" in expression_lower:
-            return "Conditional"
-        elif any(op in expression for op in ["=", "<", ">", "AND", "OR"]):
-            return "Boolean"
-        else:
-            return "Mixed"
-    
     def on_field_selection_changed(self):
         """Handle field selection change"""
         selected_items = self.fields_tree.selectedItems()
@@ -665,8 +600,6 @@ class FieldWidget(QWidget):
                 break
             parent_widget = parent_widget.parent()
         
-        if parent_widget and hasattr(parent_widget, 'log_message'):
-            parent_widget.log_message(f"DEBUG: FieldWidget.set_calculated_fields called with {len(fields_dict)} fields and geometry_expression: {geometry_expression}", "Info")
         
         self.calculated_fields = {}
         
@@ -686,25 +619,13 @@ class FieldWidget(QWidget):
                 "is_geometry": False
             }
         
-        if parent_widget and hasattr(parent_widget, 'log_message'):
-            parent_widget.log_message(f"DEBUG: FieldWidget now has {len(self.calculated_fields)} total fields", "Info")
         
         self.refresh_fields_list()
         
-        if parent_widget and hasattr(parent_widget, 'log_message'):
-            parent_widget.log_message(f"DEBUG: FieldWidget.refresh_fields_list() completed", "Info")
-            # Check if the Fields Management dock is visible
-            if hasattr(parent_widget, 'fields_dock'):
-                is_visible = parent_widget.fields_dock.isVisible()
-                parent_widget.log_message(f"DEBUG: Fields Management dock visible: {is_visible}", "Info")
-                if not is_visible:
-                    parent_widget.fields_dock.setVisible(True)
-                    parent_widget.log_message("DEBUG: Made Fields Management dock visible", "Info")
-    
-    def clear_all_fields(self):
-        """Clear all fields"""
-        self.calculated_fields.clear()
-        self.refresh_fields_list()
+        # Auto-show Fields Management dock if hidden
+        if parent_widget and hasattr(parent_widget, 'fields_dock'):
+            if not parent_widget.fields_dock.isVisible():
+                parent_widget.fields_dock.setVisible(True)
     
     def set_layer(self, layer):
         """Set the layer for the field widget"""
@@ -728,18 +649,11 @@ class FieldWidget(QWidget):
         field_name = current_item.text(0)
         new_expression = self.expression_widget.get_expression().strip()
         
-        # DEBUG: Log the full expression received from widget
-        QgsMessageLog.logMessage(f"DEBUG: Expression widget returned: '{new_expression}' (length: {len(new_expression)})", "Transformer", Qgis.Info)
         
         if field_name in self.calculated_fields:
-            # DEBUG: Log before storing
-            QgsMessageLog.logMessage(f"DEBUG: About to store expression for '{field_name}': '{new_expression}'", "Transformer", Qgis.Info)
             
             self.calculated_fields[field_name]["expression"] = new_expression
             
-            # DEBUG: Log after storing
-            stored_expression = self.calculated_fields[field_name]["expression"]
-            QgsMessageLog.logMessage(f"DEBUG: Stored expression for '{field_name}': '{stored_expression}' (length: {len(stored_expression)})", "Transformer", Qgis.Info)
             
             if field_name == "geometry":
                 self.calculated_fields[field_name]["is_geometry"] = True
@@ -747,9 +661,6 @@ class FieldWidget(QWidget):
             # Update tree display
             current_item.setText(1, new_expression)
             
-            # DEBUG: Log tree display
-            tree_expression = current_item.text(1)
-            QgsMessageLog.logMessage(f"DEBUG: Tree displays: '{tree_expression}' (length: {len(tree_expression)})", "Transformer", Qgis.Info)
             
             # Emit signal for ALL field changes (not just geometry)
             self.field_modified.emit(field_name, field_name, new_expression)

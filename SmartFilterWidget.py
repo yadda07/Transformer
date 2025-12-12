@@ -254,10 +254,6 @@ class SmartFilterWidget(QWidget):
         for btn in self.template_buttons:
             btn.setEnabled(enabled)
         
-        # Filter info panel visibility handled in update_filter_info()
-        if hasattr(self, 'filter_info_panel'):
-            self.filter_info_panel.setVisible(enabled)
-        
         if not enabled:
             self.filter_expression.clear()
         
