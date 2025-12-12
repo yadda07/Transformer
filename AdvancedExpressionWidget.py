@@ -1,12 +1,14 @@
-
 # -*- coding: utf-8 -*-
-from qgis.PyQt.QtCore import pyqtSignal, Qt
+from qgis.PyQt.QtCore import pyqtSignal, Qt, QSize, QSettings
 from qgis.PyQt.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTextEdit
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTextEdit,
+    QMessageBox, QDialog, QListWidget, QDialogButtonBox
 )
-from qgis.PyQt.QtCore import QSize
 from qgis.PyQt.QtGui import QIcon
-from qgis.core import QgsMessageLog, Qgis
+from qgis.core import (
+    QgsMessageLog, Qgis, QgsExpression, 
+    QgsExpressionContext, QgsExpressionContextUtils
+)
 
 # Import QTimer with fallback
 try:
@@ -64,7 +66,43 @@ except ImportError:
             def __init__(self, h=None, v=None):
                 pass
 from qgis.gui import QgsExpressionBuilderWidget
-from qgis.core import QgsExpression, QgsExpressionContext, QgsExpressionContextUtils
+
+
+class ExpressionHistoryDialog(QDialog):
+    """Dialog for selecting from expression history"""
+    
+    def __init__(self, history, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Expression History")
+        self.setMinimumWidth(400)
+        self.setMinimumHeight(300)
+        self.selected_expression = None
+        
+        layout = QVBoxLayout(self)
+        
+        # List widget
+        self.list_widget = QListWidget()
+        for expr in history:
+            self.list_widget.addItem(expr[:100] + "..." if len(expr) > 100 else expr)
+        self.list_widget.itemDoubleClicked.connect(self.accept)
+        layout.addWidget(self.list_widget)
+        
+        # Store full expressions
+        self.history = history
+        
+        # Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+    
+    def get_selected_expression(self):
+        """Return selected expression"""
+        row = self.list_widget.currentRow()
+        if row >= 0 and row < len(self.history):
+            return self.history[row]
+        return None
+
 
 class AdvancedExpressionWidget(QWidget):
     """Advanced expression widget with native QGIS features"""
@@ -210,17 +248,12 @@ class AdvancedExpressionWidget(QWidget):
     
     def set_expression(self, expression):
         """Set the expression"""
-        # DEBUG: Log l'expression reçue
-        QgsMessageLog.logMessage(f"DEBUG: AdvancedExpressionWidget.set_expression() received: '{expression}' (length: {len(expression)})", "Transformer", Qgis.Info)
         
         # CORRECTION: Sauvegarder l'expression originale
         self._original_expression = expression
         
         self.expression_builder.setExpressionText(expression)
         
-        # DEBUG: Vérifier ce que le widget a réellement stocké
-        stored_expression = self.expression_builder.expressionText()
-        QgsMessageLog.logMessage(f"DEBUG: After setExpressionText(), widget contains: '{stored_expression}' (length: {len(stored_expression)})", "Transformer", Qgis.Info)
         
         self.validate_expression()
     
@@ -232,11 +265,8 @@ class AdvancedExpressionWidget(QWidget):
         if hasattr(self, '_original_expression') and self._original_expression and len(expression) < len(self._original_expression):
             # Vérifier si c'est une troncature de paramètres (même début)
             if self._original_expression.startswith(expression.rstrip(')')):
-                QgsMessageLog.logMessage(f"DEBUG: Expression was truncated, returning original: '{self._original_expression}'", "Transformer", Qgis.Info)
                 return self._original_expression
         
-        # DEBUG: Log l'expression retournée
-        QgsMessageLog.logMessage(f"DEBUG: AdvancedExpressionWidget.get_expression() returning: '{expression}' (length: {len(expression)})", "Transformer", Qgis.Info)
         return expression
     
     def validate_expression(self):

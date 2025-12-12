@@ -246,9 +246,8 @@ class ExportManager(QObject):
     def _get_file_size(self, file_path):
         """File size in Ko"""
         try:
-            import os
             return os.path.getsize(file_path) // 1024
-        except:
+        except Exception:
             return 0
 
 
@@ -263,6 +262,7 @@ class ExportWidget(QWidget):
         else:
             self.export_manager = ExportManager()
             self.setup_ui()
+            self.setup_qgis_signals()
             self.refresh_layers()
     
     def setup_fallback_ui(self):
@@ -429,6 +429,63 @@ class ExportWidget(QWidget):
         
         self.setLayout(layout)
     
+    def setup_qgis_signals(self):
+        """Setup QGIS project layer signals for auto-update"""
+        if not EXPORT_AVAILABLE:
+            return
+            
+        try:
+            from qgis.core import QgsProject
+            project = QgsProject.instance()
+            project.layersAdded.connect(self.on_layers_added)
+            project.layersRemoved.connect(self.on_layers_removed)
+            project.layerWillBeRemoved.connect(self.on_layer_will_be_removed)
+        except Exception as e:
+            # Fallback si les signaux ne sont pas disponibles
+            pass
+    
+    def on_layers_added(self, layers):
+        """Handle when new layers are added to QGIS project"""
+        if not EXPORT_AVAILABLE:
+            return
+            
+        vector_layers = [layer for layer in layers if hasattr(layer, 'isValid') and layer.isValid()]
+        if vector_layers:
+            try:
+                from qgis.core import QgsVectorLayer
+                vector_layers = [layer for layer in vector_layers if isinstance(layer, QgsVectorLayer)]
+                if vector_layers:
+                    self.refresh_layers()
+                    if hasattr(self, 'message_bar') and self.message_bar:
+                        self.message_bar.pushInfo("Export", f"{len(vector_layers)} new layer(s) available for export")
+            except Exception:
+                pass
+                
+    def on_layers_removed(self, layer_ids):
+        """Handle when layers are removed from QGIS project"""
+        if not EXPORT_AVAILABLE:
+            return
+            
+        if layer_ids:
+            self.refresh_layers()
+            if hasattr(self, 'message_bar') and self.message_bar:
+                self.message_bar.pushInfo("Export", f"Layer list updated after removal")
+            
+    def on_layer_will_be_removed(self, layer_id):
+        """Handle when a layer is about to be removed"""
+        if not EXPORT_AVAILABLE:
+            return
+            
+        # Clear selection if the layer being removed is currently selected
+        if hasattr(self, 'layers_tree') and self.layers_tree:
+            try:
+                for item in self.layers_tree.selectedItems():
+                    layer = item.data(0, hasattr(item, 'UserRole') and item.UserRole or 256)  # Qt.UserRole fallback
+                    if layer and hasattr(layer, 'id') and layer.id() == layer_id:
+                        item.setSelected(False)
+            except Exception:
+                pass
+    
     def refresh_layers(self):
         """Refresh the list of layers with detailed information"""  
         if not EXPORT_AVAILABLE:
@@ -534,16 +591,6 @@ class ExportWidget(QWidget):
                 selected_layers.append(layer)
         return selected_layers
     
-    def export_single_layer(self):
-        """Export a single layer"""
-        layers = self.get_selected_layers()
-        if not layers:
-            self.message_bar.pushWarning("Attention", "Veuillez sélectionner une couche")
-            return
-        
-        # Export of the single layer with selected encoding
-        self.export_layer_to_file(layers[0])
-    
     def export_layer_to_file(self, layer):
         """Export a single layer to a selected file"""
         if not EXPORT_AVAILABLE:
@@ -586,50 +633,6 @@ class ExportWidget(QWidget):
             )
         else:
             self.message_bar.pushCritical("Export error", f" {message}")
-    
-    def export_multiple_layers(self):
-        """Export multiple layers"""
-        layers = self.get_selected_layers()
-        if not layers:
-            self.message_bar.pushWarning("Attention", "Veuillez sélectionner au moins une couche")
-            return
-        
-        # Choisir le dossier
-        output_dir = QFileDialog.getExistingDirectory(self, "Sélectionner le dossier d'export")
-        if not output_dir:
-            return
-        
-        format_type = self.format_combo.currentData()
-        if not format_type:
-            return
-        
-        # Exporter chaque couche
-        exported_count = 0
-        failed_count = 0
-        
-        for i, layer in enumerate(layers, 1):
-            self.message_bar.clearWidgets()
-            self.message_bar.pushInfo("Export en cours", f"[{i}/{len(layers)}] {layer.name()}...")
-            QgsApplication.processEvents()
-            
-            ext = self.export_manager.format_extensions.get(format_type, ".shp")
-            output_path = os.path.join(output_dir, f"{layer.name()}{ext}")
-            
-            # Export with selected encoding
-            selected_encoding = self.get_selected_encoding()
-            success, message = self.export_manager.export_layer(layer, output_path, format_type, selected_features_only=False, encoding=selected_encoding)
-            
-            if success:
-                exported_count += 1
-            else:
-                failed_count += 1
-        
-        # Final report
-        self.message_bar.clearWidgets()
-        if failed_count == 0:
-            self.message_bar.pushSuccess("Export completed", f"{exported_count} layer(s) exported")
-        else:
-            self.message_bar.pushWarning("Export completed", f"{exported_count} successful, {failed_count} failed")
     
     def remove_selected_layers(self):
         """Remove selected layers from QGIS project"""
@@ -736,7 +739,7 @@ class ExportWidget(QWidget):
             self.message_bar.pushCritical("Export of selection error", message)
     
     def export_single_layer(self):
-        """Export a single layer with format selection"""
+        """Export a single layer with format selection and encoding"""
         if not EXPORT_AVAILABLE:
             return
             
@@ -749,39 +752,9 @@ class ExportWidget(QWidget):
         if len(selected_layers) > 1:
             self.message_bar.pushWarning("Attention", "Please select a single layer for the single layer export")
             return
-            
-        layer = selected_layers[0]
-        export_format = self.format_combo.currentData()
         
-        if not export_format:
-            self.message_bar.pushWarning("Attention", "Please select a valid export format")
-            return
-        
-        # Determine the extension and file filter
-        ext = self.export_manager.format_extensions.get(export_format, ".shp")
-        filter_text = f"{export_format.value} (*{ext})"
-        
-        # Save dialog with appropriate format
-        output_path, _ = QFileDialog.getSaveFileName(
-            self, "Save export", f"{layer.name()}{ext}", filter_text
-        )
-        
-        if not output_path:
-            return
-        
-        # Message of progress
-        self.message_bar.clearWidgets()
-        self.message_bar.pushInfo("Export in progress", f"Export of '{layer.name()}' in {export_format.value}...")
-        QgsApplication.processEvents()
-        
-        # Execute the export
-        success, message = self.export_manager.export_layer(layer, output_path, export_format)
-        
-        # Display the result
-        if success:
-            self.message_bar.pushSuccess("Export successful", f"{message} - {os.path.basename(output_path)}")
-        else:
-            self.message_bar.pushCritical("Export error", message)
+        # Delegate to export_layer_to_file which handles encoding
+        self.export_layer_to_file(selected_layers[0])
     
     def export_multiple_layers(self):
         """Export multiple layers to a folder with chosen format"""
@@ -826,8 +799,12 @@ class ExportWidget(QWidget):
             )
             QgsApplication.processEvents()
             
-            # Execute the export with the new API
-            success, message = self.export_manager.export_layer(layer, output_path, export_format)
+            # Execute the export with encoding support
+            selected_encoding = self.get_selected_encoding()
+            success, message = self.export_manager.export_layer(
+                layer, output_path, export_format, 
+                selected_features_only=False, encoding=selected_encoding
+            )
             
             if success:
                 exported_count += 1

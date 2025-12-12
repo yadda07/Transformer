@@ -8,8 +8,8 @@ from qgis.PyQt.QtWidgets import (
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
 
-# Import des enums depuis le fichier principal
-from .Transformer_dialog import InterfaceTheme, InterfaceSettings
+# Import des enums depuis le fichier de configuration
+from .interface_config import InterfaceTheme, InterfaceSettings
 
 class PreferencesDialog(QDialog):
     """Preferences dialog"""

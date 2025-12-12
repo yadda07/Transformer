@@ -6,13 +6,12 @@ Fixed filter problem
 
 import os
 from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime
 
 from qgis.core import (
-    QgsVectorLayer, QgsFeature, QgsField, QgsFields, QgsGeometry,
+    QgsVectorLayer, QgsFeature, QgsField, QgsGeometry,
     QgsExpression, QgsExpressionContext, QgsExpressionContextUtils,
     QgsProject, QgsWkbTypes, QgsCoordinateReferenceSystem,
-    QgsMessageLog, Qgis, QgsMemoryProviderUtils, QgsFeatureRequest,
+    QgsMessageLog, Qgis, QgsFeatureRequest,
     QgsCoordinateTransform, edit
 )
 from qgis.PyQt.QtCore import QVariant, QMetaType
@@ -249,59 +248,6 @@ class SimpleTransformer:
         except Exception as e:
             QgsMessageLog.logMessage(f"Error counting filtered features: {str(e)}", "Transformer", Qgis.Warning)
             return total_count, total_count
-    
-    def debug_filter_expression(self, filter_expression: str, source_layer: QgsVectorLayer, limit: int = 10) -> str:
-        """Debug filter expression on sample features"""
-        debug_results = []
-        debug_results.append(f"Debug filter: {filter_expression}")
-        debug_results.append("=" * 50)
-        
-        try:
-            context = QgsExpressionContext()
-            context.appendScopes(QgsExpressionContextUtils.globalProjectLayerScopes(source_layer))
-            context.setFields(source_layer.fields())
-            
-            expression = QgsExpression(filter_expression)
-            
-            if expression.hasParserError():
-                debug_results.append(f"Syntax error: {expression.parserErrorString()}")
-                return "\n".join(debug_results)
-            
-            feature_count = 0
-            matching_count = 0
-            
-            for feature in source_layer.getFeatures():
-                if feature_count >= limit:
-                    break
-                    
-                context.setFeature(feature)
-                result = expression.evaluate(context)
-                
-                if expression.hasEvalError():
-                    debug_results.append(f"Feature {feature.id()}: ERROR - {expression.evalErrorString()}")
-                else:
-                    # Interpret boolean result
-                    matches = bool(result) and result != 0
-                    if matches:
-                        matching_count += 1
-                    
-                    # Display some field values for debugging
-                    commentair_value = feature.attribute("COMMENTAIR") if feature.fields().lookupField("COMMENTAIR") >= 0 else "N/A"
-                    
-                    debug_results.append(
-                        f"Feature {feature.id()}: {'MATCHES' if matches else 'DOES NOT MATCH'} "
-                        f"- COMMENTAIR='{commentair_value}' - Filter result: {result}"
-                    )
-                
-                feature_count += 1
-            
-            debug_results.append("=" * 50)
-            debug_results.append(f"Summary: {matching_count}/{feature_count} features match the filter")
-            return "\n".join(debug_results)
-            
-        except Exception as e:
-            debug_results.append(f"Exception: {str(e)}")
-            return "\n".join(debug_results)
 
     def _detect_expression_geometry_type(self, source_layer: QgsVectorLayer, geometry_expression: str) -> Optional[str]:
         """Detect the geometry type that an expression will produce by testing it on a sample feature"""
@@ -656,7 +602,6 @@ class SimpleTransformer:
                 
                 # Get geometry expression configuration
                 geometry_expression = config.get("geometry_expression")
-                QgsMessageLog.logMessage(f"Table {table_name}: geometry_expression = {geometry_expression}", "Transformer", Qgis.Info)
                 
                 # Reset error flags
                 for field_name in calculated_fields.keys():
@@ -679,12 +624,10 @@ class SimpleTransformer:
             
         except Exception as e:
             import traceback
-            error_msg = f"QGIS layer transformation error for {layer_name}: {str(e)}"
+            error_msg = f"Shapefile transformation error for {shp_filename}: {str(e)}"
             stack_trace = traceback.format_exc()
             QgsMessageLog.logMessage(error_msg, "Transformer", Qgis.Critical)
             QgsMessageLog.logMessage(f"Stack trace: {stack_trace}", "Transformer", Qgis.Critical)
-            print(f"PRINT: Exception in transform_qgis_layer_to_memory_layers: {error_msg}")
-            print(f"PRINT: Stack trace: {stack_trace}")
             return layers_created
     
     def transform_qgis_layer_to_memory_layers(self, source_layer: QgsVectorLayer, layer_name: str, target_crs: QgsCoordinateReferenceSystem = None) -> List[QgsVectorLayer]:
@@ -749,8 +692,6 @@ class SimpleTransformer:
             stack_trace = traceback.format_exc()
             QgsMessageLog.logMessage(error_msg, "Transformer", Qgis.Critical)
             QgsMessageLog.logMessage(f"Stack trace: {stack_trace}", "Transformer", Qgis.Critical)
-            print(f"PRINT: Exception in transform_qgis_layer_to_memory_layers: {error_msg}")
-            print(f"PRINT: Stack trace: {stack_trace}")
             return layers_created
     
     def create_memory_layer_from_qgis_layer(self, source_layer: QgsVectorLayer, table_name: str, 
@@ -810,7 +751,6 @@ class SimpleTransformer:
                 field = QgsField(field_name)
                 field.setTypeName("text")
                 field.setLength(255)
-                QgsMessageLog.logMessage(f"Created field: {field.name()}, type: {field.typeName()}, length: {field.length()}", "Transformer", Qgis.Info)
                 field_configs.append((field, expression))
             
             # Add fields to destination layer
@@ -818,15 +758,12 @@ class SimpleTransformer:
             
             # Check existing fields first
             existing_fields = [field.name().lower() for field in dest_layer.fields()]
-            QgsMessageLog.logMessage(f"Existing fields in dest_layer: {existing_fields}", "Transformer", Qgis.Info)
             
             for field, _ in field_configs:
                 field_name_lower = field.name().lower()
-                QgsMessageLog.logMessage(f"Attempting to add field: {field.name()} (type: {field.typeName()}, length: {field.length()})", "Transformer", Qgis.Info)
                 
                 # Check if field already exists
                 if field_name_lower in existing_fields:
-                    QgsMessageLog.logMessage(f"Field {field.name()} already exists, skipping", "Transformer", Qgis.Info)
                     continue
                 
                 # Try to add the field
@@ -835,16 +772,11 @@ class SimpleTransformer:
                     
                     # Try alternative field creation
                     alternative_field = QgsField(field.name(), QVariant.String, "varchar", 255)
-                    QgsMessageLog.logMessage(f"Trying alternative field creation for: {field.name()}", "Transformer", Qgis.Info)
                     
                     if not dest_layer.addAttribute(alternative_field):
                         QgsMessageLog.logMessage(f"Alternative field creation also failed for: {field.name()}", "Transformer", Qgis.Warning)
                         dest_layer.rollBack()
                         return None
-                    else:
-                        QgsMessageLog.logMessage(f"Successfully added alternative field: {field.name()}", "Transformer", Qgis.Info)
-                else:
-                    QgsMessageLog.logMessage(f"Successfully added field: {field.name()}", "Transformer", Qgis.Info)
             
             # Commit the field additions
             if not dest_layer.commitChanges():

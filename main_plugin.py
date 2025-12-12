@@ -28,42 +28,44 @@ except ImportError:
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox, QApplication
 
-from qgis.core import QgsApplication, QgsMessageLog, Qgis, QgsProject
+from qgis.core import QgsMessageLog, Qgis, QgsProject
 
 # Import plugin modules
 from .gestionnaire import SimpleConfigManager
 from .trans_calc import SimpleTransformer
 
 
-# Robust import of the interface with error handling
+# Direct import of the enhanced interface
 try:
-    from .Transformer_dialog import EnhancedTransformerDialog, MinimalTransformerDialog
+    from .EnhancedTransformerDialog import EnhancedTransformerDialog
     ENHANCED_INTERFACE_AVAILABLE = True
-    QgsMessageLog.logMessage("Enhanced interface loaded successfully", "Transformer", Qgis.Info)
+    # Enhanced interface loaded (no QGIS log)
+    
+    # Create simplified wrapper for compatibility
+    def MinimalTransformerDialog(config_manager, transformer, parent=None):
+        return EnhancedTransformerDialog(config_manager, transformer, parent)
+        
 except ImportError as e:
-    QgsMessageLog.logMessage(f"Enhanced interface import failed: {str(e)}", "Transformer", Qgis.Warning)
-    try:
-        # Fallback to minimal interface
-        from .Transformer_dialog import MinimalTransformerDialog
-        EnhancedTransformerDialog = None
-        ENHANCED_INTERFACE_AVAILABLE = False
-        QgsMessageLog.logMessage("Using fallback interface", "Transformer", Qgis.Info)
-    except ImportError as e2:
-        QgsMessageLog.logMessage(f"Critical: No interface available: {str(e2)}", "Transformer", Qgis.Critical)
-        # Emergency interface
-        from qgis.PyQt.QtWidgets import QDialog, QVBoxLayout, QLabel
+    QgsMessageLog.logMessage(f"Critical: Interface import failed: {str(e)}", "Transformer", Qgis.Critical)
+    
+    # Emergency fallback interface
+    from qgis.PyQt.QtWidgets import QDialog, QVBoxLayout, QLabel
+    
+    class EmergencyInterface(QDialog):
+        def __init__(self, parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("Transformer - Error")
+            layout = QVBoxLayout()
+            layout.addWidget(QLabel("Interface loading failed"))
+            layout.addWidget(QLabel("Please check plugin installation"))
+            self.setLayout(layout)
+    
+    EnhancedTransformerDialog = EmergencyInterface
+    
+    def MinimalTransformerDialog(config_manager, transformer, parent=None):
+        return EmergencyInterface(parent)
         
-        class MinimalTransformerDialog(QDialog):
-            def __init__(self, config_manager, transformer, parent=None):
-                super().__init__(parent)
-                self.setWindowTitle("Transformer - Error")
-                layout = QVBoxLayout()
-                layout.addWidget(QLabel("Interface loading failed"))
-                layout.addWidget(QLabel("Please check plugin installation"))
-                self.setLayout(layout)
-        
-        EnhancedTransformerDialog = None
-        ENHANCED_INTERFACE_AVAILABLE = False
+    ENHANCED_INTERFACE_AVAILABLE = False
 
 # Import export module with detailed error handling
 ExportManager = None
@@ -71,33 +73,24 @@ ExportWidget = None
 EXPORT_MODULE_AVAILABLE = False
 
 try:
-    # Explicit import with detailed logs
-    QgsMessageLog.logMessage(" Tentative d'import du module d'export...", "Transformer", Qgis.Info)
-    
-    # First check that the file exists
-    import os
+    # Import export module (silent)
     module_path = os.path.join(os.path.dirname(__file__), 'export_module.py')
     if not os.path.exists(module_path):
         raise ImportError(f"File export_module.py not found: {module_path}")
     
-    QgsMessageLog.logMessage(f" Module found: {module_path}", "Transformer", Qgis.Info)
-    
     # Import complete module
     from . import export_module
-    QgsMessageLog.logMessage(" Module export_module imported", "Transformer", Qgis.Info)
     
     # Check QGIS availability in module
     if not hasattr(export_module, 'EXPORT_AVAILABLE') or not export_module.EXPORT_AVAILABLE:
         raise ImportError("QGIS not available in export module")
-    
-    QgsMessageLog.logMessage(" QGIS available in export module", "Transformer", Qgis.Info)
     
     # Import classes
     ExportManager = export_module.ExportManager
     ExportWidget = export_module.ExportWidget
     
     EXPORT_MODULE_AVAILABLE = True
-    QgsMessageLog.logMessage("Export module loaded successfully!", "Transformer", Qgis.Success)
+    # Export module loaded (no QGIS log)
     
 except ImportError as e:
     QgsMessageLog.logMessage(f"Import Error: {str(e)}", "Transformer", Qgis.Warning)
@@ -174,7 +167,7 @@ class TransformerPlugin:
             else:
                 icon = QIcon(icon_path)
             
-            action_text = "Transformer" if self.use_enhanced_interface else "Transformer"
+            action_text = "Transformer"
             
             self.action = QAction(
                 icon,
@@ -230,12 +223,12 @@ class TransformerPlugin:
             if EXPORT_MODULE_AVAILABLE and ExportManager:
                 try:
                     self.export_manager = ExportManager()
-                    QgsMessageLog.logMessage("Export manager initialized", "Transformer", Qgis.Info)
+                    # Export manager initialized (no QGIS log)
                 except Exception as e:
                     QgsMessageLog.logMessage(f"Export manager initialization failed: {str(e)}", "Transformer", Qgis.Warning)
                     self.export_manager = None
             
-            QgsMessageLog.logMessage("Plugin components initialized successfully", "Transformer", Qgis.Info)
+            # Plugin components initialized (no QGIS log)
             
         except Exception as e:
             QgsMessageLog.logMessage(f"Component initialization error: {str(e)}", "Transformer", Qgis.Critical)
@@ -309,8 +302,7 @@ class TransformerPlugin:
                 
                 # Center on screen
                 self.center_window()
-                
-                QgsMessageLog.logMessage("Enhanced interface created", "Transformer", Qgis.Info)
+                # Enhanced interface created (no QGIS log)
             
             # Show or hide interface
             if self.interface_visible and self.main_window.isVisible():
@@ -322,7 +314,7 @@ class TransformerPlugin:
                 self.main_window.raise_()
                 self.main_window.activateWindow()
                 self.interface_visible = True
-                QgsMessageLog.logMessage("Enhanced interface shown", "Transformer", Qgis.Info)
+                # Enhanced interface shown (no QGIS log)
             
         except Exception as e:
             QgsMessageLog.logMessage(f"Enhanced interface error: {str(e)}", "Transformer", Qgis.Critical)
@@ -369,8 +361,7 @@ class TransformerPlugin:
             # Connexions avec le projet QGIS
             QgsProject.instance().layersAdded.connect(self.on_layers_added)
             QgsProject.instance().layersRemoved.connect(self.on_layers_removed)
-            
-            QgsMessageLog.logMessage("Enhanced interface connections established", "Transformer", Qgis.Info)
+            # Enhanced interface connections established (no QGIS log)
             
         except Exception as e:
             QgsMessageLog.logMessage(f"Enhanced interface connections error: {str(e)}", "Transformer", Qgis.Warning)
@@ -494,7 +485,3 @@ class TransformerPlugin:
         
         QMessageBox.about(self.iface.mainWindow(), "About Transformer", about_text)
 
-
-def classFactory(iface):
-    """Function called by QGIS to create the plugin instance"""
-    return TransformerPlugin(iface)
