@@ -1,0 +1,101 @@
+; QGIS Plugin Configuration
+[general]
+name=Transformer
+qgisMinimumVersion=3.44
+description=QGIS plugin for vector layer transformation. Processes QGIS project layers with calculated fields, coordinate transformations, and PostgreSQL integration.
+version=2.2.0
+author=Yadda
+email=youcef.geodesien@gmail.com
+
+; Bug tracker URL (required for publication)
+tracker=https://github.com/yadda07/transformer/issues
+
+; Repository URL (required for publication) 
+repository=https://github.com/yadda07/transformer
+
+; Homepage (optional)
+homepage=https://github.com/yadda07/transformer
+
+about=ETL plugin for QGIS vector layer transformation (v2.2.0). 
+    Processes QGIS project layers with calculated fields, geometry expressions, and coordinate reprojection. 
+    Features bidirectional JSON config sync, smart filtering with templates, dock-based UI with drag-drop repositioning. 
+    Supports 15+ vector formats, PostgreSQL integration with auto-mapping, and multi-format export.
+
+; Tags separated by commas
+tags=vector,transformation,calculated fields,data processing,geojson,geopackage,kml,shapefile,export,postgresql
+
+; Plugin category
+category=Vector
+
+; Experimental version
+experimental=False
+
+; Deprecated plugin
+deprecated=False
+
+; Maximum QGIS version
+qgisMaximumVersion=4.99
+
+; Changelog
+changelog=
+    Version 2.2.0 (2026-06-24):
+    - Removed Joiner module (spatial/attribute join) to focus on attribute transformation and PostgreSQL integration
+    - Removed Pipeline Builder (unstable feature)
+    - Logger cleaned: removed joiner category and join-related filters
+    - Toolbar and help text updated to reflect 3-tab layout (Configuration / Export / PostgreSQL)
+    
+    Version 2.1.0 (2025-12-12):
+    - Bidirectional sync between Configuration Preview and Field Management
+    - Validation errors now display available source fields
+    - Fixed dict/string handling in clear_all_fields
+    - Enhanced error messages with field hints
+    
+    Version 2.0.0 (2025-12-01):
+    - Complete UI overhaul with EnhancedTransformerDialog
+    - Modular dock-based interface with layout presets
+    - Smart filter widget with expression templates
+    - Geometry transformation via expressions (centroid, buffer, simplify)
+    - Activity log with color-coded filtering
+    - Keyboard shortcuts (Ctrl+1-4)
+    - PostgreSQL auto-mapping after transformation
+    
+    Version 1.2.3 (2025-09-02):
+    - Attempted to improve compatibility with older QGIS versions
+    - Minor adjustments for different QGIS installations
+    - Small fixes for field creation that may help on some systems
+    - Efforts to address user compatibility feedback
+    
+    Version 1.2.2 (2025-08-30):
+    - Enhanced native QGIS CSS styling for improved visual consistency
+    - Removed external file loading capabilities - now exclusively QGIS layer-based
+    - Intelligent mapping system: mappings only load when corresponding layers exist in QGIS
+    - Eliminated mapping conflicts by ensuring layer presence validation
+    - Improved tool fluidity and performance optimizations
+    - Streamlined interface with removed redundant controls
+    
+    Version 1.2.0 (2025-08-26):
+    - Complete modular architecture with independent component files
+    - Flexible dock-based interface with native Qt drag & drop repositioning
+    - Professional logging system with color-coded messages and filtering
+    - Geometry transformation through QGIS expressions 
+    
+    Version 1.1.1 (2025-08-07):
+    - Eliminated disruptive popup dialogs for seamless ETL workflow
+    - Activity Log now serves as the central information hub
+    - Refined component styling with minimalist design approach
+    - Transformed interface from interrupt-driven to stream-driven processing
+    
+    Version 1.1.0 (2025-08-05):
+    - Added support for QGIS project layers (process loaded layers directly)
+    - Added universal vector format support (15+ formats instead of Shapefile only)
+    - Added intelligent format detection with native QGIS validation
+    - Enhanced PostgreSQL integration with connection status
+    - Improved metadata collection for all vector sources
+    - Improved interface with format-specific tooltips
+    - Enhanced user experience with contextual help and improved tooltips throughout the interface
+    
+    Version 1.0.0 (2025-07-15):
+    - Initial release with Shapefile transformation capabilities
+    - Calculated fields with QGIS expressions
+    - PostgreSQL export functionality
+    - Configuration management and templates
