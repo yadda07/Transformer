@@ -1,0 +1,113 @@
+{
+  "version": "1.1",
+  "last_modified": "2026-06-28T14:04:33.337301",
+  "tables": {
+    "bpe_transformed": {
+      "source_file": "C:/Users/yadda/Downloads/63293-S05-PMZ-00014/63293-S05-PMZ-00014/ATHD_DIST_PM_00014_SHAPES/Shape NGE/bpe.shp",
+      "calculated_fields": {
+        "gid": "\"gid\"",
+        "sro": "\"sro\"",
+        "nro": "\"nro\"",
+        "noe_nbepis": "\"noe_nbepis\"",
+        "noe_nblr": "\"noe_nblr\"",
+        "mat_ref": "\"mat_ref\"",
+        "noe_type": "\"noe_type\"",
+        "mat_capa": "\"mat_capa\"",
+        "noe_usage": "\"noe_usage\"",
+        "inf_propri": "\"inf_propri\"",
+        "noe_pose": "\"noe_pose\"",
+        "noe_num": "\"noe_num\"",
+        "inf_num": "\"inf_num\"",
+        "noe_codext": "\"noe_codext\"",
+        "isole": "\"isole\"",
+        "cab_codext": "\"cab_codext\"",
+        "commentair": "\"commentair\"",
+        "lt_etage": "\"lt_etage\"",
+        "lt_escal": "\"lt_escal\"",
+        "st_bat": "\"st_bat\"",
+        "date_modif": "\"date_modif\"",
+        "modif_par": "\"modif_par\"",
+        "nb_reserve": "\"nb_reserve\"",
+        "collecte": "\"collecte\"",
+        "projet": "\"projet\"",
+        "PF99": "\"PF99\"",
+        "PT99": "\"PT99\"",
+        "CAB99": "\"CAB99\"",
+        "IDMET99": "\"IDMET99\"",
+        "IDREG99": "\"IDREG99\"",
+        "DCE": "\"DCE\"",
+        "insee": "\"insee\"",
+        "dist_pm_pb": "\"dist_pm_pb\"",
+        "projet_tr": "\"projet_tr\"",
+        "projet_di": "\"projet_di\"",
+        "exe": "\"exe\"",
+        "blocage_ra": "\"blocage_ra\"",
+        "geometry": "$geometry"
+      },
+      "filter": {
+        "enabled": false,
+        "expression": ""
+      },
+      "target_crs": null,
+      "geometry_expression": "$geometry"
+    },
+    "cables_transformed": {
+      "source_file": "C:/Users/yadda/Downloads/63293-S05-PMZ-00014/63293-S05-PMZ-00014/ATHD_DIST_PM_00014_SHAPES/Shape NGE/cables.shp",
+      "calculated_fields": {
+        "gid": "\"gid\"",
+        "sro": "\"sro\"",
+        "nro": "\"nro\"",
+        "length": "\"length\"",
+        "cab_type": "\"cab_type\"",
+        "cab_capa": "\"cab_capa\"",
+        "cab_modulo": "\"cab_modulo\"",
+        "isole": "\"isole\"",
+        "date_modif": "\"date_modif\"",
+        "modif_par": "\"modif_par\"",
+        "cab_nature": "\"cab_nature\"",
+        "commentair": "\"commentair\"",
+        "collecte": "\"collecte\"",
+        "cb_etiquet": "\"cb_etiquet\"",
+        "fon": "\"fon\"",
+        "projet": "\"projet\"",
+        "DCE": "\"DCE\"",
+        "dist_type": "\"dist_type\"",
+        "affectatio": "\"affectatio\"",
+        "projet_tr": "\"projet_tr\"",
+        "projet_di": "\"projet_di\"",
+        "cab_codext": "\"cab_codext\"",
+        "exe": "\"exe\"",
+        "blocage_ra": "\"blocage_ra\"",
+        "geometry": "$geometry"
+      },
+      "filter": {
+        "enabled": false,
+        "expression": ""
+      },
+      "target_crs": null,
+      "geometry_expression": "$geometry"
+    },
+    "EXE_D1D2_63BHS_FI-63398-0000_ListeIMB_001_1A — DBL_transformed": {
+      "source_file": "EXE_D1D2_63BHS_FI-63398-0000_ListeIMB_001_1A — DBL",
+      "calculated_fields": {
+        "Field1": "\"Field1\"",
+        "Field2": "\"Field2\"",
+        "Field3": "\"Field3\"",
+        "Field4": "\"Field4\"",
+        "Field5": "\"Field5\"",
+        "Field6": "\"Field6\"",
+        "Field7": "\"Field7\"",
+        "Field8": "\"Field8\"",
+        "Field9": "\"Field9\"",
+        "Field10": "\"Field10\"",
+        "Field11": "\"Field11\""
+      },
+      "filter": {
+        "enabled": false,
+        "expression": ""
+      },
+      "target_crs": null,
+      "geometry_expression": "$geometry"
+    }
+  }
+}

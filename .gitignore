@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.vscode/
+*.log
+pg/transformer_postgresql_connections.json
+transformer_postgresql.json
