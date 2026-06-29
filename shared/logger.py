@@ -14,10 +14,10 @@ import os
 import re
 import threading
 from qgis.PyQt.QtCore import QObject, pyqtSignal
-from qgis.PyQt.QtWidgets import QApplication
-from qgis.core import QgsMessageLog, Qgis, QgsProject
+from qgis.PyQt.QtWidgets import QApplication, QPlainTextEdit
+from qgis.core import QgsMessageLog, QgsProject
 
-from .compat import palette_color, CursorEnd, CursorUp, CursorLineUnder
+from .compat import palette_color, CursorEnd, CursorUp, CursorLineUnder, MsgInfo, MsgWarning, MsgCritical
 class LogEntry:
     """Structured log entry conforming to @[/logger] specifications"""
     def __init__(self, timestamp, severity, module, code, message, context=None):
@@ -127,7 +127,7 @@ class TransformerLogger(QObject):
                 import tempfile
                 self._log_file_path = os.path.join(tempfile.gettempdir(), "transformer_session.log")
         except Exception as exc:
-            QgsMessageLog.logMessage(f"Failed to setup log file path: {exc}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Failed to setup log file path: {exc}", "Transformer", MsgWarning)
             self._log_file_path = None
     
     def log(self, message, severity="info", module="system", code="GENERAL", context=None):
@@ -162,8 +162,8 @@ class TransformerLogger(QObject):
             qgis_level = self._get_qgis_level(severity)
             QgsMessageLog.logMessage(entry.to_display_string(), "Transformer", qgis_level)
             
-            # Display in Activity Log widget if available
-            if self._activity_log_widget:
+            # Display in Activity Log widget if available (main thread only — Qt widget constraint)
+            if self._activity_log_widget and threading.current_thread() is threading.main_thread():
                 self._add_to_activity_log(entry)
             
             # Write to persistent file
@@ -175,7 +175,7 @@ class TransformerLogger(QObject):
         except Exception:
             # Fallback logging to prevent cascading errors
             try:
-                QgsMessageLog.logMessage(f"LOGGING_ERROR: {message}", "Transformer", Qgis.Critical)
+                QgsMessageLog.logMessage(f"LOGGING_ERROR: {message}", "Transformer", MsgCritical)
             except Exception as fallback_exc:
                 # Last resort: QGIS message log itself is broken, nothing we can do
                 import sys
@@ -202,13 +202,13 @@ class TransformerLogger(QObject):
     def _get_qgis_level(self, severity):
         """Convert severity to Qgis level"""
         level_map = {
-            'debug': Qgis.Info,
-            'info': Qgis.Info,
-            'warning': Qgis.Warning,
-            'error': Qgis.Critical,
-            'critical': Qgis.Critical
+            'debug': MsgInfo,
+            'info': MsgInfo,
+            'warning': MsgWarning,
+            'error': MsgCritical,
+            'critical': MsgCritical
         }
-        return level_map.get(severity, Qgis.Info)
+        return level_map.get(severity, MsgInfo)
     
     def _should_filter_entry(self, entry):
         """Filter log entries based on intelligent noise reduction"""
@@ -239,11 +239,12 @@ class TransformerLogger(QObject):
             return
         
         try:
-            with open(self._log_file_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(entry.to_dict()) + '\n')
+            with self._logging_lock:
+                with open(self._log_file_path, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(entry.to_dict()) + '\n')
         except Exception as exc:
             # Log to QGIS message log instead of swallowing silently
-            QgsMessageLog.logMessage(f"Failed to write log entry to file: {exc}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Failed to write log entry to file: {exc}", "Transformer", MsgWarning)
     
     def _add_to_activity_log(self, entry):
         """Add entry to Activity Log widget with QGIS-native styling per @[/designers]"""
@@ -264,7 +265,12 @@ class TransformerLogger(QObject):
                 color = colors.get(entry.severity, palette_color(palette, None, 'Text'))
                 display_text = entry.to_display_string()
 
-                # Use cursor for proper formatting
+                # Legacy hidden buffer: plain append is enough (visible UI uses log_entry_created).
+                if isinstance(self._activity_log_widget, QPlainTextEdit):
+                    self._activity_log_widget.appendPlainText(display_text)
+                    return
+
+                # Use cursor for proper formatting on rich-text widgets
                 if hasattr(self._activity_log_widget, 'textCursor'):
                     cursor = self._activity_log_widget.textCursor()
                     cursor.movePosition(CursorEnd)
@@ -293,7 +299,7 @@ class TransformerLogger(QObject):
                         self._activity_log_widget.appendPlainText(display_text)
 
         except Exception as exc:
-            QgsMessageLog.logMessage(f"Activity log write failed: {exc}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Activity log write failed: {exc}", "Transformer", MsgWarning)
     
     # Convenience methods per @[/logger] standards
     def debug(self, message, module="system", code="DEBUG", context=None):

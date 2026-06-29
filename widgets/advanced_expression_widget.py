@@ -4,12 +4,11 @@ from qgis.PyQt.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QTextEdit,
     QMessageBox, QDialog, QListWidget, QDialogButtonBox
 )
-from qgis.core import QgsMessageLog, Qgis
-
+from qgis.core import QgsMessageLog
 from qgis.PyQt.QtCore import QTimer
-from qgis.PyQt.QtWidgets import QToolBar, QAction, QSizePolicy
 from qgis.gui import QgsExpressionBuilderWidget
-from ..shared.compat import _SizePolicy, _DialogCode, ToolButtonTextBesideIcon, RichText, MsgBoxIconInfo, MsgBoxOk
+from qgis.PyQt.QtWidgets import QToolBar, QAction
+from ..shared.compat import _SizePolicy, _DialogCode, ToolButtonTextBesideIcon, RichText, MsgBoxIconInfo, MsgBoxOk, MsgWarning
 from ..shared.helpers import create_layer_expression_context
 from ..shared.icons import icon as ui_icon, IconTone
 from ..shared.expression_utils import validate_expression_syntax, evaluate_expression
@@ -107,7 +106,7 @@ class AdvancedExpressionWidget(QWidget):
         
         # Expression builder main
         self.expression_builder = QgsExpressionBuilderWidget()
-        self.expression_builder.setMinimumHeight(300)
+        self.expression_builder.setMinimumHeight(150)
         
         # Configuration pour redimensionnement fluide des panneaux internes
         self.expression_builder.setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
@@ -288,7 +287,7 @@ class AdvancedExpressionWidget(QWidget):
             if isinstance(history, list):
                 self.expression_history = history
         except Exception as exc:
-            QgsMessageLog.logMessage(f"Failed to load expression history: {exc}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Failed to load expression history: {exc}", "Transformer", MsgWarning)
             self.expression_history = []
     
     def save_expression_history(self):
@@ -297,7 +296,7 @@ class AdvancedExpressionWidget(QWidget):
             settings = QSettings()
             settings.setValue("Transformer/expression_history", self.expression_history)
         except Exception as exc:
-            QgsMessageLog.logMessage(f"Failed to save expression history: {exc}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Failed to save expression history: {exc}", "Transformer", MsgWarning)
     
     def on_expression_parsed(self, valid):
         """Expression parsing management"""

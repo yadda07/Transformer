@@ -342,6 +342,15 @@
     background-color: #f8f9fa;
 }
 
+.professional QSplitter::handle {
+    background: #c0c0c0;
+    border-radius: 2px;
+}
+
+.professional QSplitter::handle:hover {
+    background: #007bff;
+}
+
 /* Style sombre */
 .dark {
     background-color: #2b2b2b;
@@ -389,6 +398,15 @@
     background-color: #3c3c3c;
     color: #ffffff;
     border: 1px solid #555555;
+}
+
+.dark QSplitter::handle {
+    background: #555555;
+    border-radius: 2px;
+}
+
+.dark QSplitter::handle:hover {
+    background: #14a085;
 }
 
 /* Style contraste élevé */

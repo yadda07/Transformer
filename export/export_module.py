@@ -12,7 +12,7 @@ EXPORT_AVAILABLE = False
 try:
     # QGIS core
     from qgis.core import (QgsProject, QgsVectorLayer, QgsVectorFileWriter, 
-                           QgsMessageLog, Qgis, QgsWkbTypes, QgsApplication)
+                           QgsMessageLog, QgsWkbTypes, QgsApplication)
     from qgis.gui import QgsMessageBar
     
     # Qt
@@ -24,7 +24,7 @@ try:
                                      QRadioButton, QButtonGroup, QCheckBox)
     
     EXPORT_AVAILABLE = True
-    from ..shared.compat import UserRole, MsgBoxYes, MsgBoxNo, MultiSelection
+    from ..shared.compat import UserRole, MsgBoxYes, MsgBoxNo, MultiSelection, MsgInfo, MsgWarning, MsgCritical, MsgSuccess, WriterNoError
     from ..shared.icons import icon as ui_icon
 
     def _vector_file_action(*names, fallback_int=None):
@@ -176,7 +176,7 @@ class ExportManager(QObject):
                 error_code = result[0]
                 error_message = result[1] if len(result) > 1 else "Unknown error"
                 
-                if error_code == QgsVectorFileWriter.NoError:
+                if error_code == WriterNoError:
                     success, message = True, f"Export réussi : {feature_count} entité(s)"
                 else:
                     success, message = False, f"Erreur d'export : {error_message}"
@@ -186,19 +186,19 @@ class ExportManager(QObject):
                 QgsMessageLog.logMessage(
                     f" Export successful - Layer: {layer.name()}, Format: {export_format.value}, "
                     f"Features: {feature_count}, Size: {self._get_file_size(output_path)} Ko",
-                    "Transformer", Qgis.Success
+                    "Transformer", MsgSuccess
                 )
             else:
                 QgsMessageLog.logMessage(
                     f" Export failed - Layer: {layer.name()}, Error: {message}",
-                    "Transformer", Qgis.Critical
+                    "Transformer", MsgCritical
                 )
             
             return success, message
                 
         except Exception as e:
             error_msg = f"Unexpected error during export : {str(e)}"
-            QgsMessageLog.logMessage(f" {error_msg}", "Transformer", Qgis.Critical)
+            QgsMessageLog.logMessage(f" {error_msg}", "Transformer", MsgCritical)
             return False, error_msg
 
     def export_layers_to_single_geopackage(self, layers, output_path, encoding="utf-8",
@@ -259,20 +259,20 @@ class ExportManager(QObject):
             error_code = result[0]
             error_message = result[1] if len(result) > 1 else "Erreur inconnue"
 
-            if error_code == QgsVectorFileWriter.NoError:
+            if error_code == WriterNoError:
                 exported_count += 1
                 total_features += feature_count
                 QgsMessageLog.logMessage(
                     f" Export GeoPackage - {layer.name()} "
                     f"→ table '{table_name}' ({feature_count} entité(s))",
-                    "Transformer", Qgis.Success
+                    "Transformer", MsgSuccess
                 )
             else:
                 failed_count += 1
                 errors.append(f"{layer.name()} : {error_message}")
                 QgsMessageLog.logMessage(
                     f" Export GeoPackage échoué - {layer.name()} : {error_message}",
-                    "Transformer", Qgis.Critical
+                    "Transformer", MsgCritical
                 )
 
         if exported_count == 0:
@@ -361,7 +361,7 @@ class ExportManager(QObject):
             else:
                 return False, f"Format attributaire {export_format.value} not implemented"
             
-            if error_code == QgsVectorFileWriter.NoError:
+            if error_code == WriterNoError:
                 return True, f"Export tabular successful : {layer.featureCount()} records"
             else:
                 return False, f"Export tabular error : {error_message}"
@@ -827,9 +827,9 @@ class ExportWidget(QWidget):
                 try:
                     project.removeMapLayer(layer_id)
                     removed_count += 1
-                    QgsMessageLog.logMessage(f"Layer removed: {layer_name}", "Transformer", Qgis.Info)
+                    QgsMessageLog.logMessage(f"Layer removed: {layer_name}", "Transformer", MsgInfo)
                 except Exception as e:
-                    QgsMessageLog.logMessage(f"Error removing layer {layer_name}: {str(e)}", "Transformer", Qgis.Warning)
+                    QgsMessageLog.logMessage(f"Error removing layer {layer_name}: {str(e)}", "Transformer", MsgWarning)
             
             # Refresh the list
             self.refresh_layers()
@@ -1007,13 +1007,13 @@ class ExportWidget(QWidget):
                 total_features += layer.featureCount()
                 QgsMessageLog.logMessage(
                     f"Export batch [{i}/{len(selected_layers)}] - {layer.name()} → {os.path.basename(output_path)}",
-                    "Transformer", Qgis.Info
+                    "Transformer", MsgInfo
                 )
             else:
                 failed_count += 1
                 QgsMessageLog.logMessage(
                     f" Failed export batch [{i}/{len(selected_layers)}] - {layer.name()}: {message}",
-                    "Transformer", Qgis.Warning
+                    "Transformer", MsgWarning
                 )
         
         # Final report
@@ -1072,14 +1072,14 @@ class ExportWidget(QWidget):
                 # Log for debugging
                 QgsMessageLog.logMessage(
                     f"Export encoding saved: {current_encoding}",
-                    "Transformer", Qgis.Info
+                    "Transformer", MsgInfo
                 )
                 
         except (ImportError, Exception) as e:
             # In case of save error, continue without crashing
             QgsMessageLog.logMessage(
                 f"Encoding save error: {str(e)}",
-                "Transformer", Qgis.Warning
+                "Transformer", MsgWarning
             )
     
     def get_selected_encoding(self):

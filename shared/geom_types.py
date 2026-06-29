@@ -7,26 +7,27 @@ divergence when new geometry types are introduced.
 """
 
 from qgis.core import QgsWkbTypes
+from .compat import GeomPoint, GeomLine, GeomPolygon, GeomNull, GeomUnknown
 
 
 WKB_TO_NAME = {
-    QgsWkbTypes.PointGeometry: "Point",
-    QgsWkbTypes.LineGeometry: "LineString",
-    QgsWkbTypes.PolygonGeometry: "Polygon",
-    QgsWkbTypes.UnknownGeometry: "NoGeometry",
-    QgsWkbTypes.NullGeometry: "NoGeometry",
+    GeomPoint: "Point",
+    GeomLine: "LineString",
+    GeomPolygon: "Polygon",
+    GeomUnknown: "NoGeometry",
+    GeomNull: "NoGeometry",
 }
 
 NAME_TO_WKB = {
-    "Point": QgsWkbTypes.PointGeometry,
-    "LineString": QgsWkbTypes.LineGeometry,
-    "Polygon": QgsWkbTypes.PolygonGeometry,
+    "Point": GeomPoint,
+    "LineString": GeomLine,
+    "Polygon": GeomPolygon,
 }
 
 WKB_TO_PG_TYPE = {
-    QgsWkbTypes.PointGeometry: "MULTIPOINT",
-    QgsWkbTypes.LineGeometry: "MULTILINESTRING",
-    QgsWkbTypes.PolygonGeometry: "MULTIPOLYGON",
+    GeomPoint: "MULTIPOINT",
+    GeomLine: "MULTILINESTRING",
+    GeomPolygon: "MULTIPOLYGON",
 }
 
 

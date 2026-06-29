@@ -11,9 +11,10 @@ from typing import List, Optional, Dict, Any
 
 from qgis.core import (
     QgsMessageLog, QgsTask, QgsVectorLayer,
-    QgsCoordinateReferenceSystem, Qgis,
+    QgsCoordinateReferenceSystem,
     QgsExpressionContextUtils, QgsProject,
 )
+from ..shared.compat import MsgInfo, MsgWarning, MsgCritical, TaskCanCancel
 
 
 class TransformTask(QgsTask):
@@ -27,7 +28,7 @@ class TransformTask(QgsTask):
         description: str = "Transform layers",
         table_filter: Optional[List[str]] = None,
     ):
-        super().__init__(description, QgsTask.CanCancel)
+        super().__init__(description, TaskCanCancel)
         self.transformer = transformer
         self.items = items
         self.target_crs = target_crs
@@ -113,7 +114,7 @@ class TransformTask(QgsTask):
             QgsMessageLog.logMessage(
                 f"TransformTask exception: {self._exception}",
                 "Transformer",
-                Qgis.Critical,
+                MsgCritical,
             )
             return
 
@@ -121,7 +122,7 @@ class TransformTask(QgsTask):
             QgsMessageLog.logMessage(
                 "TransformTask canceled or failed",
                 "Transformer",
-                Qgis.Warning,
+                MsgWarning,
             )
             return
 
@@ -135,5 +136,5 @@ class TransformTask(QgsTask):
             f"{self.fail_count} failed, "
             f"{len(self.created_layers)} layers created",
             "Transformer",
-            Qgis.Info,
+            MsgInfo,
         )

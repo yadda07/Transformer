@@ -2,24 +2,23 @@
 [general]
 name=Transformer
 qgisMinimumVersion=3.44
-description=QGIS plugin for vector layer transformation. Processes QGIS project layers with calculated fields, coordinate transformations, and PostgreSQL integration.
-version=2.2.0
+description=Controlled QGIS ETL workspace for vector layers: precise fields, smart filters, repeatable JSON configurations, export, and PostgreSQL publishing.
+version=3.0.0
 author=Yadda
 email=youcef.geodesien@gmail.com
 
 ; Bug tracker URL (required for publication)
-tracker=https://github.com/yadda07/transformer/issues
+tracker=https://github.com/yadda07/Transformer/issues
 
 ; Repository URL (required for publication) 
-repository=https://github.com/yadda07/transformer
+repository=https://github.com/yadda07/Transformer
 
 ; Homepage (optional)
-homepage=https://github.com/yadda07/transformer
+homepage=https://geodeci.xyz/
 
-about=ETL plugin for QGIS vector layer transformation (v2.2.0). 
-    Processes QGIS project layers with calculated fields, geometry expressions, and coordinate reprojection. 
-    Features bidirectional JSON config sync, smart filtering with templates, dock-based UI with drag-drop repositioning. 
-    Supports 15+ vector formats, PostgreSQL integration with auto-mapping, and multi-format export.
+about=Transformer is a focused QGIS ETL workspace for enterprise vector data preparation (v3.0.0).
+    It turns project layers into controlled, repeatable data products with native QGIS expressions, smart filters, JSON configurations, export, and PostgreSQL publishing.
+    The interface is designed around clear decisions: select the source, shape fields, validate rules, and publish with visible operational feedback.
 
 ; Tags separated by commas
 tags=vector,transformation,calculated fields,data processing,geojson,geopackage,kml,shapefile,export,postgresql
@@ -38,11 +37,11 @@ qgisMaximumVersion=4.99
 
 ; Changelog
 changelog=
-    Version 2.2.0 (2026-06-24):
+    Version 3.0.0 (2026-06-29):
     - Removed Joiner module (spatial/attribute join) to focus on attribute transformation and PostgreSQL integration
     - Removed Pipeline Builder (unstable feature)
     - Logger cleaned: removed joiner category and join-related filters
-    - Toolbar and help text updated to reflect 3-tab layout (Configuration / Export / PostgreSQL)
+    - Documentation, metadata, and help text refined for a clearer premium enterprise workflow
     
     Version 2.1.0 (2025-12-12):
     - Bidirectional sync between Configuration Preview and Field Management
