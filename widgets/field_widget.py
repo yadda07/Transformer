@@ -9,8 +9,8 @@ from qgis.PyQt.QtWidgets import (
 from qgis.PyQt.QtWidgets import QSizePolicy
 from qgis.PyQt.QtGui import QFont, QColor
 from ..shared.field_icons import field_icon_for_definition, field_type_label, resolve_field_output_type
-from qgis.core import QgsMessageLog, Qgis, QgsWkbTypes
-from ..shared.compat import FontBold, MsgBoxNo, MsgBoxYes, UserRole, _DialogCode, _SizePolicy
+from qgis.core import QgsMessageLog, QgsWkbTypes
+from ..shared.compat import FontBold, MsgBoxNo, MsgBoxYes, UserRole, _DialogCode, _SizePolicy, GeomNull
 from ..shared.field_classification import (
     classify_field,
     category_background,
@@ -209,7 +209,7 @@ class FieldWidget(QWidget):
                 # Add geometry field - always use $geometry without automatic transformation
                 geometry_expression = "$geometry"
                 
-                if layer.geometryType() != QgsWkbTypes.NullGeometry:
+                if layer.geometryType() != GeomNull:
                     layer_fields["geometry"] = geometry_expression
                 
                 # Create table name with _transformed suffix

@@ -11,7 +11,8 @@ import tempfile
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-from qgis.core import QgsMessageLog, Qgis
+from qgis.core import QgsMessageLog
+from ..shared.compat import MsgInfo, MsgWarning, MsgCritical
 from ..shared.helpers import is_filter_enabled, get_filter_expression
 
 
@@ -40,7 +41,7 @@ class ConfigManager:
             if not os.path.exists(self.config_file):
                 QgsMessageLog.logMessage(
                     "Config file doesn't exist, creating with default structure",
-                    "Transformer", Qgis.Info,
+                    "Transformer", MsgInfo,
                 )
                 self.save_config()
                 return True
@@ -48,7 +49,7 @@ class ConfigManager:
             if os.path.getsize(self.config_file) == 0:
                 QgsMessageLog.logMessage(
                     "Config file is empty, initializing with default structure",
-                    "Transformer", Qgis.Info,
+                    "Transformer", MsgInfo,
                 )
                 self.save_config()
                 return True
@@ -59,7 +60,7 @@ class ConfigManager:
             if not isinstance(loaded_data, dict) or 'tables' not in loaded_data:
                 QgsMessageLog.logMessage(
                     "Invalid config structure, reinitializing",
-                    "Transformer", Qgis.Warning,
+                    "Transformer", MsgWarning,
                 )
                 self.save_config()
                 return True
@@ -69,12 +70,12 @@ class ConfigManager:
 
             QgsMessageLog.logMessage(
                 f"Loaded configuration: {len(self.config_data.get('tables', {}))} tables",
-                "Transformer", Qgis.Info,
+                "Transformer", MsgInfo,
             )
             return True
 
         except Exception as e:
-            QgsMessageLog.logMessage(f"Config load error: {e}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Config load error: {e}", "Transformer", MsgWarning)
             return False
 
     def save_config(self) -> bool:
@@ -107,11 +108,11 @@ class ConfigManager:
 
             QgsMessageLog.logMessage(
                 f"Config saved atomically: {len(self.config_data.get('tables', {}))} tables",
-                "Transformer", Qgis.Info,
+                "Transformer", MsgInfo,
             )
             return True
         except Exception as e:
-            QgsMessageLog.logMessage(f"Config save error: {e}", "Transformer", Qgis.Critical)
+            QgsMessageLog.logMessage(f"Config save error: {e}", "Transformer", MsgCritical)
             return False
 
     # ------------------------------------------------------------------
@@ -127,7 +128,7 @@ class ConfigManager:
                     table_config["filter"] = {"enabled": False, "expression": ""}
             self.config_data["version"] = self._CONFIG_VERSION
             QgsMessageLog.logMessage(
-                "Migrated configuration to version 1.1", "Transformer", Qgis.Info,
+                "Migrated configuration to version 1.1", "Transformer", MsgInfo,
             )
             self.save_config()
 
@@ -159,7 +160,7 @@ class ConfigManager:
                 f"Configuration already exists for table '{table_name}' "
                 f"(source: {existing_source})"
             )
-            QgsMessageLog.logMessage(message, "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(message, "Transformer", MsgWarning)
             return {
                 "success": False,
                 "action": "rejected",
@@ -190,7 +191,7 @@ class ConfigManager:
 
         QgsMessageLog.logMessage(
             f"Saved config for {table_name}: {len(calculated_fields)} fields{filter_info}",
-            "Transformer", Qgis.Info,
+            "Transformer", MsgInfo,
         )
         return {
             "success": True,
@@ -224,7 +225,7 @@ class ConfigManager:
     def remove_table_config(self, table_name: str) -> bool:
         if "tables" in self.config_data and table_name in self.config_data["tables"]:
             del self.config_data["tables"][table_name]
-            QgsMessageLog.logMessage(f"Removed config for {table_name}", "Transformer", Qgis.Info)
+            QgsMessageLog.logMessage(f"Removed config for {table_name}", "Transformer", MsgInfo)
             return True
         return False
 
@@ -268,11 +269,11 @@ class ConfigManager:
             with open(export_path, 'w', encoding='utf-8') as f:
                 json.dump(self.config_data, f, indent=2, ensure_ascii=False)
             QgsMessageLog.logMessage(
-                f"Configuration exported to {export_path}", "Transformer", Qgis.Info,
+                f"Configuration exported to {export_path}", "Transformer", MsgInfo,
             )
             return True
         except Exception as e:
-            QgsMessageLog.logMessage(f"Export error: {e}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Export error: {e}", "Transformer", MsgWarning)
             return False
 
     def import_config(self, import_path: str) -> bool:
@@ -282,7 +283,7 @@ class ConfigManager:
 
             if "tables" not in imported_data:
                 QgsMessageLog.logMessage(
-                    "Invalid configuration format", "Transformer", Qgis.Warning,
+                    "Invalid configuration format", "Transformer", MsgWarning,
                 )
                 return False
 
@@ -310,12 +311,12 @@ class ConfigManager:
             QgsMessageLog.logMessage(
                 f"Configuration merged: {len(imported_tables)} table(s) "
                 f"({merged_count} new, {overwritten_count} updated)",
-                "Transformer", Qgis.Info,
+                "Transformer", MsgInfo,
             )
             return True
 
         except Exception as e:
-            QgsMessageLog.logMessage(f"Import error: {e}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Import error: {e}", "Transformer", MsgWarning)
             return False
 
     # ------------------------------------------------------------------
@@ -377,6 +378,6 @@ class ConfigManager:
             self.save_config()
             QgsMessageLog.logMessage(
                 f"Cleaned up {len(to_remove)} configurations with missing source files",
-                "Transformer", Qgis.Info,
+                "Transformer", MsgInfo,
             )
         return len(to_remove)

@@ -28,7 +28,7 @@ def classFactory(iface):
 
 
 # Plugin meta
-__version__ = "2.1.0"
+__version__ = "3.0.0"
 __author__ = "yadda"
 __email__ = "youcef.geodesien@gmail.com"
 __description__ = "Vector file transformation w/ calculated fields"

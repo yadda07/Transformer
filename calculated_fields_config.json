@@ -1,6 +1,6 @@
 {
   "version": "1.1",
-  "last_modified": "2026-06-28T14:04:33.337301",
+  "last_modified": "2026-06-29T20:36:08.781152",
   "tables": {
     "bpe_transformed": {
       "source_file": "C:/Users/yadda/Downloads/63293-S05-PMZ-00014/63293-S05-PMZ-00014/ATHD_DIST_PM_00014_SHAPES/Shape NGE/bpe.shp",
@@ -101,6 +101,57 @@
         "Field9": "\"Field9\"",
         "Field10": "\"Field10\"",
         "Field11": "\"Field11\""
+      },
+      "filter": {
+        "enabled": false,
+        "expression": ""
+      },
+      "target_crs": null,
+      "geometry_expression": "$geometry"
+    },
+    "DXF - FTO_PTSPR_CLAlt_transformed": {
+      "source_file": "DXF - FTO_PTSPR_CLcod",
+      "calculated_fields": {
+        "Layer": "\"Layer\"",
+        "PaperSpace": "\"PaperSpace\"",
+        "SubClasses": "\"SubClasses\"",
+        "Linetype": "\"Linetype\"",
+        "EntityHandle": "\"EntityHandle\"",
+        "Text": "\"Text\""
+      },
+      "filter": {
+        "enabled": false,
+        "expression": ""
+      },
+      "target_crs": null,
+      "geometry_expression": "$geometry"
+    },
+    "DXF - 5_Funiculaire1_transformed": {
+      "source_file": "DXF - 4_Encartage",
+      "calculated_fields": {
+        "Layer": "\"Layer\"",
+        "PaperSpace": "\"PaperSpace\"",
+        "SubClasses": "\"SubClasses\"",
+        "Linetype": "\"Linetype\"",
+        "EntityHandle": "\"EntityHandle\"",
+        "Text": "\"Text\""
+      },
+      "filter": {
+        "enabled": false,
+        "expression": ""
+      },
+      "target_crs": null,
+      "geometry_expression": "$geometry"
+    },
+    "DXF - FTO_1C_Tranchée_transformed": {
+      "source_file": "DXF - FTO_1B_Micro tranchée",
+      "calculated_fields": {
+        "Layer": "\"Layer\"",
+        "PaperSpace": "\"PaperSpace\"",
+        "SubClasses": "\"SubClasses\"",
+        "Linetype": "\"Linetype\"",
+        "EntityHandle": "\"EntityHandle\"",
+        "Text": "\"Text\""
       },
       "filter": {
         "enabled": false,

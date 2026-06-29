@@ -7,6 +7,8 @@ Enhanced Transformer Dialog - Interface principale
 import os
 import json
 import copy
+import html
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -29,7 +31,7 @@ from qgis.PyQt.QtWidgets import QToolBar, QSizePolicy, QShortcut
 
 from qgis.core import (
     QgsVectorLayer, QgsProject, QgsCoordinateReferenceSystem,
-    QgsMessageLog, Qgis, QgsWkbTypes, QgsFeatureRequest, QgsExpression,
+    QgsMessageLog, QgsWkbTypes, QgsFeatureRequest, QgsExpression,
     QgsFields, QgsField, QgsFeature, QgsGeometry, QgsSettings, QgsApplication,
     QgsVectorFileWriter, QgsCoordinateTransformContext
 )
@@ -55,6 +57,7 @@ from ..widgets.advanced_expression_widget import AdvancedExpressionWidget
 from ..widgets.smart_filter_widget import SmartFilterWidget
 from ..widgets.field_widget import FieldWidget
 from ..widgets.expression_tester_dialog import ExpressionTesterDialog
+from ..widgets.sliding_tab_bar import SlidingTabWidget
 
 # Import des fonctions de logging
 from ..shared.logger import logger as plugin_logger, log_info, log_warning, log_error, log_success
@@ -84,7 +87,7 @@ try:
     from ..export.export_module import ExportWidget
     EXPORT_CLASSES_AVAILABLE = True
 except ImportError as e:
-    QgsMessageLog.logMessage(f"Export module import error: {e}", "Transformer", Qgis.Warning)
+    QgsMessageLog.logMessage(f"Export module import error: {e}", "Transformer", MsgWarning)
     ExportWidget = None
     EXPORT_CLASSES_AVAILABLE = False
 
@@ -92,7 +95,7 @@ try:
     from ..pg.postgresql_integration import PostgreSQLIntegrationWidget
     POSTGRESQL_INTEGRATION_AVAILABLE = True
 except ImportError as e:
-    QgsMessageLog.logMessage(f"PostgreSQL module import error: {e}", "Transformer", Qgis.Warning)
+    QgsMessageLog.logMessage(f"PostgreSQL module import error: {e}", "Transformer", MsgWarning)
     PostgreSQLIntegrationWidget = None
     POSTGRESQL_INTEGRATION_AVAILABLE = False
 
@@ -107,18 +110,23 @@ from ..shared.compat import (
     KeyNew, KeyOpen, KeySave, KeyQuit, KeyUndo, KeyRedo, KeyHelpContents,
     _AlignmentFlag, _DialogCode,
     _DockOption, _DockWidgetArea, _DockWidgetFeature,
-    _FrameShape, FrameNoFrame, FrameHLine, _HeaderResizeMode, _ItemDataRole,
+    _FrameShape, FrameHLine, _HeaderResizeMode, _ItemDataRole,
     _MsgBoxButton, _MsgBoxIcon, _Orientation,
     _ScrollBarPolicy, _SelectionBehavior, _SelectionMode,
     _SizePolicy, _TabPosition, _TextFormat,
     _ToolBarArea, _ToolButtonStyle, _WidgetAttribute,
-    palette_color, TextSelectableByMouse,
+    palette_color, TabSouth,
+    MsgInfo, MsgWarning, MsgCritical, MsgSuccess, WriterNoError, GeomNull,
 )
 # Background task for async transformations (keeps UI responsive)
 from ..core.transform_task import TransformTask
 from ..widgets.log_monitor_widget import LogMonitorWidget
 
 from ..shared.logger import logger as _global_logger
+
+PLUGIN_WEBSITE_URL = "https://geodeci.xyz/"
+PLUGIN_REPOSITORY_URL = "https://github.com/yadda07/Transformer"
+PLUGIN_ISSUES_URL = "https://github.com/yadda07/Transformer/issues"
 
 class EnhancedTransformerDialog(QMainWindow):
     """Enhanced main interface with native QGIS features"""
@@ -155,6 +163,7 @@ class EnhancedTransformerDialog(QMainWindow):
         
         self.apply_theme()
         self.restore_window_state()
+        QTimer.singleShot(250, self._ensure_help_dock_content)
         
         # Configure default tabs (after restore_window_state to avoid interference)
         self.config_dock.raise_() # Configuration Preview par défaut
@@ -174,8 +183,7 @@ class EnhancedTransformerDialog(QMainWindow):
         self.resize(1600, 1000)
         
         # Application icon - logo du plugin
-        import os
-        logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logo.png")
         if os.path.exists(logo_path):
             self.setWindowIcon(QIcon(logo_path))
         else:
@@ -231,11 +239,11 @@ class EnhancedTransformerDialog(QMainWindow):
                 self.main_tabs.addTab(self.export_widget, ui_icon("export"), "Export")
                 self.log_message("Export tab created", "Success") # Internal log only
             except Exception as e:
-                QgsMessageLog.logMessage(f"Error creating ExportWidget: {str(e)}", "Transformer", Qgis.Critical)
+                QgsMessageLog.logMessage(f"Error creating ExportWidget: {str(e)}", "Transformer", MsgCritical)
                 self.export_widget = None
                 self._create_fallback_export_tab()
         else:
-            QgsMessageLog.logMessage("Export module not available - Creating fallback tab", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage("Export module not available - Creating fallback tab", "Transformer", MsgWarning)
             self.export_widget = None
             self._create_fallback_export_tab()
         
@@ -245,7 +253,7 @@ class EnhancedTransformerDialog(QMainWindow):
                 self.postgresql_widget = PostgreSQLIntegrationWidget()
                 self.main_tabs.addTab(self.postgresql_widget, ui_icon("postgresql"), "PostgreSQL")
             except Exception as e:
-                QgsMessageLog.logMessage(f"PostgreSQL widget creation error: {str(e)}", "Transformer", Qgis.Critical)
+                QgsMessageLog.logMessage(f"PostgreSQL widget creation error: {str(e)}", "Transformer", MsgCritical)
                 # Fallback widget
                 postgresql_fallback = QWidget()
                 postgresql_layout = QVBoxLayout()
@@ -357,28 +365,28 @@ class EnhancedTransformerDialog(QMainWindow):
         
         # Create vertical splitter for dynamic resizing between components
         self.config_splitter = QSplitter(_Orientation.Vertical)
-        self.config_splitter.setChildrenCollapsible(False) # Prevent complete collapse
+        self.config_splitter.setChildrenCollapsible(False)
+        # Wider handle for smooth, precise manual resizing
+        self.config_splitter.setHandleWidth(8)
         
         # Store component references for visibility management
         self.config_components = {}
         
-        # Table configuration - compact version
+        # Table configuration - compact fixed header
         self.config_components['table_config'] = QGroupBox("Table Configuration")
         config_layout = QFormLayout()
-        config_layout.setVerticalSpacing(8) # Espacement vertical confortable
-        config_layout.setContentsMargins(10, 12, 10, 8) # Marges améliorées (haut augmenté)
+        config_layout.setVerticalSpacing(8)
+        config_layout.setContentsMargins(10, 12, 10, 8)
         
         self.table_name_edit = QLineEdit()
         self.table_name_edit.setPlaceholderText("Enter output table name...")
-        self.table_name_edit.setMaximumHeight(24) # Hauteur fixe pour le champ
+        self.table_name_edit.setMaximumHeight(24)
         config_layout.addRow("Table Name:", self.table_name_edit)
         
         self.config_components['table_config'].setLayout(config_layout)
-        self.config_components['table_config'].setMinimumHeight(55) # Minimum suffisant pour éviter l'écrasement
-        self.config_components['table_config'].setMaximumHeight(85) # Hauteur max légèrement augmentée
-        # Définir une hauteur par défaut confortable
-        self.config_components['table_config'].resize(self.config_components['table_config'].width(), 75)
-        self.config_components['table_config'].setSizePolicy(_SizePolicy.Preferred, _SizePolicy.Preferred)
+        # Fixed height prevents the header from jumping during resize
+        self.config_components['table_config'].setFixedHeight(75)
+        self.config_components['table_config'].setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Fixed)
         self.config_splitter.addWidget(self.config_components['table_config'])
         
         # Smart filter widget
@@ -389,7 +397,8 @@ class EnhancedTransformerDialog(QMainWindow):
         filter_layout.addWidget(self.smart_filter)
         
         self.config_components['smart_filter'].setLayout(filter_layout)
-        self.config_components['smart_filter'].setMinimumHeight(120)
+        self.config_components['smart_filter'].setMinimumHeight(100)
+        self.config_components['smart_filter'].setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Preferred)
         self.config_splitter.addWidget(self.config_components['smart_filter'])
         
         # Advanced expression builder
@@ -401,6 +410,8 @@ class EnhancedTransformerDialog(QMainWindow):
         
         self.config_components['expression_builder'].setLayout(expr_layout)
         self.config_components['expression_builder'].setMinimumHeight(200)
+        self.config_components['expression_builder'].setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
+        self.config_components['expression_builder'].setMaximumHeight(16777215)
         self.config_splitter.addWidget(self.config_components['expression_builder'])
         
         # Smart fields widget
@@ -420,22 +431,63 @@ class EnhancedTransformerDialog(QMainWindow):
         fields_layout.addWidget(self.smart_fields)
         
         self.config_components['field_management'].setLayout(fields_layout)
-        self.config_components['field_management'].setMinimumHeight(150)
+        self.config_components['field_management'].setMinimumHeight(130)
+        self.config_components['field_management'].setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
+        self.config_components['field_management'].setMaximumHeight(16777215)
         self.config_splitter.addWidget(self.config_components['field_management'])
         
-        # Set proportional sizes - Field Management prioritaire pour expansion
-        self.config_splitter.setStretchFactor(0, 1) # Table Configuration
-        self.config_splitter.setStretchFactor(1, 1) # Smart Filter 
+        # Smooth proportional stretch: fixed header, then evenly weighted panels
+        self.config_splitter.setStretchFactor(0, 0) # Table Configuration (fixed)
+        self.config_splitter.setStretchFactor(1, 1) # Smart Filter
         self.config_splitter.setStretchFactor(2, 2) # Expression Builder
-        self.config_splitter.setStretchFactor(3, 5) # Field Management (prioritaire pour l'expansion)
+        self.config_splitter.setStretchFactor(3, 2) # Field Management
+        
+        # Balanced starting sizes
+        self.config_splitter.setSizes([75, 140, 260, 260])
+        
+        # Persist manual resizing across sessions
+        self.config_splitter.splitterMoved.connect(self._save_config_splitter_sizes)
         
         main_layout.addWidget(self.config_splitter)
         panel.setLayout(main_layout)
         
-        # Load saved component visibility states
+        # Load saved component visibility states (restores splitter sizes too)
         QTimer.singleShot(100, self.restore_component_visibility)
         
         return panel
+    
+    def _save_config_splitter_sizes(self):
+        """Persist the vertical module splitter sizes."""
+        try:
+            sizes = self.config_splitter.sizes()
+            if sizes and all(s > 0 for s in sizes):
+                settings = QSettings()
+                settings.setValue("Transformer/config_splitter_sizes", sizes)
+        except Exception as e:
+            self.log_message(f"Error saving config splitter sizes: {str(e)}", "Warning")
+    
+    def _restore_config_splitter_sizes(self):
+        """Restore the vertical module splitter sizes from settings."""
+        try:
+            if not self.config_splitter:
+                return
+            settings = QSettings()
+            saved = settings.value("Transformer/config_splitter_sizes")
+            if not saved or not isinstance(saved, list) or len(saved) != len(self.config_components):
+                return
+            current = self.config_splitter.sizes()
+            if len(current) != len(saved):
+                return
+            sizes = []
+            for idx, component in enumerate(self.config_components.values()):
+                if component.isVisible() and saved[idx] > 0:
+                    sizes.append(saved[idx])
+                else:
+                    sizes.append(current[idx])
+            self.config_splitter.setSizes(sizes)
+            log_info(f"Restored config splitter sizes: {sizes}")
+        except Exception as e:
+            self.log_message(f"Error restoring config splitter sizes: {str(e)}", "Warning")
     
     def toggle_component_visibility(self, component_name, visible):
         """Toggle visibility of a configuration component"""
@@ -461,6 +513,10 @@ class EnhancedTransformerDialog(QMainWindow):
                 
                 # Save visibility state
                 self.save_component_visibility_state(component_name, visible)
+                
+                # Restore splitter layout when showing a component to avoid zero-height re-entry
+                if visible:
+                    self._restore_config_splitter_sizes()
                 
                 # Log the action
                 display_names = {
@@ -517,6 +573,9 @@ class EnhancedTransformerDialog(QMainWindow):
                     action = self.config_toolbar_actions.get(component_name)
                     if action:
                         action.setChecked(visible)
+            
+            # Restore splitter sizes after visibility states are applied
+            self._restore_config_splitter_sizes()
             
         except Exception as e:
             self.log_message(f"Error restoring component visibility: {str(e)}", "Warning")
@@ -717,9 +776,19 @@ class EnhancedTransformerDialog(QMainWindow):
         except Exception as e:
             log_error(f"Error handling dock floating: {str(e)}")
     
+    def _prepare_docks_for_layout(self):
+        """Show and undock all panels before applying a layout preset."""
+        for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
+            if dock:
+                if dock.isFloating():
+                    dock.setFloating(False)
+                if not dock.isVisible():
+                    dock.show()
+
     def _layout_default(self):
         """Default layout: Sources left, Config+Monitor right, Help tabbed"""
         try:
+            self._prepare_docks_for_layout()
             # Reset all docks
             self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
@@ -743,6 +812,7 @@ class EnhancedTransformerDialog(QMainWindow):
     def _layout_vertical(self):
         """Vertical layout: Config top, Monitor bottom"""
         try:
+            self._prepare_docks_for_layout()
             # Left: Sources
             self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
             
@@ -767,6 +837,7 @@ class EnhancedTransformerDialog(QMainWindow):
     def _layout_horizontal(self):
         """Horizontal layout: All panels side by side"""
         try:
+            self._prepare_docks_for_layout()
             # Arrange all docks horizontally
             self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
@@ -785,6 +856,7 @@ class EnhancedTransformerDialog(QMainWindow):
     def _layout_focus_config(self):
         """Focus on configuration: Large config panel"""
         try:
+            self._prepare_docks_for_layout()
             # Config takes most space
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
             
@@ -806,6 +878,7 @@ class EnhancedTransformerDialog(QMainWindow):
     def _layout_focus_monitor(self):
         """Focus on monitoring: Large activity monitor"""
         try:
+            self._prepare_docks_for_layout()
             # Monitor takes most space
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.log_dock)
             
@@ -1926,28 +1999,96 @@ class EnhancedTransformerDialog(QMainWindow):
         stats_group.setLayout(stats_layout)
         layout.addWidget(stats_group, 0) # Pas de stretch pour les statistiques
         
-        # Enhanced action buttons - Compact version to save space
+        # Transform Actions — minimal Apple-style section
         actions_group = QGroupBox("Transform Actions")
-        actions_group.setMaximumHeight(72)
+        actions_group.setObjectName("transform_actions_group")
+        actions_group.setFlat(True)
+        actions_group.setMaximumHeight(96)
+        actions_group.setStyleSheet("""
+            QGroupBox#transform_actions_group {
+                border: none;
+                border-top: 1px solid rgba(255, 255, 255, 0.07);
+                margin-top: 20px;
+                padding-top: 4px;
+                font-size: 9px;
+                color: rgba(255, 255, 255, 0.35);
+                letter-spacing: 1px;
+            }
+            QGroupBox#transform_actions_group::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                left: 4px;
+                padding: 0px;
+            }
+        """)
+
         actions_layout = QVBoxLayout()
-        actions_layout.setSpacing(4) # Espacement réduit entre les boutons
-        actions_layout.setContentsMargins(8, 6, 8, 6) # Marges réduites
-        
+        actions_layout.setSpacing(6)
+        actions_layout.setContentsMargins(8, 2, 8, 8)
+
         self.transform_selected_btn = QPushButton("Transform Selected")
+        self.transform_selected_btn.setObjectName("btn_transform_selected")
         self.transform_selected_btn.setIcon(ui_icon("transform"))
-        apply_compact_button(self.transform_selected_btn)
+        self.transform_selected_btn.setFixedHeight(30)
+        self.transform_selected_btn.setMaximumWidth(210)
+        self.transform_selected_btn.setStyleSheet("""
+            QPushButton#btn_transform_selected {
+                background: transparent;
+                border: 1px solid rgba(255, 255, 255, 0.14);
+                border-radius: 5px;
+                color: rgba(255, 255, 255, 0.62);
+                padding: 0 14px;
+                font-size: 11px;
+            }
+            QPushButton#btn_transform_selected:hover {
+                background: rgba(255, 255, 255, 0.06);
+                border-color: rgba(255, 255, 255, 0.28);
+                color: rgba(255, 255, 255, 0.90);
+            }
+            QPushButton#btn_transform_selected:pressed {
+                background: rgba(255, 255, 255, 0.11);
+                border-color: rgba(255, 255, 255, 0.22);
+            }
+            QPushButton#btn_transform_selected:disabled {
+                border-color: rgba(255, 255, 255, 0.06);
+                color: rgba(255, 255, 255, 0.20);
+            }
+        """)
         self.transform_selected_btn.clicked.connect(self.transform_selected_shapefile)
-        
+
         self.transform_all_btn = QPushButton("Transform All")
+        self.transform_all_btn.setObjectName("btn_transform_all")
         self.transform_all_btn.setIcon(ui_icon("batch"))
-        apply_compact_button(self.transform_all_btn)
+        self.transform_all_btn.setFixedHeight(32)
+        self.transform_all_btn.setStyleSheet("""
+            QPushButton#btn_transform_all {
+                background: rgba(185, 35, 35, 0.88);
+                border: none;
+                border-radius: 5px;
+                color: rgba(255, 255, 255, 0.95);
+                padding: 0 14px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton#btn_transform_all:hover {
+                background: rgba(208, 48, 48, 1.0);
+                color: white;
+            }
+            QPushButton#btn_transform_all:pressed {
+                background: rgba(158, 26, 26, 1.0);
+            }
+            QPushButton#btn_transform_all:disabled {
+                background: rgba(100, 30, 30, 0.42);
+                color: rgba(255, 255, 255, 0.26);
+            }
+        """)
         self.transform_all_btn.clicked.connect(self.transform_all_shapefiles)
-        
-        actions_layout.addWidget(self.transform_selected_btn)
+
+        actions_layout.addWidget(self.transform_selected_btn, 0, AlignCenter)
         actions_layout.addWidget(self.transform_all_btn)
-        
+
         actions_group.setLayout(actions_layout)
-        layout.addWidget(actions_group, 0) # Pas de stretch pour les boutons - ils restent en bas
+        layout.addWidget(actions_group, 0)
         
         # PAS de layout.addStretch() pour éliminer l'espace vide
         widget.setLayout(layout)
@@ -1971,199 +2112,218 @@ class EnhancedTransformerDialog(QMainWindow):
     
 
     def _help_content_styles(self):
-        """Palette-aware tokens for Quick Help widgets."""
-        dark = is_dark_palette(self.palette())
+        """Palette-aware tokens for Quick Help rich text."""
+        palette = self.palette()
+        dark = is_dark_palette(palette)
+
+        def color(role_name, fallback):
+            value = palette_color(palette, None, role_name)
+            if value.isValid():
+                return value.name()
+            return fallback
+
+        def shifted(role_name, factor, fallback):
+            value = palette_color(palette, None, role_name)
+            if value.isValid():
+                return value.lighter(factor).name()
+            return fallback
+
         if dark:
             return {
-                'title': '#E8EAED',
-                'body': '#BDC1C6',
-                'body_muted': '#9AA0A6',
-                'code': '#AECBFA',
-                'divider': '#3C4043',
-                'row_alt': 'rgba(255, 255, 255, 0.03)',
-                'accent_1': '#8AB4F8',
-                'accent_2': '#78D9EC',
-                'accent_3': '#C58AF9',
-                'accent_4': '#FDD663',
-                'accent_5': '#F28B82',
-                'tab_bg': 'transparent',
-                'tab_fg': '#9AA0A6',
-                'tab_selected_fg': '#E8EAED',
-                'tab_indicator': '#8AB4F8',
+                'title': color('WindowText', '#E8EAED'),
+                'body': color('Text', '#C4C7C5'),
+                'body_muted': color('PlaceholderText', '#9AA0A6'),
+                'code': color('Link', '#AECBFA'),
+                'divider': color('Mid', '#3C4043'),
+                'section_bg': color('Base', '#2B2D30'),
+                'surface': color('Window', '#202124'),
+                'row_alt': shifted('Base', 116, '#323538'),
+                'accent_1': color('Link', '#8AB4F8'),
+                'accent_2': color('LinkVisited', '#78D9EC'),
+                'accent_3': shifted('Link', 130, '#C58AF9'),
+                'accent_4': shifted('LinkVisited', 140, '#FDD663'),
+                'accent_5': shifted('Link', 150, '#F28B82'),
+                'tab_bg': color('Window', '#3C4043'),
+                'tab_fg': color('Text', '#9AA0A6'),
+                'tab_selected_bg': color('Base', '#5F6368'),
+                'tab_selected_fg': color('WindowText', '#E8EAED'),
+                'tab_indicator': color('Link', '#8AB4F8'),
             }
         return {
-            'title': '#202124',
-            'body': '#3C4043',
-            'body_muted': '#5F6368',
-            'code': '#174EA6',
-            'divider': '#DADCE0',
-            'row_alt': 'rgba(0, 0, 0, 0.03)',
-            'accent_1': '#1A73E8',
-            'accent_2': '#007B83',
-            'accent_3': '#9334E6',
-            'accent_4': '#E37400',
-            'accent_5': '#D93025',
-            'tab_bg': 'transparent',
-            'tab_fg': '#5F6368',
-            'tab_selected_fg': '#202124',
-            'tab_indicator': '#1A73E8',
+            'title': color('WindowText', '#202124'),
+            'body': color('Text', '#3C4043'),
+            'body_muted': color('PlaceholderText', '#5F6368'),
+            'code': color('Link', '#174EA6'),
+            'divider': color('Mid', '#E8EAED'),
+            'section_bg': color('Base', '#FFFFFF'),
+            'surface': color('Window', '#F8F9FA'),
+            'row_alt': shifted('Base', 96, '#F1F3F4'),
+            'accent_1': color('Link', '#1A73E8'),
+            'accent_2': color('LinkVisited', '#007B83'),
+            'accent_3': shifted('Link', 120, '#9334E6'),
+            'accent_4': shifted('LinkVisited', 130, '#E37400'),
+            'accent_5': shifted('Link', 80, '#D93025'),
+            'tab_bg': color('Window', '#F1F3F4'),
+            'tab_fg': color('Text', '#5F6368'),
+            'tab_selected_bg': color('Base', '#FFFFFF'),
+            'tab_selected_fg': color('Link', '#1A73E8'),
+            'tab_indicator': color('Link', '#1A73E8'),
         }
 
-    def _help_mono_font(self, point_size=10):
-        font = QFont('Consolas')
-        if not font.exactMatch():
-            font = QFont('Courier New')
-        font.setPointSize(point_size)
-        return font
+    def _help_entry_html(self, code, description, styles, alternate=False):
+        row_bg = styles['row_alt'] if alternate else 'transparent'
+        return (
+            f'<div style="background-color:{row_bg}; border-radius:6px; '
+            f'padding:8px 10px; margin:3px 0;">'
+            f'<div style="font-family:Consolas,\'Courier New\',monospace; font-size:12px; '
+            f'color:{styles["code"]}; letter-spacing:0.02em;">{html.escape(code)}</div>'
+            f'<div style="font-size:12px; color:{styles["body_muted"]}; margin-top:5px; '
+            f'line-height:145%;">{html.escape(description)}</div>'
+            f'</div>'
+        )
 
-    def _help_code_row(self, code, description, styles, alternate=False):
-        row = QWidget()
-        bg = styles['row_alt'] if alternate else 'transparent'
-        row.setStyleSheet(f"background-color: {bg}; border-radius: 6px;")
-        layout = QVBoxLayout(row)
-        layout.setContentsMargins(10, 7, 10, 7)
-        layout.setSpacing(3)
+    def _help_text_entry_html(self, text_html, styles, alternate=False):
+        row_bg = styles['row_alt'] if alternate else 'transparent'
+        return (
+            f'<div style="background-color:{row_bg}; border-radius:6px; '
+            f'padding:8px 10px; margin:3px 0; font-size:12px; color:{styles["body"]}; '
+            f'line-height:145%;">{text_html}</div>'
+        )
 
-        code_label = QLabel(code)
-        code_label.setFont(self._help_mono_font(10))
-        code_label.setStyleSheet(f"color: {styles['code']}; background: transparent;")
-        code_label.setTextInteractionFlags(TextSelectableByMouse)
-        code_label.setWordWrap(True)
-        layout.addWidget(code_label)
-
-        desc_label = QLabel(description)
-        desc_font = desc_label.font()
-        desc_font.setPointSize(9)
-        desc_label.setFont(desc_font)
-        desc_label.setStyleSheet(f"color: {styles['body']}; background: transparent;")
-        desc_label.setWordWrap(True)
-        layout.addWidget(desc_label)
-        return row
-
-    def _help_text_row(self, html, styles, alternate=False):
-        row = QWidget()
-        bg = styles['row_alt'] if alternate else 'transparent'
-        row.setStyleSheet(f"background-color: {bg}; border-radius: 6px;")
-        layout = QVBoxLayout(row)
-        layout.setContentsMargins(10, 7, 10, 7)
-        layout.setSpacing(0)
-
-        label = QLabel(html)
-        label.setTextFormat(RichText)
-        label.setWordWrap(True)
-        label.setStyleSheet(f"color: {styles['body']}; background: transparent;")
-        layout.addWidget(label)
-        return row
-
-    def _help_section_widget(self, title, accent, items, styles):
-        section = QWidget()
-        layout = QVBoxLayout(section)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-
-        title_label = QLabel(title)
-        title_font = title_label.font()
-        title_font.setPointSize(10)
-        title_font.setBold(True)
-        title_label.setFont(title_font)
-        title_label.setStyleSheet(f"color: {accent}; background: transparent;")
-        layout.addWidget(title_label)
-
-        divider = QFrame()
-        divider.setFrameShape(FrameHLine)
-        divider.setStyleSheet(f"color: {styles['divider']}; background: {styles['divider']}; max-height: 1px;")
-        layout.addWidget(divider)
-
+    def _help_section_html(self, title, accent, items, styles):
+        rows = []
         for index, item in enumerate(items):
             if isinstance(item, tuple):
-                row = self._help_code_row(item[0], item[1], styles, alternate=index % 2 == 1)
+                rows.append(self._help_entry_html(
+                    item[0], item[1], styles, alternate=index % 2 == 1,
+                ))
             else:
-                row = self._help_text_row(item, styles, alternate=index % 2 == 1)
-            layout.addWidget(row)
+                rows.append(self._help_text_entry_html(
+                    item, styles, alternate=index % 2 == 1,
+                ))
+        return (
+            f'<div style="background-color:{styles["section_bg"]}; '
+            f'border-left:3px solid {accent}; border-radius:8px; '
+            f'padding:12px 14px 10px 14px; margin-bottom:14px;">'
+            f'<div style="font-size:12px; font-weight:bold; color:{accent}; '
+            f'margin-bottom:8px; letter-spacing:0.02em;">{html.escape(title)}</div>'
+            f'{"".join(rows)}'
+            f'</div>'
+        )
 
-        return section
+    def _build_help_page_plain(self, page_title, sections):
+        lines = [page_title, ""]
+        for section in sections:
+            lines.append(section['title'])
+            lines.append("-" * max(len(section['title']), 3))
+            for item in section['items']:
+                if isinstance(item, tuple):
+                    lines.append(item[0])
+                    lines.append(f"  {item[1]}")
+                else:
+                    lines.append(re.sub(r'<[^>]+>', '', item))
+                lines.append("")
+        return "\n".join(lines)
 
-    def _make_help_page(self, page_title, sections, styles):
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(FrameNoFrame)
-        scroll.setHorizontalScrollBarPolicy(_ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet(f"""
-            QScrollArea {{
-                background: transparent;
+    def _build_help_page_html(self, page_title, sections, styles):
+        accents = [
+            styles['accent_1'], styles['accent_2'], styles['accent_3'],
+            styles['accent_4'], styles['accent_5'],
+        ]
+        body = []
+        for index, section in enumerate(sections):
+            accent = section.get('accent', accents[index % len(accents)])
+            body.append(self._help_section_html(
+                section['title'], accent, section['items'], styles,
+            ))
+        return (
+            f'<div style="font-family:\'Segoe UI\',system-ui,-apple-system,sans-serif; '
+            f'padding:14px 16px 18px 16px;">'
+            f'<div style="font-size:17px; font-weight:bold; color:{styles["title"]}; '
+            f'margin-bottom:18px; padding-bottom:10px; '
+            f'border-bottom:1px solid {styles["divider"]}; '
+            f'letter-spacing:-0.02em;">{html.escape(page_title)}</div>'
+            f'{"".join(body)}'
+            f'</div>'
+        )
+
+    def _style_help_editor(self, editor, styles):
+        editor.setReadOnly(True)
+        editor.setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
+        editor.setStyleSheet(f"""
+            QTextEdit {{
+                color: {styles['body']};
                 border: none;
+                padding: 4px 2px;
+                selection-background-color: {styles['accent_1']};
             }}
             QScrollBar:vertical {{
-                width: 6px;
+                width: 7px;
                 background: transparent;
                 margin: 2px;
             }}
             QScrollBar::handle:vertical {{
                 background: {styles['divider']};
                 border-radius: 3px;
-                min-height: 24px;
+                min-height: 28px;
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 height: 0px;
             }}
         """)
+        editor.document().setDefaultStyleSheet(
+            f'body {{ font-family: "Segoe UI", system-ui, sans-serif; font-size: 12px; '
+            f'color: {styles["body"]}; line-height: 145%; }}'
+        )
 
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(14, 10, 14, 14)
-        layout.setSpacing(18)
+    def _make_help_editor(self, page_title, sections, styles):
+        editor = QTextEdit()
+        editor.setHtml(self._build_help_page_html(page_title, sections, styles))
+        if not editor.toPlainText().strip():
+            editor.setPlainText(self._build_help_page_plain(page_title, sections))
+        self._style_help_editor(editor, styles)
+        return editor
 
-        title_label = QLabel(page_title)
-        title_font = title_label.font()
-        title_font.setPointSize(13)
-        title_font.setBold(True)
-        title_label.setFont(title_font)
-        title_label.setStyleSheet(f"color: {styles['title']}; background: transparent;")
-        layout.addWidget(title_label)
-
-        accents = [
-            styles['accent_1'], styles['accent_2'], styles['accent_3'],
-            styles['accent_4'], styles['accent_5'],
-        ]
-        for index, section in enumerate(sections):
-            accent = section.get('accent', accents[index % len(accents)])
-            layout.addWidget(self._help_section_widget(
-                section['title'], accent, section['items'], styles,
-            ))
-
-        layout.addStretch(1)
-        scroll.setWidget(content)
-        return scroll
+    def _populate_help_tabs(self, help_tabs):
+        styles = self._help_content_styles()
+        while help_tabs.count():
+            help_tabs.removeTab(0)
+        for tab_label, page_title, sections in self._help_pages_spec(styles):
+            help_tabs.addTab(
+                self._make_help_editor(page_title, sections, styles),
+                tab_label,
+            )
+        self._style_help_tabs(help_tabs, styles)
 
     def _expression_help_sections(self):
         return [
             {
-                'title': 'Geometry Functions',
+                'title': 'Geometry',
                 'items': [
-                    ('area($geometry)', 'Calculate feature area'),
-                    ('perimeter($geometry)', 'Calculate perimeter'),
-                    ('centroid($geometry)', 'Get feature centroid'),
-                    ('buffer($geometry, distance)', 'Create buffer'),
-                    ('bounds($geometry)', 'Get bounding box'),
+                    ('area($geometry)', 'Measure surface for reporting, filtering, or export fields'),
+                    ('perimeter($geometry)', 'Calculate boundary length with the project CRS context'),
+                    ('centroid($geometry)', 'Create a stable point reference from polygons or lines'),
+                    ('buffer($geometry, distance)', 'Build an analysis zone around each feature'),
+                    ('bounds($geometry)', 'Return the feature envelope for spatial checks'),
                 ],
             },
             {
-                'title': 'Math Functions',
+                'title': 'Numbers',
                 'items': [
-                    ('round(value, decimals)', 'Round number'),
-                    ('abs(value)', 'Absolute value'),
-                    ('sqrt(value)', 'Square root'),
-                    ('min(val1, val2)', 'Minimum value'),
-                    ('max(val1, val2)', 'Maximum value'),
+                    ('round(value, decimals)', 'Control precision before publishing or sharing data'),
+                    ('abs(value)', 'Normalize signed values when direction is not relevant'),
+                    ('sqrt(value)', 'Derive analytical metrics from numeric fields'),
+                    ('min(val1, val2)', 'Keep the lower business value'),
+                    ('max(val1, val2)', 'Keep the higher business value'),
                 ],
             },
             {
-                'title': 'Text Functions',
+                'title': 'Text',
                 'items': [
-                    ('upper(text)', 'Convert to uppercase'),
-                    ('lower(text)', 'Convert to lowercase'),
-                    ('concat(text1, text2)', 'Concatenate text'),
-                    ('regexp_replace(text, pattern, replacement)', 'Replace with regex'),
+                    ('upper(text)', 'Standardize codes and controlled labels'),
+                    ('lower(text)', 'Normalize text before comparison'),
+                    ('concat(text1, text2)', 'Compose readable identifiers from source fields'),
+                    ('regexp_replace(text, pattern, replacement)', 'Clean structured text with explicit rules'),
                 ],
             },
         ]
@@ -2171,29 +2331,29 @@ class EnhancedTransformerDialog(QMainWindow):
     def _filter_help_sections(self):
         return [
             {
-                'title': 'Common Filters',
+                'title': 'Selection Patterns',
                 'items': [
-                    ('area($geometry) > 1000', 'Area greater than 1000'),
-                    ('"TYPE" = \'Building\'', 'Type equals Building'),
-                    ('is_valid($geometry)', 'Valid geometries only'),
-                    ('"POPULATION" BETWEEN 1000 AND 5000', 'Range filter'),
+                    ('area($geometry) > 1000', 'Keep features above a measurable threshold'),
+                    ('"TYPE" = \'Building\'', 'Select a controlled business category'),
+                    ('is_valid($geometry)', 'Process only geometries accepted by QGIS'),
+                    ('"POPULATION" BETWEEN 1000 AND 5000', 'Keep a bounded numeric range'),
                 ],
             },
             {
                 'title': 'Operators',
                 'items': [
-                    ('=, !=, <, >, <=, >=', 'Comparison operators'),
-                    ('AND, OR, NOT', 'Logical operators'),
-                    ('LIKE, ILIKE', 'Pattern matching (case sensitive/insensitive)'),
-                    ("IN ('value1', 'value2')", 'Multiple value matching'),
+                    ('=, !=, <, >, <=, >=', 'Compare values explicitly'),
+                    ('AND, OR, NOT', 'Combine rules without changing the source layer'),
+                    ('LIKE, ILIKE', 'Match text patterns with or without case sensitivity'),
+                    ("IN ('value1', 'value2')", 'Keep a curated list of accepted values'),
                 ],
             },
             {
-                'title': 'Advanced Examples',
+                'title': 'Enterprise Checks',
                 'items': [
-                    ('"NAME" ILIKE \'%house%\'', 'Contains "house" (case insensitive)'),
-                    ('length($geometry) > 500 AND "TYPE" = \'Road\'', 'Combined conditions'),
-                    ("touches($geometry, geom_from_wkt('POLYGON(...)'))", 'Spatial filter'),
+                    ('"NAME" ILIKE \'%house%\'', 'Find naming patterns without manual sorting'),
+                    ('length($geometry) > 500 AND "TYPE" = \'Road\'', 'Combine spatial and attribute criteria'),
+                    ("touches($geometry, geom_from_wkt('POLYGON(...)'))", 'Use spatial relationships when the boundary matters'),
                 ],
             },
         ]
@@ -2203,29 +2363,28 @@ class EnhancedTransformerDialog(QMainWindow):
         code = styles['code']
         return [
             {
-                'title': 'Step-by-Step Process',
+                'title': 'Workflow',
                 'items': [
-                    f'1. Load your data using the <span style="color:{emphasis}; font-weight:600;">Configuration</span> tab',
-                    f'2. Transform data in the <span style="color:{emphasis}; font-weight:600;">Transformation</span> tab',
-                    f'3. Export results using the <span style="color:{emphasis}; font-weight:600;">Export</span> tab',
+                    f'1. Prepare the source and target structure in <span style="color:{emphasis}; font-weight:600;">Configuration</span>',
+                    f'2. Validate filters and calculated fields before a full transformation',
+                    f'3. Publish through <span style="color:{emphasis}; font-weight:600;">Export</span> or <span style="color:{emphasis}; font-weight:600;">PostgreSQL</span> once the Activity Monitor is clean',
                 ],
             },
             {
-                'title': 'Tips & Shortcuts',
+                'title': 'Operating Principles',
                 'items': [
-                    f'Use <span style="color:{code}; font-family:Consolas,monospace;">Ctrl+Z</span> to undo changes',
-                    'Right-click for context menus',
-                    'Drag dock panels to reorganize your workspace',
-                    'Use layout presets for different processing needs',
+                    'Keep the source layer in QGIS; Transformer stores repeatable configuration, not hidden copies',
+                    'Use the native QGIS expression engine for calculations and filters',
+                    'Treat the Activity Monitor as the trace of record for errors and progress',
+                    f'Use <span style="color:{code}; font-family:Consolas,monospace;">Ctrl+1</span> to <span style="color:{code}; font-family:Consolas,monospace;">Ctrl+4</span> to reveal only the workspace you need',
                 ],
             },
             {
-                'title': 'Layout Presets',
+                'title': 'Layouts',
                 'items': [
-                    f'<span style="color:{emphasis}; font-weight:600;">Default:</span> Balanced layout for general use',
-                    f'<span style="color:{emphasis}; font-weight:600;">Data Processing:</span> Focus on transformation tools',
-                    f'<span style="color:{emphasis}; font-weight:600;">Analysis:</span> Emphasis on filters and joins',
-                    f'<span style="color:{emphasis}; font-weight:600;">Export:</span> Output-focused layout',
+                    f'<span style="color:{emphasis}; font-weight:600;">Default:</span> balanced view for everyday work',
+                    f'<span style="color:{emphasis}; font-weight:600;">Configuration Focus:</span> more room for fields, filters, and expressions',
+                    f'<span style="color:{emphasis}; font-weight:600;">Activity Monitor Focus:</span> more room for diagnostics and long operations',
                 ],
             },
         ]
@@ -2234,9 +2393,9 @@ class EnhancedTransformerDialog(QMainWindow):
         filter_sections = self._filter_help_sections()
         filter_sections[2]['accent'] = styles['accent_5']
         return [
-            ('Expressions', 'Expression Quick Reference', self._expression_help_sections()),
-            ('Filters', 'Filter Quick Reference', filter_sections),
-            ('Processing', 'Processing Guide', self._processing_help_sections(styles)),
+            ('Fields', 'Build precise fields', self._expression_help_sections()),
+            ('Filters', 'Select the right features', filter_sections),
+            ('Workflow', 'Run a controlled transformation', self._processing_help_sections(styles)),
         ]
 
     def _style_help_tabs(self, help_tabs, styles):
@@ -2249,61 +2408,106 @@ class EnhancedTransformerDialog(QMainWindow):
             QTabBar::tab {{
                 background: {styles['tab_bg']};
                 color: {styles['tab_fg']};
-                border: none;
-                border-bottom: 2px solid transparent;
-                border-radius: 0px;
-                padding: 8px 16px;
-                margin: 0 2px;
-                min-width: 72px;
+                border: 1px solid {styles['divider']};
+                border-radius: 7px;
+                padding: 7px 16px;
+                margin: 5px 3px;
+                min-width: 76px;
                 font-size: 12px;
             }}
             QTabBar::tab:selected {{
+                background: {styles['tab_selected_bg']};
                 color: {styles['tab_selected_fg']};
                 font-weight: 600;
-                border-bottom: 2px solid {styles['tab_indicator']};
+                border-color: {styles['tab_indicator']};
             }}
             QTabBar::tab:hover:!selected {{
                 color: {styles['title']};
+                background: {styles['section_bg']};
             }}
         """)
 
+    def _ensure_help_dock_content(self):
+        """Restore Quick Help content after window state / theme changes."""
+        try:
+            if not getattr(self, 'help_dock', None):
+                return
+            dock_widget = self.help_dock.widget()
+            tabs = getattr(self, '_help_tabs', None)
+            needs_rebuild = (
+                dock_widget is None
+                or tabs is None
+                or tabs.count() == 0
+            )
+            if not needs_rebuild and tabs.count() > 0:
+                first = tabs.widget(0)
+                if isinstance(first, QTextEdit) and not first.toPlainText().strip():
+                    needs_rebuild = True
+            if needs_rebuild:
+                self.help_dock.setWidget(self.create_help_widget())
+            else:
+                self._refresh_help_content()
+        except Exception as e:
+            log_error(f"Quick Help dock restore failed: {e}")
+
     def _refresh_help_content(self):
-        """Rebuild Quick Help pages from the active palette."""
+        """Rebuild or restyle Quick Help pages from the active palette."""
         if not getattr(self, '_help_tabs', None):
             return
         try:
             styles = self._help_content_styles()
+            specs = self._help_pages_spec(styles)
             current_index = max(0, self._help_tabs.currentIndex())
-            pages = []
-            for tab_label, page_title, sections in self._help_pages_spec(styles):
-                pages.append((tab_label, self._make_help_page(page_title, sections, styles)))
-            while self._help_tabs.count():
-                self._help_tabs.removeTab(0)
-            for tab_label, page in pages:
-                self._help_tabs.addTab(page, tab_label)
-            if 0 <= current_index < self._help_tabs.count():
-                self._help_tabs.setCurrentIndex(current_index)
+
+            if self._help_tabs.count() == len(specs):
+                for index, (tab_label, page_title, sections) in enumerate(specs):
+                    editor = self._help_tabs.widget(index)
+                    if isinstance(editor, QTextEdit):
+                        editor.setHtml(self._build_help_page_html(page_title, sections, styles))
+                        self._style_help_editor(editor, styles)
+                    self._help_tabs.setTabText(index, tab_label)
+            else:
+                self._populate_help_tabs(self._help_tabs)
+                if 0 <= current_index < self._help_tabs.count():
+                    self._help_tabs.setCurrentIndex(current_index)
+
             self._style_help_tabs(self._help_tabs, styles)
         except Exception as e:
             log_error(f"Quick Help refresh failed: {e}")
+            QgsMessageLog.logMessage(
+                f"Quick Help refresh failed: {e}", "Transformer", MsgWarning,
+            )
+            if self._help_tabs.count() == 0:
+                fallback = QTextEdit()
+                fallback.setReadOnly(True)
+                fallback.setPlainText(f"Quick Help could not load.\n\n{e}")
+                self._help_tabs.addTab(fallback, "Error")
 
     def create_help_widget(self):
         """Create the modern quick help widget"""
-        widget = QWidget()
-        layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
+        root = QWidget()
+        root.setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
+        layout = QVBoxLayout(root)
+        layout.setContentsMargins(4, 4, 4, 6)
         layout.setSpacing(0)
 
-        help_tabs = QTabWidget()
-        help_tabs.setTabPosition(_TabPosition.South)
-        help_tabs.setDocumentMode(True)
+        help_tabs = SlidingTabWidget()
+        help_tabs.setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
 
         self._help_tabs = help_tabs
-        self._refresh_help_content()
+        try:
+            self._populate_help_tabs(help_tabs)
+        except Exception as e:
+            log_error(f"Quick Help init failed: {e}")
+            fallback = QTextEdit()
+            fallback.setReadOnly(True)
+            fallback.setPlainText(
+                "Quick Help could not load.\n\nReload the plugin or check the Activity Monitor for details."
+            )
+            help_tabs.addTab(fallback, "Help")
 
         layout.addWidget(help_tabs)
-        widget.setLayout(layout)
-        return widget
+        return root
     
 # ... (rest of the code remains the same)
     def _create_modern_dock(self, title, object_name, widget):
@@ -2406,53 +2610,6 @@ class EnhancedTransformerDialog(QMainWindow):
         }
         area_name = area_names.get(area, 'Unknown')
 
-    # === LAYOUT PRESETS ===
-    
-    def _layout_default(self):
-        """Default layout: Sources left, Config+Monitor right, Help tabbed"""
-        self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
-        self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
-        self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.log_dock)
-        self.splitDockWidget(self.config_dock, self.log_dock, _Orientation.Vertical)
-        self.tabifyDockWidget(self.config_dock, self.help_dock)
-        self.config_dock.raise_()
-        self.log_message("Layout reset to default", "Success")
-    
-    def _layout_vertical(self):
-        """Vertical layout: Config top, Monitor bottom"""
-        self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
-        self.addDockWidget(_DockWidgetArea.TopDockWidgetArea, self.config_dock)
-        self.addDockWidget(_DockWidgetArea.BottomDockWidgetArea, self.log_dock)
-        self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.help_dock)
-        self.log_message("Applied vertical layout", "Success")
-    
-    def _layout_horizontal(self):
-        """Horizontal layout: All panels side by side"""
-        self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
-        self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
-        self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.log_dock)
-        self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.help_dock)
-        self.log_message("Applied horizontal layout", "Success")
-    
-    def _layout_focus_config(self):
-        """Focus on configuration: Large config panel"""
-        self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
-        self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
-        self.tabifyDockWidget(self.config_dock, self.log_dock)
-        self.tabifyDockWidget(self.config_dock, self.help_dock)
-        self.config_dock.raise_()
-        self.log_message("Configuration focus mode activated", "Success")
-    
-    def _layout_focus_monitor(self):
-        """Focus on monitoring: Large activity monitor"""
-        self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
-        self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.log_dock)
-        self.tabifyDockWidget(self.log_dock, self.config_dock)
-        self.tabifyDockWidget(self.log_dock, self.help_dock)
-        self.log_dock.raise_()
-        self.log_message("Activity monitor focus mode activated", "Success")
-    
-    
     def setup_toolbar(self):
         """Configure a clean, sectioned toolbar.
         
@@ -2986,8 +3143,13 @@ class EnhancedTransformerDialog(QMainWindow):
         try:
             from qgis.PyQt.QtCore import QUrl
             from qgis.PyQt.QtGui import QDesktopServices
-            url = QUrl("https://github.com/yadadev/Transformer/issues")
-            QDesktopServices.openUrl(url)
+            url = QUrl(PLUGIN_ISSUES_URL)
+            opened = QDesktopServices.openUrl(url)
+            severity = "debug" if opened else "warning"
+            plugin_logger.log(
+                f"function=_open_issue_tracker event=open_url url={PLUGIN_ISSUES_URL} opened={opened}",
+                severity=severity, module="ui", code="ISSUE_TRACKER_OPEN",
+            )
         except Exception as e:
             self.log_message(f"Failed to open issue tracker: {e}", "Error")
     
@@ -3046,12 +3208,12 @@ class EnhancedTransformerDialog(QMainWindow):
                 log_info(f"Logger connected to Activity Log panel: {type(self.logs_text).__name__}")
             else:
                 # Fallback message to QGIS log only
-                QgsMessageLog.logMessage("Activity Log widget not found - logger will only send to QGIS Message Log", "Transformer", Qgis.Warning)
+                QgsMessageLog.logMessage("Activity Log widget not found - logger will only send to QGIS Message Log", "Transformer", MsgWarning)
                 
         except Exception as e:
             error_msg = f"Error setting up centralized logger: {str(e)}"
             # Fallback to QgsMessageLog if the centralized logger fails
-            QgsMessageLog.logMessage(error_msg, "Transformer", Qgis.Critical)
+            QgsMessageLog.logMessage(error_msg, "Transformer", MsgCritical)
     
     def test_centralized_logger(self):
         """Test the centralized logger with a simple confirmation message"""
@@ -3153,56 +3315,6 @@ class EnhancedTransformerDialog(QMainWindow):
                 
         except Exception as e:
             self.log_message(f"Error auto-loading configurations: {str(e)}", "Warning")
-    
-    def _apply_table_config(self, table_name: str, config: dict, filename: str = None):
-        """Apply a specific table configuration only if corresponding layer exists"""
-        if not config:
-            return
-            
-        # Check if corresponding layer exists in QGIS before applying config
-        source_file = config.get('source_file', filename)
-        if source_file and not self._is_layer_present_in_qgis(source_file):
-            self.log_message(f"Skipped loading config '{table_name}' - no corresponding layer in QGIS", "Info")
-            return
-            
-        try:
-            self.table_name_edit.setText(table_name)
-            
-            # Auto load calculated fields and geometry expression
-            calculated_fields = config.get('calculated_fields', {})
-            geometry_expression = config.get('geometry_expression', '$geometry')
-            self.smart_fields.set_calculated_fields(calculated_fields, geometry_expression)
-            
-            # Auto load filter configuration
-            filter_config = config.get('filter', {})
-            self.smart_filter.set_filter_config(filter_config)
-            
-            # Auto load target CRS if saved
-            target_crs_str = config.get('target_crs')
-            if target_crs_str:
-                try:
-                    from qgis.core import QgsCoordinateReferenceSystem
-                    target_crs = QgsCoordinateReferenceSystem(target_crs_str)
-                    if target_crs.isValid():
-                        crs_description = target_crs.description()
-                        self.set_target_crs(target_crs_str, crs_description)
-                        self.log_message(f"Restored saved CRS: {target_crs_str}", "Info")
-                    else:
-                        self.log_message(f"Invalid saved CRS: {target_crs_str}", "Warning")
-                        self.target_crs = None
-                except Exception as e:
-                    self.log_message(f"Error loading saved CRS: {str(e)}", "Warning")
-                    self.target_crs = None
-            else:
-                # No saved CRS - preserve current target_crs if user has set one
-                if not hasattr(self, 'target_crs') or self.target_crs is None:
-                    self.target_crs = None
-            
-            self.log_message(f"Loaded configuration '{table_name}'", "Info")
-            self.update_configuration_preview()
-            
-        except Exception as e:
-            self.log_message(f"Error applying config '{table_name}': {str(e)}", "Warning")
     
     def _show_config_selector(self, table_names: list, filename: str):
         """Show config selector (fallback to first configuration)"""
@@ -3455,9 +3567,9 @@ class EnhancedTransformerDialog(QMainWindow):
                 geom_type = data.get('geometry_type', '').lower()
                 
                 # Style selon la source
+                palette = QApplication.palette()
                 if is_qgis_layer:
                     # Couches QGIS : palette Link color + gras
-                    palette = QApplication.palette()
                     blue_color = palette_color(palette, None, 'Link')
                     bold_font = QFont("Arial", 9, FontBold)
                     for col in range(4): # Appliquer à toutes les colonnes
@@ -4016,7 +4128,7 @@ Path: {data.get('path', 'N/A')}"""
             geometry_expression = "$geometry"
             try:
                 from qgis.core import QgsWkbTypes
-                if layer.geometryType() != QgsWkbTypes.NullGeometry:
+                if layer.geometryType() != GeomNull:
                     calculated_fields["geometry"] = geometry_expression
             except Exception:
                 calculated_fields["geometry"] = geometry_expression
@@ -4329,46 +4441,71 @@ Path: {data.get('path', 'N/A')}"""
                     continue
                 
                 # Use enhanced format detection
-                provider_type = layer.dataProvider().name().lower()
+                provider = layer.dataProvider()
+                provider_type = provider.name().lower()
                 source_path = layer.source()
                 
-                # Support all OGR-compatible vector formats
-                if provider_type in ['ogr', 'gdal']:
-                        # Detect format using our enhanced method
-                        file_format = self._detect_vector_format(source_path)
-                        
-                        layer_name = layer.name()
-                        
-                        # Avoid duplicates if layer is already in the list
-                        if layer_name not in self.loaded_shapefiles:
-                            # Enhanced metadata collection
-                            provider = layer.dataProvider()
-                            encoding = provider.encoding()
-                            fields = layer.fields()
-                            field_count = len(fields)
-                            field_types = [field.typeName() for field in fields]
-                            
-                            # Store comprehensive information (same as add_vector_file)
-                            self.loaded_shapefiles[layer_name] = {
-                                'layer': layer,
-                                'path': source_path,
-                                'format': file_format,
-                                'provider': provider_type,
-                                'encoding': encoding,
-                                'feature_count': layer.featureCount(),
-                                'field_count': field_count,
-                                'field_types': field_types,
-                                'geometry_type': QgsWkbTypes.displayString(layer.wkbType()),
-                                'geometry_dimension': QgsWkbTypes.coordDimensions(layer.wkbType()),
-                                'crs': layer.crs().authid(),
-                                'crs_description': layer.crs().description(),
-                                'extent': layer.extent(),
-                                'storage_type': provider.storageType(),
-                                'capabilities': provider.capabilities(),
-                                'is_qgis_layer': True # Special flag to identify QGIS layers
-                            }
-                            
-                            loaded_qgis_count += 1
+                # Support all valid vector layer providers (OGR, GDAL, memory, etc.)
+                if provider_type == 'memory':
+                    file_format = 'Memory'
+                elif provider_type in ['ogr', 'gdal']:
+                    file_format = self._detect_vector_format(source_path)
+                else:
+                    file_format = provider.storageType() or provider_type.capitalize()
+                
+                layer_name = layer.name()
+                
+                plugin_logger.debug(
+                    f"Considering QGIS layer: name={layer_name} provider={provider_type} format={file_format}",
+                    "ui",
+                    "LAYER_CONSIDER",
+                    {"layer_name": layer_name, "provider_type": provider_type}
+                )
+                
+                # Avoid duplicates if layer is already in the list
+                if layer_name in self.loaded_shapefiles:
+                    plugin_logger.debug(
+                        f"Skipping duplicate layer: {layer_name}",
+                        "ui",
+                        "LAYER_DUPLICATE",
+                        {"layer_name": layer_name}
+                    )
+                    continue
+                
+                # Enhanced metadata collection
+                encoding = provider.encoding()
+                fields = layer.fields()
+                field_count = len(fields)
+                field_types = [field.typeName() for field in fields]
+                
+                # Store comprehensive information (same as add_vector_file)
+                self.loaded_shapefiles[layer_name] = {
+                    'layer': layer,
+                    'path': source_path,
+                    'format': file_format,
+                    'provider': provider_type,
+                    'encoding': encoding,
+                    'feature_count': layer.featureCount(),
+                    'field_count': field_count,
+                    'field_types': field_types,
+                    'geometry_type': QgsWkbTypes.displayString(layer.wkbType()),
+                    'geometry_dimension': QgsWkbTypes.coordDimensions(layer.wkbType()),
+                    'crs': layer.crs().authid(),
+                    'crs_description': layer.crs().description(),
+                    'extent': layer.extent(),
+                    'storage_type': provider.storageType(),
+                    'capabilities': provider.capabilities(),
+                    'is_qgis_layer': True # Special flag to identify QGIS layers
+                }
+                
+                plugin_logger.info(
+                    f"Loaded QGIS layer: {layer_name} (provider={provider_type}, format={file_format})",
+                    "ui",
+                    "LAYER_LOADED",
+                    {"layer_name": layer_name, "provider_type": provider_type, "format": file_format}
+                )
+                
+                loaded_qgis_count += 1
             
             # Summary message
             if loaded_qgis_count > 0:
@@ -4461,7 +4598,7 @@ Path: {data.get('path', 'N/A')}"""
             if hasattr(self, 'smart_fields') and self.smart_fields:
                 calculated_fields, geometry_expression = self.smart_fields.get_calculated_fields_with_geometry_info()
             else:
-                QgsMessageLog.logMessage(f"ERROR: smart_fields not available!", "Transformer", Qgis.Critical)
+                QgsMessageLog.logMessage(f"ERROR: smart_fields not available!", "Transformer", MsgCritical)
                 calculated_fields, geometry_expression = {}, None
             filter_config = self.smart_filter.get_filter_config()
             
@@ -5043,11 +5180,41 @@ Path: {data.get('path', 'N/A')}"""
         """Transform the selected shapefile(s) using background QgsTask"""
         try:
             selected_items = self.shp_tree.selectedItems()
+            plugin_logger.debug(
+                f"transform_selected_shapefile entry selected_count={len(selected_items)}",
+                "ui",
+                "TRANSFORM_SETUP_ENTER",
+                {"selected_count": len(selected_items)},
+            )
             if not selected_items:
                 QMessageBox.warning(self, "Warning", "Please select one or more shapefiles to transform")
+                plugin_logger.debug(
+                    "transform_selected_shapefile exit status=no_selection",
+                    "ui",
+                    "TRANSFORM_SETUP_EXIT",
+                    {"status": "no_selection"},
+                )
                 return
             
             if not self.validate_configuration():
+                plugin_logger.debug(
+                    "transform_selected_shapefile exit status=validation_failed",
+                    "ui",
+                    "TRANSFORM_SETUP_EXIT",
+                    {"status": "validation_failed"},
+                )
+                return
+            
+            # Build task items
+            items = self._snapshot_selected_transform_items(selected_items)
+            if not items:
+                QMessageBox.warning(self, "Warning", "No valid files to transform")
+                plugin_logger.debug(
+                    "transform_selected_shapefile exit status=no_valid_items",
+                    "ui",
+                    "TRANSFORM_SETUP_EXIT",
+                    {"status": "no_valid_items"},
+                )
                 return
             
             self.save_current_table_config(skip_validation=True)
@@ -5057,34 +5224,37 @@ Path: {data.get('path', 'N/A')}"""
                 target_crs = self.target_crs
                 self.log_message(f"Reprojection to {target_crs.authid()} will be applied", "Info")
             
-            # Build task items
-            items = []
-            for item in selected_items:
-                item_data = item.data(0, _ItemDataRole.UserRole)
-                if isinstance(item_data, dict):
-                    filename = item_data.get('source_file', '')
-                else:
-                    filename = item_data if item_data else ""
-                
-                if filename not in self.loaded_shapefiles:
-                    self.log_message(f"Source file '{filename}' not found in loaded files", "Warning")
-                    continue
-                
-                items.append({
-                    "filename": filename,
-                    "shapefile_info": self.loaded_shapefiles[filename],
-                })
-            
-            if not items:
-                QMessageBox.warning(self, "Warning", "No valid files to transform")
-                return
-            
             self._launch_transform_task(items, target_crs)
+            plugin_logger.debug(
+                f"transform_selected_shapefile exit status=launched n_items={len(items)}",
+                "ui",
+                "TRANSFORM_SETUP_EXIT",
+                {"status": "launched", "n_items": len(items)},
+            )
                 
         except Exception as e:
             error_msg = f"Transformation setup failed: {str(e)}"
             QMessageBox.critical(self, "Transformation Error", error_msg)
             self.log_message(error_msg, "Error")
+
+    def _snapshot_selected_transform_items(self, selected_items):
+        items = []
+        for item in selected_items:
+            item_data = item.data(0, _ItemDataRole.UserRole)
+            if isinstance(item_data, dict):
+                filename = item_data.get('source_file', '')
+            else:
+                filename = item_data if item_data else ""
+            
+            if filename not in self.loaded_shapefiles:
+                self.log_message(f"Source file '{filename}' not found in loaded files", "Warning")
+                continue
+            
+            items.append({
+                "filename": filename,
+                "shapefile_info": self.loaded_shapefiles[filename],
+            })
+        return items
 
     def _launch_transform_task(self, items, target_crs, table_filter=None):
         """Launch a TransformTask on the QGIS task manager.
@@ -5175,33 +5345,87 @@ Path: {data.get('path', 'N/A')}"""
     def transform_all_shapefiles(self):
         """Transform all loaded shapefiles using background QgsTask"""
         try:
+            self.auto_load_qgis_layers()
+            loaded_count = len(self.loaded_shapefiles)
+            plugin_logger.debug(
+                f"transform_all_shapefiles entry loaded_count={loaded_count}",
+                "ui",
+                "TRANSFORM_ALL_ENTER",
+                {"loaded_count": loaded_count},
+            )
             if not self.loaded_shapefiles:
                 QMessageBox.warning(self, "Warning", "No shapefiles loaded")
+                plugin_logger.debug(
+                    "transform_all_shapefiles exit status=no_loaded_layers",
+                    "ui",
+                    "TRANSFORM_ALL_EXIT",
+                    {"status": "no_loaded_layers"},
+                )
                 return
             
-            if not self.validate_configuration():
+            items = self._snapshot_all_transform_items()
+            if not items:
+                QMessageBox.warning(self, "Warning", "No configured loaded layers to transform")
+                plugin_logger.debug(
+                    "transform_all_shapefiles exit status=no_configured_layers",
+                    "ui",
+                    "TRANSFORM_ALL_EXIT",
+                    {"status": "no_configured_layers", "loaded_count": loaded_count},
+                )
                 return
-            
-            self.save_current_table_config(skip_validation=True)
             
             target_crs = None
             if hasattr(self, 'target_crs') and self.target_crs is not None and self.target_crs.isValid():
                 target_crs = self.target_crs
                 self.log_message(f"Reprojection to {target_crs.authid()} will be applied to all files", "Info")
             
-            items = []
-            for filename, data in self.loaded_shapefiles.items():
-                items.append({
-                    "filename": filename,
-                    "shapefile_info": data,
-                })
-            
             self._launch_transform_task(items, target_crs)
+            plugin_logger.debug(
+                f"transform_all_shapefiles exit status=launched n_items={len(items)}",
+                "ui",
+                "TRANSFORM_ALL_EXIT",
+                {"status": "launched", "n_items": len(items)},
+            )
                 
         except Exception as e:
             error_msg = f"Batch transformation setup error: {str(e)}"
             QMessageBox.critical(self, "Batch Transformation Error", error_msg)
             self.log_message(error_msg, "Error")
+
+    def _snapshot_all_transform_items(self):
+        items = []
+        skipped_count = 0
+        for filename, data in self.loaded_shapefiles.items():
+            if not self._source_has_transform_config(filename, data):
+                skipped_count += 1
+                continue
+            items.append({
+                "filename": filename,
+                "shapefile_info": data,
+            })
+        if skipped_count:
+            self.log_message(
+                f"Skipped {skipped_count} loaded layer(s) without transformation configuration",
+                "Info",
+            )
+        return items
+
+    def _source_has_transform_config(self, filename, shapefile_info):
+        if self.config_manager.get_tables_for_source(filename):
+            return True
+        if not shapefile_info.get('is_qgis_layer', False):
+            return False
+        normalized_name = self._normalized_vector_source_name(filename)
+        if normalized_name == filename:
+            return False
+        return bool(self.config_manager.get_tables_for_source(normalized_name))
+
+    def _normalized_vector_source_name(self, source_name):
+        lower_name = source_name.lower()
+        for ext in VECTOR_EXTENSIONS:
+            if lower_name.endswith(ext):
+                return source_name[: -len(ext)]
+        return source_name
 
     # === INTERFACE METHODS ===
     
@@ -5368,12 +5592,12 @@ Path: {data.get('path', 'N/A')}"""
                 if not self.log_filters[level]:
                     # Still log to QGIS but not to UI
                     qgis_level = {
-                        "Info": Qgis.Info,
-                        "Warning": Qgis.Warning,
-                        "Error": Qgis.Critical,
-                        "Success": Qgis.Info,
-                        "Panel": Qgis.Info
-                    }.get(level, Qgis.Info)
+                        "Info": MsgInfo,
+                        "Warning": MsgWarning,
+                        "Error": MsgCritical,
+                        "Success": MsgInfo,
+                        "Panel": MsgInfo
+                    }.get(level, MsgInfo)
                     QgsMessageLog.logMessage(message, "Transformer", qgis_level)
                     return
             
@@ -5402,12 +5626,12 @@ Path: {data.get('path', 'N/A')}"""
             
             # Log also to QGIS
             qgis_level = {
-                "Info": Qgis.Info,
-                "Warning": Qgis.Warning,
-                "Error": Qgis.Critical,
-                "Success": Qgis.Info,
-                "Panel": Qgis.Info
-            }.get(level, Qgis.Info)
+                "Info": MsgInfo,
+                "Warning": MsgWarning,
+                "Error": MsgCritical,
+                "Success": MsgInfo,
+                "Panel": MsgInfo
+            }.get(level, MsgInfo)
             
             QgsMessageLog.logMessage(message, "Transformer", qgis_level)
             
@@ -5537,14 +5761,14 @@ Path: {data.get('path', 'N/A')}"""
             if not hasattr(self, 'postgresql_widget') or not self.postgresql_widget:
                 QgsMessageLog.logMessage(
                     "PostgreSQL widget not available - skipping auto-mapping check", 
-                    "Transformer", Qgis.Info
+                    "Transformer", MsgInfo
                 )
                 return
             
             # Déclencher la vérification automatique des mappings
             QgsMessageLog.logMessage(
                 f"Triggering PostgreSQL auto-mapping check for layers: {layer_names}", 
-                "Transformer", Qgis.Info
+                "Transformer", MsgInfo
             )
             
             # Utiliser un léger délai pour permettre aux couches d'être complètement chargées
@@ -5553,7 +5777,7 @@ Path: {data.get('path', 'N/A')}"""
         except Exception as e:
             QgsMessageLog.logMessage(
                 f"Error triggering PostgreSQL auto-mapping: {str(e)}", 
-                "Transformer", Qgis.Warning
+                "Transformer", MsgWarning
             )
     
     def _perform_auto_mapping_check(self, layer_names=None):
@@ -5569,7 +5793,7 @@ Path: {data.get('path', 'N/A')}"""
             if mappings_loaded > 0:
                 QgsMessageLog.logMessage(
                     f"Auto-mapping successful: {mappings_loaded} mapping(s) loaded automatically", 
-                    "Transformer", Qgis.Success
+                    "Transformer", MsgSuccess
                 )
                 
                 # Optionnellement, switcher vers l'onglet PostgreSQL si des mappings ont été chargés
@@ -5588,7 +5812,7 @@ Path: {data.get('path', 'N/A')}"""
         except Exception as e:
             QgsMessageLog.logMessage(
                 f"Error during auto-mapping check: {str(e)}", 
-                "Transformer", Qgis.Warning
+                "Transformer", MsgWarning
             )
     
     def export_logs(self):
@@ -5731,250 +5955,173 @@ Path: {data.get('path', 'N/A')}"""
         dialog = ExpressionTesterDialog(layer, self)
         dialog.exec()
     
-    def show_help(self):
-        """Show help"""
-        # Créer un dialog personnalisé
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Help - Transformer")
-        dialog.setModal(True)
-        dialog.resize(1000, 700)
-        dialog.setMinimumSize(800, 600)
-
-        
-        # Layout principal
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Créer le header avec logo
+    def _help_dialog_header(self):
+        styles = self._help_content_styles()
         header_widget = QWidget()
-
         header_layout = QHBoxLayout(header_widget)
-        header_layout.setContentsMargins(25, 25, 25, 25)
-        header_layout.setSpacing(20)
-        
-        # Logo cliquable
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(14)
+
         logo_label = QLabel()
         logo_path = os.path.join(os.path.dirname(__file__), '..', 'logo.png')
         if os.path.exists(logo_path):
-            pixmap = QPixmap(logo_path).scaled(64, 64, KeepAspectRatio, SmoothTransformation)
+            pixmap = QPixmap(logo_path).scaled(48, 48, KeepAspectRatio, SmoothTransformation)
             logo_label.setPixmap(pixmap)
         else:
             logo_label.setText("T")
-
-        
-        logo_label.setFixedSize(64, 64)
+        logo_label.setFixedSize(48, 48)
         logo_label.setAlignment(AlignCenter)
-
         logo_label.setCursor(PointingHandCursor)
-        
-        # Simuler le clic pour ouvrir GitHub
+        logo_label.setToolTip("Open the Transformer repository")
+
         def open_github():
             import webbrowser
-            webbrowser.open('https://github.com/yadda07/Transformer')
-        
-        logo_label.mousePressEvent = lambda event: open_github()
-        
-        # Texte du header
-        text_widget = QWidget()
+            opened = webbrowser.open(PLUGIN_REPOSITORY_URL)
+            severity = "debug" if opened else "warning"
+            plugin_logger.log(
+                f"function=_help_dialog_header event=open_repository url={PLUGIN_REPOSITORY_URL} opened={opened}",
+                severity=severity, module="ui", code="HELP_REPOSITORY_OPEN",
+            )
 
+        logo_label.mousePressEvent = lambda event: open_github()
+
+        text_widget = QWidget()
         text_layout = QVBoxLayout(text_widget)
         text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.setSpacing(2)
-        text_layout.addStretch() # Push content to center
-        
-        title_label = QLabel("Transformer")
-        tl2_font = title_label.font()
-        tl2_font.setBold(True)
-        title_label.setFont(tl2_font)
-        
-        subtitle_label = QLabel("")
+        text_layout.setSpacing(4)
 
-        
-        # Animation typewriter
-        self.typewriter_phrases = [
-            "Arrange your data once, and never rearrange.",
-            "Transform shapefiles with QGIS expressions.",
-            "Export to PostgreSQL and multiple formats.",
-            "Built for the QGIS community."
-        ]
-        self.current_phrase_index = 0
-        self.current_char_index = 0
-        self.is_typing = True
-        self.cursor_visible = True
-        
-        # Timers pour l'animation
-        self.help_typing_timer = QTimer(dialog) # Attacher au dialog
-        self.help_typing_timer.timeout.connect(lambda: self.animate_typewriter(subtitle_label))
-        self.help_typing_timer.start(80) # Plus rapide: 80ms entre chaque caractère
-        
-        self.help_cursor_timer = QTimer(dialog) # Attacher au dialog
-        self.help_cursor_timer.timeout.connect(lambda: self.animate_cursor(subtitle_label))
-        self.help_cursor_timer.start(200) # Curseur plus rapide: 300ms
-        
-        # Arrêter les timers à la fermeture du dialog
-        dialog.finished.connect(lambda: self.stop_help_animation())
-        
+        title_label = QLabel("Transformer")
+        title_font = title_label.font()
+        title_font.setBold(True)
+        title_font.setPointSize(max(title_font.pointSize() + 6, 16))
+        title_label.setFont(title_font)
+        title_label.setStyleSheet(f"color: {styles['title']};")
+
+        subtitle_label = QLabel("Controlled QGIS transformations. Clear inputs. Reliable outputs.")
+        subtitle_label.setStyleSheet(f"color: {styles['body_muted']};")
+
         text_layout.addWidget(title_label)
         text_layout.addWidget(subtitle_label)
-        text_layout.addStretch() # Push content to center
-        
         header_layout.addWidget(logo_label, 0, AlignVCenter)
         header_layout.addWidget(text_widget, 1, AlignVCenter)
-        header_layout.addStretch()
-        
-        layout.addWidget(header_widget)
-        
-        # Contenu HTML simplifié (sans le problématique header)
-        heart_icon = svg_html("heart", IconTone.ACTION)
-        help_html = f"""
-                <div style="font-family: 'Segoe UI', Arial, sans-serif; background: #0d1117; padding: 20px; border-radius: 10px; width: 100%; min-width: 850px; color: #e6edf3;">
+        return header_widget
 
-                <!-- Core ETL Highlight -->
-                <div style="background: linear-gradient(90deg, #0d2818 0%, #0c1c2b 100%); padding: 20px; border-bottom: 3px solid #238636;">
-                <div style="text-align: center;">
-                <h3 style="margin: 0 0 10px 0; color: #7ee787; font-size: 18px; font-weight: 600;">ETL Processing</h3>
-                <p style="margin: 0; color: #adbac7; font-size: 14px; font-weight: 500;">
-                Provides the equivalent of <strong style="color: #238636;">Reader + AttributeManager + Reprojector + Writer</strong><br/>
-                components found in commercial ETL solutions, with intuitive tabbed interface.
-                </p>
-                </div>
-                </div>
+    def _help_dialog_body_html(self, body):
+        if body.startswith('<a href="https://') or body.startswith('<a href="mailto:'):
+            return body
+        return html.escape(body)
 
-                <!-- Main Content Cards -->
-                <div style="display: flex; gap: 20px; width: 100%; flex-wrap: wrap;">
+    def _help_dialog_card_html(self, title, lead, rows, styles, accent_key):
+        accent = styles[accent_key]
+        row_html = []
+        for index, row in enumerate(rows, start=1):
+            label, body = row
+            body_html = self._help_dialog_body_html(body)
+            row_html.append(
+                f'<tr>'
+                f'<td style="width:42px; color:{accent}; font-weight:600; padding:8px 10px 8px 0;">{index:02d}</td>'
+                f'<td style="padding:8px 0; color:{styles["body"]};">'
+                f'<span style="font-weight:600; color:{styles["title"]};">{html.escape(label)}</span><br/>'
+                f'<span style="color:{styles["body_muted"]};">{body_html}</span>'
+                f'</td>'
+                f'</tr>'
+            )
+        return (
+            f'<div style="background-color:{styles["section_bg"]}; border:1px solid {styles["divider"]}; '
+            f'border-radius:10px; padding:18px 20px; margin-bottom:14px;">'
+            f'<div style="color:{accent}; font-size:12px; font-weight:700; letter-spacing:0.08em; '
+            f'text-transform:uppercase; margin-bottom:8px;">{html.escape(title)}</div>'
+            f'<div style="color:{styles["title"]}; font-size:16px; font-weight:600; '
+            f'margin-bottom:12px;">{html.escape(lead)}</div>'
+            f'<table style="width:100%; border-collapse:collapse;">{"".join(row_html)}</table>'
+            f'</div>'
+        )
 
-                <!-- Left Column Card -->
-                <div style="flex: 1; min-width: 350px; background: #161b22; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; border: 1px solid #30363d;">
-                <div style="background: #238636; color: #e6edf3; padding: 15px; text-align: center;">
-                <h2 style="margin: 0; font-size: 18px; font-weight: 600;">Features & Getting Started</h2>
-                </div>
-                <div style="padding: 25px;">
+    def _help_dialog_html(self):
+        styles = self._help_content_styles()
+        workflow = [
+            ('Choose the source', 'Start from vector layers already controlled by the QGIS project'),
+            ('Shape the output', 'Name the target table, add calculated fields, and keep only meaningful columns'),
+            ('Validate before running', 'Use filters and expression checks before launching the transformation'),
+            ('Publish deliberately', 'Export to file or PostgreSQL only after the Activity Monitor is clean'),
+        ]
+        principles = [
+            ('Native engine', 'Expressions, geometry, CRS, and layer access remain handled by QGIS'),
+            ('Repeatable configuration', 'JSON settings make transformations reviewable and reusable across teams'),
+            ('Visible operations', 'The Activity Monitor is the operational trace for progress, warnings, and errors'),
+            ('Focused workspace', 'Dock panels can be hidden, grouped, or expanded for the task at hand'),
+        ]
+        support = [
+            ('Website', f'<a href="{PLUGIN_WEBSITE_URL}">geodeci.xyz</a>'),
+            ('Repository', f'<a href="{PLUGIN_REPOSITORY_URL}">github.com/yadda07/Transformer</a>'),
+            ('Issues', f'<a href="{PLUGIN_ISSUES_URL}">github.com/yadda07/Transformer/issues</a>'),
+            ('Contact', '<a href="mailto:youcef.geodesien@gmail.com">youcef.geodesien@gmail.com</a>'),
+        ]
+        return (
+            f'<div style="font-family:\'Segoe UI\',system-ui,-apple-system,sans-serif; '
+            f'background-color:{styles["surface"]}; color:{styles["body"]}; padding:2px;">'
+            f'<div style="font-size:20px; font-weight:600; color:{styles["title"]}; '
+            f'margin:0 0 8px 0;">A quiet workspace for enterprise geodata</div>'
+            f'<div style="font-size:13px; line-height:150%; color:{styles["body_muted"]}; '
+            f'margin:0 0 18px 0;">Transformer turns QGIS layers into controlled, repeatable data products. '
+            f'Every panel supports one decision: select, calculate, validate, export.</div>'
+            f'{self._help_dialog_card_html("Workflow", "Four decisions, one reliable output", workflow, styles, "accent_1")}'
+            f'{self._help_dialog_card_html("Principles", "Built to stay readable under pressure", principles, styles, "accent_2")}'
+            f'{self._help_dialog_card_html("Support", "When more context is needed", support, styles, "accent_3")}'
+            f'</div>'
+        )
 
-                <div style="margin-bottom: 30px;">
-                <h3 style="color: #7ee787; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; border-left: 4px solid #238636; padding-left: 12px;">Key Features</h3>
-                <ul style="margin: 0; padding-left: 20px; color: #adbac7; font-size: 13px; line-height: 1.7;">
-                <li><strong style="color: #7ee787;">Multi-format support:</strong> Shapefile, GeoJSON, GeoPackage, KML, and more</li>
-                <li><strong style="color: #7ee787;">Expression builder:</strong> QGIS expressions with syntax validation and suggestions</li>
-                <li><strong style="color: #7ee787;">Field management:</strong> Create, edit, and manage calculated fields</li>
-                <li><strong style="color: #7ee787;">Filter system:</strong> Robust filtering with templates and suggestions</li>
-                <li><strong style="color: #7ee787;">PostgreSQL integration:</strong> Direct export to PostgreSQL databases</li>
-                <li><strong style="color: #7ee787;">Export capabilities:</strong> Multiple output formats and batch processing</li>
-                <li><strong style="color: #7ee787;">Configuration templates:</strong> Save and reuse transformation settings</li>
-                </ul>
-                </div>
+    def show_help(self):
+        """Show help"""
+        plugin_logger.log(
+            "function=show_help event=enter",
+            severity="debug", module="ui", code="HELP_DIALOG_ENTER",
+        )
+        styles = self._help_content_styles()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Transformer Help")
+        dialog.setModal(True)
+        dialog.resize(920, 640)
+        dialog.setMinimumSize(760, 520)
+        dialog.setStyleSheet(f"QDialog {{ background-color: {styles['surface']}; }}")
 
-                <div>
-                <h3 style="color: #7ee787; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; border-left: 4px solid #238636; padding-left: 12px;">Getting Started</h3>
-                <ol style="margin: 0; padding-left: 20px; color: #adbac7; font-size: 13px; line-height: 1.7;">
-                <li><strong style="color: #7ee787;">Load vector files</strong> using the toolbar or from QGIS project layers</li>
-                <li><strong style="color: #7ee787;">Select a source</strong> from the list (external files or QGIS layers)</li>
-                <li><strong style="color: #7ee787;">Configure fields</strong> and expressions in the Configuration tab</li>
-                <li><strong style="color: #7ee787;">Set up filters</strong> to process specific features only</li>
-                <li><strong style="color: #7ee787;">Transform data</strong> to create new memory layers</li>
-                <li><strong style="color: #7ee787;">Export results</strong> in various formats or to PostgreSQL</li>
-                </ol>
-                </div>
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(18, 18, 18, 14)
+        layout.setSpacing(14)
+        layout.addWidget(self._help_dialog_header())
 
-                </div>
-                </div>
-
-                <!-- Right Column Card -->
-                <div style="flex: 1; min-width: 350px; background: #161b22; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; border: 1px solid #30363d;">
-                <div style="background: #1f6feb; color: #e6edf3; padding: 15px; text-align: center;">
-                <h2 style="margin: 0; font-size: 18px; font-weight: 600;">Technical Components</h2>
-                </div>
-                <div style="padding: 25px;">
-
-                <div style="margin-bottom: 30px;">
-                <h3 style="color: #79c0ff; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; border-left: 4px solid #1f6feb; padding-left: 12px;">ETL Components</h3>
-                <ul style="margin: 0; padding-left: 20px; color: #adbac7; font-size: 13px; line-height: 1.7;">
-                <li><strong style="color: #79c0ff;">Reader:</strong> Multi-format input support (15+ vector formats)</li>
-                <li><strong style="color: #79c0ff;">Expressions:</strong> Robust calculation and filtering using QGIS expressions</li>
-                <li><strong style="color: #79c0ff;">Coordinate Transformations:</strong> Reprojection and geometric operations</li>
-                <li><strong style="color: #79c0ff;">Writer:</strong> Multiple output formats and database integration</li>
-                <li><strong style="color: #79c0ff;">Configuration Persistence:</strong> Save complete processing settings for automation</li>
-                <li><strong style="color: #79c0ff;">Batch Processing:</strong> Handle multiple datasets with same transformation logic</li>
-                </ul>
-                </div>
-
-                <div>
-                <h3 style="color: #79c0ff; margin: 0 0 15px 0; font-size: 16px; font-weight: 600; border-left: 4px solid #1f6feb; padding-left: 12px;">Advanced Capabilities</h3>
-                <ul style="margin: 0; padding-left: 20px; color: #adbac7; font-size: 13px; line-height: 1.7;">
-                <li><strong style="color: #79c0ff;">Geometric transformations:</strong> Buffer, centroid, simplify operations</li>
-                <li><strong style="color: #79c0ff;">Coordinate reprojection:</strong> Transform between different CRS</li>
-                <li><strong style="color: #79c0ff;">Configuration templates:</strong> Save and reuse transformation settings</li>
-                <li><strong style="color: #79c0ff;">Auto-mapping:</strong> PostgreSQL field correspondence</li>
-                </ul>
-                </div>
-
-                </div>
-                </div>
-
-                </div>
-
-                <!-- Developer Info Card -->
-                <div style="background: #161b22; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); margin-top: 20px; overflow: hidden; border: 1px solid #30363d;">
-                <div style="background: linear-gradient(90deg, #6e7681 0%, #484f58 100%); color: #e6edf3; padding: 15px; text-align: center;">
-                <h3 style="margin: 0; font-size: 16px; font-weight: 600;">Developer Information</h3>
-                </div>
-                <div style="padding: 20px; text-align: center; background: #161b22;">
-                <p style="margin: 0; font-size: 13px; color: #adbac7; line-height: 1.6;">
-                <strong style="color: #7ee787;">Developed by:</strong> Yadda<br/>
-                <strong style="color: #7ee787;">Contact:</strong> <span style="color: #79c0ff;">youcef.geodesien@gmail.com</span><br/>
-                <strong style="color: #7ee787;">Portfolio:</strong> <a href="https://geodeci.xyz/" style="color: #79c0ff; text-decoration: none; font-weight: 500;">geodeci.xyz</a><br/>
-                <strong style="color: #7ee787;">Documentation:</strong> <a href="https://github.com/yadda07/Transformer" style="color: #79c0ff; text-decoration: none; font-weight: 500;">github.com/yadda07/Transformer</a>
-                </p>
-                <p style="margin: 15px 0 0 0; font-size: 12px; color: #768390; font-style: italic;">
-                Built with {heart_icon} for the QGIS community
-                </p>
-                </div>
-                </div>
-
-                </div>
-        """
-        
-        # Zone de scroll pour le contenu HTML
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(_ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setFrameStyle(_FrameShape.NoFrame)
+        scroll_area.setHorizontalScrollBarPolicy(_ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll_area.setVerticalScrollBarPolicy(_ScrollBarPolicy.ScrollBarAsNeeded)
-        
-        # Widget de contenu HTML
+        scroll_area.setStyleSheet(f"QScrollArea {{ border: none; background-color: {styles['surface']}; }}")
+
         content_widget = QLabel()
-        content_widget.setText(help_html)
+        content_widget.setText(self._help_dialog_html())
         content_widget.setTextFormat(_TextFormat.RichText)
         content_widget.setWordWrap(True)
         content_widget.setAlignment(AlignTop)
-        content_widget.setMargin(10)
+        content_widget.setMargin(0)
         content_widget.setOpenExternalLinks(True)
-        
-        # Appliquer le CSS responsive
-        responsive_css = """
-        QLabel {
-            background-color: #0d1117;
-            color: #e6edf3;
-        }
-        QScrollArea {
-            border: none;
-            background-color: #0d1117;
-        }
-        """
+        content_widget.setStyleSheet(f"QLabel {{ background-color: {styles['surface']}; color: {styles['body']}; }}")
 
-        
         scroll_area.setWidget(content_widget)
-        layout.addWidget(scroll_area)
-        
-        # Bouton OK
+        layout.addWidget(scroll_area, 1)
+
         button_layout = QHBoxLayout()
         button_layout.addStretch()
-        ok_button = QPushButton("OK")
+        ok_button = QPushButton("Done")
         ok_button.setDefault(True)
         ok_button.clicked.connect(dialog.accept)
         button_layout.addWidget(ok_button)
-        button_layout.addStretch()
         layout.addLayout(button_layout)
-        
-        dialog.exec()
+
+        result = dialog.exec()
+        plugin_logger.log(
+            f"function=show_help event=exit result={result}",
+            severity="debug", module="ui", code="HELP_DIALOG_EXIT",
+        )
     
     def stop_help_animation(self):
         """Arrête les timers d'animation du Help"""
@@ -6070,43 +6217,49 @@ Path: {data.get('path', 'N/A')}"""
     
     def show_about(self):
         """Show about information"""
-        heart_icon = svg_html("heart", IconTone.ACTION)
+        plugin_logger.log(
+            "function=show_about event=enter",
+            severity="debug", module="ui", code="ABOUT_DIALOG_ENTER",
+        )
+        styles = self._help_content_styles()
         about_html = f"""
-        <h2 style="color: #2E8B57; text-align: center; margin-bottom: 10px;">Transformer</h2>
-        <h3 style="color: #4682B4; text-align: center; margin-bottom: 20px;">Shape Edition v2.1.0</h3>
-
-        <p style="text-align: center; margin-bottom: 15px; color: #444;">
-        <b style="color: #2E8B57;">Developed by Yadda</b>
+        <div style="font-family:'Segoe UI',system-ui,-apple-system,sans-serif; color:{styles['body']};">
+        <h2 style="color:{styles['title']}; text-align:center; margin-bottom:4px;">Transformer</h2>
+        <h3 style="color:{styles['body_muted']}; text-align:center; margin-top:0; margin-bottom:18px;">QGIS ETL Workspace v3.0.0</h3>
+        <p style="text-align:center; margin-bottom:18px; color:{styles['body']};">
+        Controlled vector transformations with native QGIS expressions, smart filtering, JSON configurations, and PostgreSQL publishing.
         </p>
-
-        <p style="text-align: center; margin-bottom: 15px; color: #555; font-style: italic;">
-        QGIS plugin for vector data transformation<br/>with calculated fields, geometric operations and filtering capabilities
-        </p>
-
-        <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;"/>
-
-        <table style="margin: 0 auto; border-collapse: collapse;">
-        <tr><td style="padding: 5px 15px; color: #666;"><b>Built with:</b></td><td style="padding: 5px 15px; color: #444;">QGIS API 3.10+ • PyQt5/6 • Python 3.6+</td></tr>
-        <tr><td style="padding: 5px 15px; color: #666;"><b>Engine:</b></td><td style="padding: 5px 15px; color: #444;">Native QGIS Expression Engine</td></tr>
-        <tr><td style="padding: 5px 15px; color: #666;"><b>Formats:</b></td><td style="padding: 5px 15px; color: #444;">Shapefile • GeoJSON • GeoPackage • KML • and more</td></tr>
-        <tr><td style="padding: 5px 15px; color: #666;"><b>Contact:</b></td><td style="padding: 5px 15px;"><span style="color: #2E8B57;">youcef.geodesien@gmail.com</span></td></tr>
-        <tr><td style="padding: 5px 15px; color: #666;"><b>License:</b></td><td style="padding: 5px 15px; color: #444;">GPL v2+</td></tr>
+        <hr style="border:none; border-top:1px solid {styles['divider']}; margin:18px 0;"/>
+        <table style="margin:0 auto; border-collapse:collapse;">
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Author</b></td><td style="padding:6px 14px; color:{styles['body']};">Yadda</td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Engine</b></td><td style="padding:6px 14px; color:{styles['body']};">Native QGIS Expression Engine</td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Formats</b></td><td style="padding:6px 14px; color:{styles['body']};">QGIS vector layers, file exports, PostgreSQL</td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Website</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="{PLUGIN_WEBSITE_URL}">geodeci.xyz</a></td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Repository</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="{PLUGIN_REPOSITORY_URL}">github.com/yadda07/Transformer</a></td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Issues</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="{PLUGIN_ISSUES_URL}">github.com/yadda07/Transformer/issues</a></td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Contact</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="mailto:youcef.geodesien@gmail.com">youcef.geodesien@gmail.com</a></td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>License</b></td><td style="padding:6px 14px; color:{styles['body']};">Open Source</td></tr>
         </table>
-
-        <p style="text-align: center; margin-top: 20px; font-size: 11px; color: #888;">
-        Built with {heart_icon} for the QGIS community
-        </p>
+        </div>
         """
-        
-        # Créer une QMessageBox personnalisée avec formatage HTML
+
         msg = QMessageBox(self)
         msg.setWindowTitle("About Transformer")
         msg.setTextFormat(_TextFormat.RichText)
+        text_interaction = getattr(Qt, "TextBrowserInteraction", None)
+        if text_interaction is None and hasattr(Qt, "TextInteractionFlag"):
+            text_interaction = Qt.TextInteractionFlag.TextBrowserInteraction
+        if text_interaction is not None:
+            msg.setTextInteractionFlags(text_interaction)
         msg.setText(about_html)
         msg.setIcon(_MsgBoxIcon.Information)
         msg.setStandardButtons(_MsgBoxButton.Ok)
-        msg.resize(450, 350)
-        msg.exec()
+        msg.resize(460, 340)
+        result = msg.exec()
+        plugin_logger.log(
+            f"function=show_about event=exit result={result}",
+            severity="debug", module="ui", code="ABOUT_DIALOG_EXIT",
+        )
     
     # === CLOSE METHODS ===
     
@@ -6370,7 +6523,7 @@ Path: {data.get('path', 'N/A')}"""
                         self.target_crs, None
                     )
                     
-                    if error[0] == QgsVectorFileWriter.NoError:
+                    if error[0] == WriterNoError:
                         self.log_message(f"Reprojection completed: {filename} -> {output_path.name}", "Success")
                         successful_count += 1
                         

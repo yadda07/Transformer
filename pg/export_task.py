@@ -9,7 +9,8 @@ finished() runs on main thread for UI feedback.
 
 from typing import List, Optional, Dict, Any
 
-from qgis.core import QgsMessageLog, QgsTask, Qgis, QgsWkbTypes
+from qgis.core import QgsMessageLog, QgsTask, QgsWkbTypes
+from ..shared.compat import MsgInfo, MsgWarning, MsgCritical, TaskCanCancel
 
 from psycopg2 import sql as pg_sql
 
@@ -40,7 +41,7 @@ class PgExportTask(QgsTask):
                 - 'srid': int (resolved on main thread)
             export_mode: 'append' or 'replace'
         """
-        super().__init__(description, QgsTask.CanCancel)
+        super().__init__(description, TaskCanCancel)
         self.conn_params = conn_params
         self.jobs = jobs
         self.export_mode = export_mode
@@ -463,7 +464,7 @@ class PgExportTask(QgsTask):
             QgsMessageLog.logMessage(
                 f"PgExportTask exception: {self._exception}",
                 "Transformer",
-                Qgis.Critical,
+                MsgCritical,
             )
             return
 
@@ -471,7 +472,7 @@ class PgExportTask(QgsTask):
             QgsMessageLog.logMessage(
                 "PgExportTask canceled or failed",
                 "Transformer",
-                Qgis.Warning,
+                MsgWarning,
             )
             return
 
@@ -480,5 +481,5 @@ class PgExportTask(QgsTask):
             f"{self.total_inserted} records inserted, "
             f"{self.fail_count} errors",
             "Transformer",
-            Qgis.Info,
+            MsgInfo,
         )

@@ -14,8 +14,8 @@ Usage in any plugin file:
     from ..shared.compat import AlignCenter, UserRole, MsgBoxOk, ...
 """
 
-from qgis.PyQt.QtCore import Qt
-from qgis.PyQt.QtGui import QFont, QKeySequence, QPalette, QColor, QTextCursor
+from qgis.PyQt.QtCore import Qt, QEasingCurve, QVariantAnimation
+from qgis.PyQt.QtGui import QFont, QKeySequence, QPalette, QColor, QTextCursor, QPainter, QFontMetrics
 from qgis.PyQt.QtWidgets import (
     QMainWindow, QTabWidget, QDockWidget, QFrame, QFormLayout,
     QSizePolicy, QHeaderView, QAbstractItemView, QMessageBox, QDialog,
@@ -108,13 +108,13 @@ FontBold    = _resolve(_FontWeight, 'Bold',   QFont)
 FontNormal  = _resolve(_FontWeight, 'Normal', QFont)
 
 # ======================================================================
-# QTextCursor — MoveOperation & MoveMode
+# QTextCursor — MoveOperation & SelectionType
 # ======================================================================
 _MoveOperation = getattr(QTextCursor, 'MoveOperation', QTextCursor)
-_MoveMode = getattr(QTextCursor, 'MoveMode', QTextCursor)
+_SelectionType = getattr(QTextCursor, 'SelectionType', QTextCursor)
 CursorEnd = _resolve(_MoveOperation, 'End', QTextCursor)
 CursorUp = _resolve(_MoveOperation, 'Up', QTextCursor)
-CursorLineUnder = _resolve(_MoveMode, 'LineUnderCursor', QTextCursor)
+CursorLineUnder = _resolve(_SelectionType, 'LineUnderCursor', QTextCursor)
 
 # ======================================================================
 # Qt namespace — TextInteractionFlag
@@ -182,6 +182,8 @@ DialogRejected = _resolve(_DialogCode, 'Rejected', QDialog)
 # ======================================================================
 _DockOption        = getattr(QMainWindow, 'DockOption', QMainWindow)
 _TabPosition       = getattr(QTabWidget, 'TabPosition', QTabWidget)
+TabNorth           = _resolve(_TabPosition, 'North', QTabWidget)
+TabSouth           = _resolve(_TabPosition, 'South', QTabWidget)
 _DockWidgetFeature = getattr(QDockWidget, 'DockWidgetFeature', QDockWidget)
 
 # ======================================================================
@@ -423,6 +425,66 @@ GlobalTransparent = _resolve(_GlobalColor, 'transparent', Qt)
 
 
 # ======================================================================
+# QEasingCurve — Type
+# ======================================================================
+_EasingType = getattr(QEasingCurve, 'Type', QEasingCurve)
+EaseInOutQuad = _resolve(_EasingType, 'InOutQuad', QEasingCurve)
+
+
+# ======================================================================
+# QPainter — RenderHint
+# ======================================================================
+_RenderHint = getattr(QPainter, 'RenderHint', QPainter)
+Antialias = _resolve(_RenderHint, 'Antialiasing', QPainter)
+
+
+# ======================================================================
+# Qt — PenStyle
+# ======================================================================
+_PenStyle = getattr(Qt, 'PenStyle', Qt)
+NoPen = _resolve(_PenStyle, 'NoPen', Qt)
+
+
+# ======================================================================
+# QGIS core enums — scoped in Qt6/PyQt6, flat in Qt5/PyQt5
+# ----------------------------------------------------------------------
+# Qgis.MessageLevel:  Qgis.Info → Qgis.MessageLevel.Info
+# QgsWkbTypes.GeometryType: QgsWkbTypes.NullGeometry → QgsWkbTypes.GeometryType.Null
+# QgsTask.Flag: QgsTask.CanCancel → QgsTask.Flag.CanCancel
+# QgsVectorFileWriter.WriterError: QgsVectorFileWriter.NoError → QgsVectorFileWriter.WriterError.NoError
+# ======================================================================
+
+from qgis.core import Qgis as _Qgis, QgsWkbTypes as _QgsWkbTypes
+from qgis.core import QgsTask as _QgsTask
+try:
+    from qgis.core import QgsVectorFileWriter as _QgsVFW
+except ImportError:
+    _QgsVFW = None
+
+_MessageLevel = getattr(_Qgis, 'MessageLevel', _Qgis)
+MsgInfo       = _resolve(_MessageLevel, 'Info',     _Qgis)
+MsgWarning    = _resolve(_MessageLevel, 'Warning',  _Qgis)
+MsgCritical   = _resolve(_MessageLevel, 'Critical', _Qgis)
+MsgSuccess    = _resolve(_MessageLevel, 'Success',  _Qgis)
+
+_GeometryType = getattr(_QgsWkbTypes, 'GeometryType', _QgsWkbTypes)
+GeomNull      = _resolve(_GeometryType, 'Null',    _QgsWkbTypes, 'NullGeometry')
+GeomPoint     = _resolve(_GeometryType, 'Point',   _QgsWkbTypes, 'PointGeometry')
+GeomLine      = _resolve(_GeometryType, 'Line',    _QgsWkbTypes, 'LineGeometry')
+GeomPolygon   = _resolve(_GeometryType, 'Polygon', _QgsWkbTypes, 'PolygonGeometry')
+GeomUnknown   = _resolve(_GeometryType, 'Unknown', _QgsWkbTypes, 'UnknownGeometry')
+
+_TaskFlag = getattr(_QgsTask, 'Flag', _QgsTask)
+TaskCanCancel = _resolve(_TaskFlag, 'CanCancel', _QgsTask)
+
+if _QgsVFW is not None:
+    _WriterError = getattr(_QgsVFW, 'WriterError', _QgsVFW)
+    WriterNoError = _resolve(_WriterError, 'NoError', _QgsVFW)
+else:
+    WriterNoError = 0
+
+
+# ======================================================================
 # Runtime version detection (enterprise compat layer)
 # ----------------------------------------------------------------------
 # Provides explicit runtime knowledge of:
@@ -522,8 +584,8 @@ def log_environment(logger=None):
     """Log a one-line environment summary to QgsMessageLog and optional logger."""
     summary = version_summary()
     try:
-        from qgis.core import QgsMessageLog, Qgis
-        QgsMessageLog.logMessage(f"Transformer environment: {summary}", "Transformer", Qgis.Info)
+        from qgis.core import QgsMessageLog
+        QgsMessageLog.logMessage(f"Transformer environment: {summary}", "Transformer", MsgInfo)
     except Exception:
         pass
     if logger is not None and hasattr(logger, 'info'):

@@ -14,8 +14,9 @@ Thread-safety rules:
 from typing import Dict, List, Optional, Any, Tuple
 
 from qgis.core import (
-    QgsTask, Qgis, QgsMessageLog, QgsWkbTypes, QgsVectorLayer,
+    QgsTask, QgsMessageLog, QgsWkbTypes, QgsVectorLayer,
 )
+from ..shared.compat import MsgCritical, TaskCanCancel
 
 from ..shared.logger import log_info, log_warning, log_critical
 from ..shared.geom_types import get_pg_geom_type
@@ -41,7 +42,7 @@ class PgConnectionTask(QgsTask):
         conn_params: Dict[str, Any],
         description: str = "PostgreSQL connection test",
     ):
-        super().__init__(description, QgsTask.CanCancel)
+        super().__init__(description, TaskCanCancel)
         params = dict(conn_params)
         params.setdefault("connect_timeout", _DEFAULT_TIMEOUT)
         self.conn_params = params
@@ -85,7 +86,7 @@ class PgConnectionTask(QgsTask):
             QgsMessageLog.logMessage(
                 f"PostgreSQL connection test failed: {self.message}",
                 "Transformer",
-                Qgis.Critical,
+                MsgCritical,
             )
 
 
@@ -110,7 +111,7 @@ class PgSchemaTask(QgsTask):
         fetch_tables_for: Optional[str] = None,
         description: str = "PostgreSQL schema discovery",
     ):
-        super().__init__(description, QgsTask.CanCancel)
+        super().__init__(description, TaskCanCancel)
         params = dict(conn_params)
         params.setdefault("connect_timeout", _DEFAULT_TIMEOUT)
         self.conn_params = params
@@ -214,7 +215,7 @@ class PgSchemaTask(QgsTask):
             QgsMessageLog.logMessage(
                 f"PostgreSQL schema discovery failed: {self.error}",
                 "Transformer",
-                Qgis.Critical,
+                MsgCritical,
             )
 
 
@@ -239,7 +240,7 @@ class PgCompatibilityTask(QgsTask):
         mappings: List[Dict[str, Any]],
         description: str = "PostgreSQL compatibility analysis",
     ):
-        super().__init__(description, QgsTask.CanCancel)
+        super().__init__(description, TaskCanCancel)
         params = dict(conn_params)
         params.setdefault("connect_timeout", _DEFAULT_TIMEOUT)
         self.conn_params = params
@@ -651,5 +652,5 @@ class PgCompatibilityTask(QgsTask):
             QgsMessageLog.logMessage(
                 f"PostgreSQL compatibility analysis failed: {self.errors}",
                 "Transformer",
-                Qgis.Critical,
+                MsgCritical,
             )

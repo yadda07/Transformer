@@ -15,7 +15,8 @@ from qgis.PyQt.QtCore import QTimer
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox, QApplication
 
-from qgis.core import QgsMessageLog, Qgis, QgsProject
+from qgis.core import QgsMessageLog, QgsProject
+from .shared.compat import MsgInfo, MsgWarning, MsgCritical
 
 # Import plugin modules
 from .core.config_manager import ConfigManager as SimpleConfigManager
@@ -29,7 +30,7 @@ try:
     ENHANCED_INTERFACE_AVAILABLE = True
 except ImportError as e:
     INTERFACE_IMPORT_ERROR = str(e)
-    QgsMessageLog.logMessage(f"Critical: Interface import failed: {INTERFACE_IMPORT_ERROR}", "Transformer", Qgis.Critical)
+    QgsMessageLog.logMessage(f"Critical: Interface import failed: {INTERFACE_IMPORT_ERROR}", "Transformer", MsgCritical)
     EnhancedTransformerDialog = None
     ENHANCED_INTERFACE_AVAILABLE = False
 
@@ -49,13 +50,13 @@ try:
     EXPORT_MODULE_AVAILABLE = True
     
 except ImportError as e:
-    QgsMessageLog.logMessage(f"Import Error: {str(e)}", "Transformer", Qgis.Warning)
+    QgsMessageLog.logMessage(f"Import Error: {str(e)}", "Transformer", MsgWarning)
     EXPORT_MODULE_AVAILABLE = False
 except Exception as e:
-    QgsMessageLog.logMessage(f"Unexpected Error: {str(e)}", "Transformer", Qgis.Critical)
+    QgsMessageLog.logMessage(f"Unexpected Error: {str(e)}", "Transformer", MsgCritical)
     EXPORT_MODULE_AVAILABLE = False
     import traceback
-    QgsMessageLog.logMessage(f"Traceback: {traceback.format_exc()}", "Transformer", Qgis.Critical)
+    QgsMessageLog.logMessage(f"Traceback: {traceback.format_exc()}", "Transformer", MsgCritical)
 
 
 class TransformerPlugin:
@@ -73,7 +74,7 @@ class TransformerPlugin:
             from .shared.compat import log_environment
             log_environment()
         except Exception as exc:
-            QgsMessageLog.logMessage(f"Environment log failed: {exc}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Environment log failed: {exc}", "Transformer", MsgWarning)
         
         # Main components
         self.config_manager: Optional[SimpleConfigManager] = None
@@ -107,11 +108,11 @@ class TransformerPlugin:
                 self.translator = QTranslator()
                 if self.translator.load(locale_path):
                     QCoreApplication.installTranslator(self.translator)
-                    QgsMessageLog.logMessage(f"Loaded translation: {locale}", "Transformer", Qgis.Info)
+                    QgsMessageLog.logMessage(f"Loaded translation: {locale}", "Transformer", MsgInfo)
                 else:
-                    QgsMessageLog.logMessage(f"Failed to load translation: {locale}", "Transformer", Qgis.Warning)
+                    QgsMessageLog.logMessage(f"Failed to load translation: {locale}", "Transformer", MsgWarning)
         except Exception as e:
-            QgsMessageLog.logMessage(f"Translation setup failed: {str(e)}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Translation setup failed: {str(e)}", "Transformer", MsgWarning)
 
     def tr(self, message):
         """Translate messages"""
@@ -166,11 +167,11 @@ class TransformerPlugin:
             features_text = ", ".join(features) if features else "Basic Interface"
             QgsMessageLog.logMessage(
                 f"Plugin {self.plugin_name} initialized with features: {features_text}", 
-                "Transformer", Qgis.Info
+                "Transformer", MsgInfo
             )
             
         except Exception as e:
-            QgsMessageLog.logMessage(f"Plugin initialization error: {str(e)}", "Transformer", Qgis.Critical)
+            QgsMessageLog.logMessage(f"Plugin initialization error: {str(e)}", "Transformer", MsgCritical)
             QMessageBox.critical(
                 self.iface.mainWindow(),
                 "Initialization Error",
@@ -192,13 +193,13 @@ class TransformerPlugin:
                     self.export_manager = ExportManager()
                     # Export manager initialized (no QGIS log)
                 except Exception as e:
-                    QgsMessageLog.logMessage(f"Export manager initialization failed: {str(e)}", "Transformer", Qgis.Warning)
+                    QgsMessageLog.logMessage(f"Export manager initialization failed: {str(e)}", "Transformer", MsgWarning)
                     self.export_manager = None
             
             # Plugin components initialized (no QGIS log)
             
         except Exception as e:
-            QgsMessageLog.logMessage(f"Component initialization error: {str(e)}", "Transformer", Qgis.Critical)
+            QgsMessageLog.logMessage(f"Component initialization error: {str(e)}", "Transformer", MsgCritical)
             raise
 
     def unload(self):
@@ -210,7 +211,7 @@ class TransformerPlugin:
                 try:
                     self.main_window.close()
                 except Exception as exc:
-                    QgsMessageLog.logMessage(f"Error closing main window: {exc}", "Transformer", Qgis.Warning)
+                    QgsMessageLog.logMessage(f"Error closing main window: {exc}", "Transformer", MsgWarning)
                 self.main_window = None
             
             # Remove action
@@ -219,7 +220,7 @@ class TransformerPlugin:
                     self.iface.removePluginVectorMenu(self.menu_text, self.action)
                     self.iface.removeToolBarIcon(self.action)
                 except Exception as exc:
-                    QgsMessageLog.logMessage(f"Error removing plugin UI elements: {exc}", "Transformer", Qgis.Warning)
+                    QgsMessageLog.logMessage(f"Error removing plugin UI elements: {exc}", "Transformer", MsgWarning)
                 self.action = None
             
             # Clean references
@@ -228,10 +229,10 @@ class TransformerPlugin:
             self.export_manager = None
             self.interface_visible = False
             
-            QgsMessageLog.logMessage(f"Plugin {self.plugin_name} unloaded", "Transformer", Qgis.Info)
+            QgsMessageLog.logMessage(f"Plugin {self.plugin_name} unloaded", "Transformer", MsgInfo)
             
         except Exception as e:
-            QgsMessageLog.logMessage(f"Plugin unload error: {str(e)}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Plugin unload error: {str(e)}", "Transformer", MsgWarning)
 
     def run(self):
         """Execute the plugin"""
@@ -251,7 +252,7 @@ class TransformerPlugin:
             self.run_enhanced_interface()
                 
         except Exception as e:
-            QgsMessageLog.logMessage(f"Interface opening error: {str(e)}", "Transformer", Qgis.Critical)
+            QgsMessageLog.logMessage(f"Interface opening error: {str(e)}", "Transformer", MsgCritical)
             QMessageBox.critical(
                 self.iface.mainWindow(),
                 "Error",
@@ -280,7 +281,7 @@ class TransformerPlugin:
             if self.interface_visible and self.main_window.isVisible():
                 self.main_window.hide()
                 self.interface_visible = False
-                QgsMessageLog.logMessage("Enhanced interface hidden", "Transformer", Qgis.Info)
+                QgsMessageLog.logMessage("Enhanced interface hidden", "Transformer", MsgInfo)
             else:
                 self.main_window.show()
                 self.main_window.raise_()
@@ -289,7 +290,7 @@ class TransformerPlugin:
                 # Enhanced interface shown (no QGIS log)
             
         except Exception as e:
-            QgsMessageLog.logMessage(f"Enhanced interface error: {str(e)}", "Transformer", Qgis.Critical)
+            QgsMessageLog.logMessage(f"Enhanced interface error: {str(e)}", "Transformer", MsgCritical)
             QMessageBox.critical(
                 self.iface.mainWindow(),
                 "Error",
@@ -355,7 +356,7 @@ class TransformerPlugin:
                 self.main_window.window_closed.connect(self.on_enhanced_interface_closed)
             
         except Exception as e:
-            QgsMessageLog.logMessage(f"Enhanced interface connections error: {str(e)}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Enhanced interface connections error: {str(e)}", "Transformer", MsgWarning)
 
     def center_window(self):
         """Center the main window on the screen"""
@@ -377,12 +378,12 @@ class TransformerPlugin:
                 self.main_window.move(x, y)
             
         except Exception as e:
-            QgsMessageLog.logMessage(f"Window centering error: {str(e)}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Window centering error: {str(e)}", "Transformer", MsgWarning)
 
     def on_enhanced_interface_closed(self):
         """Handle the closing of the enhanced interface"""
         self.interface_visible = False
-        QgsMessageLog.logMessage("Enhanced interface closed", "Transformer", Qgis.Info)
+        QgsMessageLog.logMessage("Enhanced interface closed", "Transformer", MsgInfo)
 
     def on_layers_added(self, layers):
         """Handle the addition of layers to the project"""
@@ -409,19 +410,19 @@ class TransformerPlugin:
         try:
             if self.main_window and hasattr(self.main_window, 'sync_layers_from_project'):
                 self.main_window.sync_layers_from_project()
-                QgsMessageLog.logMessage("Interface layers refreshed", "Transformer", Qgis.Info)
+                QgsMessageLog.logMessage("Interface layers refreshed", "Transformer", MsgInfo)
         except Exception as e:
-            QgsMessageLog.logMessage(f"Layer refresh error: {str(e)}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Layer refresh error: {str(e)}", "Transformer", MsgWarning)
 
     def handle_transformation_request(self, shapefile_path: str):
         """Handle transformation requests"""
         try:
-            QgsMessageLog.logMessage(f"Transformation request handled: {shapefile_path}", "Transformer", Qgis.Info)
+            QgsMessageLog.logMessage(f"Transformation request handled: {shapefile_path}", "Transformer", MsgInfo)
             
             # Refresh layers after transformation
             QTimer.singleShot(1000, self.refresh_interface_layers)
             
         except Exception as e:
-            QgsMessageLog.logMessage(f"Transformation request error: {str(e)}", "Transformer", Qgis.Warning)
+            QgsMessageLog.logMessage(f"Transformation request error: {str(e)}", "Transformer", MsgWarning)
 
 
