@@ -6225,7 +6225,7 @@ Path: {data.get('path', 'N/A')}"""
         about_html = f"""
         <div style="font-family:'Segoe UI',system-ui,-apple-system,sans-serif; color:{styles['body']};">
         <h2 style="color:{styles['title']}; text-align:center; margin-bottom:4px;">Transformer</h2>
-        <h3 style="color:{styles['body_muted']}; text-align:center; margin-top:0; margin-bottom:18px;">QGIS ETL Workspace v3.0.0</h3>
+        <h3 style="color:{styles['body_muted']}; text-align:center; margin-top:0; margin-bottom:18px;">QGIS Attribute Manager v3.0.0</h3>
         <p style="text-align:center; margin-bottom:18px; color:{styles['body']};">
         Controlled vector transformations with native QGIS expressions, smart filtering, JSON configurations, and PostgreSQL publishing.
         </p>

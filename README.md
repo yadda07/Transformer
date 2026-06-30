@@ -1,12 +1,12 @@
 # Transformer
 
-A focused QGIS workspace for controlled vector transformations.
+A focused QGIS attribute manager for controlled vector transformations.
 
 Transformer helps teams turn project layers into reliable data products: select the right features, calculate precise fields, validate the result, then publish to files or PostgreSQL.
 
 ## What it is
 
-Transformer is an ETL plugin built on QGIS native capabilities. It does not replace QGIS; it organizes QGIS expressions, filters, exports, and database publishing into a repeatable workflow.
+Transformer is an attribute manager, not an ETL extractor. It does not replace QGIS; it organizes QGIS expressions, filters, exports, and database publishing into a repeatable workflow.
 
 The experience is intentionally minimal: every panel supports one decision, and every transformation remains visible through configuration and logs.
 
