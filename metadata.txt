@@ -2,7 +2,7 @@
 [general]
 name=Transformer
 qgisMinimumVersion=3.44
-description=Controlled QGIS ETL workspace for vector layers: precise fields, smart filters, repeatable JSON configurations, export, and PostgreSQL publishing.
+description=Controlled QGIS attribute manager for vector layers: precise fields, smart filters, repeatable JSON configurations, export, and PostgreSQL publishing.
 version=3.0.0
 author=Yadda
 email=youcef.geodesien@gmail.com
@@ -16,7 +16,7 @@ repository=https://github.com/yadda07/Transformer
 ; Homepage (optional)
 homepage=https://geodeci.xyz/
 
-about=Transformer is a focused QGIS ETL workspace for enterprise vector data preparation (v3.0.0).
+about=Transformer is a focused QGIS attribute manager for enterprise vector data preparation (v3.0.0).
     It turns project layers into controlled, repeatable data products with native QGIS expressions, smart filters, JSON configurations, export, and PostgreSQL publishing.
     The interface is designed around clear decisions: select the source, shape fields, validate rules, and publish with visible operational feedback.
 
