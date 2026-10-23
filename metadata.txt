@@ -4,7 +4,7 @@ name=Transformer
 qgisMinimumVersion=3.28
 description=QGIS plugin for vector layer transformation. Processes QGIS project layers with calculated fields, coordinate transformations, and PostgreSQL integration.
 version=2.1.0
-author=Yadda
+author=Youcef ADDA (GEODECI)
 email=youcef.geodesien@gmail.com
 
 ; Bug tracker URL (required for publication)
@@ -14,7 +14,7 @@ tracker=https://github.com/yadda07/transformer/issues
 repository=https://github.com/yadda07/transformer
 
 ; Homepage (optional)
-homepage=https://github.com/yadda07/transformer
+homepage=https://geodeci.xyz
 
 about=ETL plugin for QGIS vector layer transformation (v2.1.0). 
     Processes QGIS project layers with calculated fields, geometry expressions, and coordinate reprojection. 
