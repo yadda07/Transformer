@@ -130,6 +130,8 @@ Use cases:
 
 ## Installation
 
+Official QGIS plugin page: https://plugins.qgis.org/plugins/Transfomer/
+
 ### Manual Installation
 
 1. Download the plugin files
@@ -404,6 +406,7 @@ The goal is to continue developing comprehensive solutions that leverage QGIS's 
 **Version**: 2.1.0
 **License**: Open Source
 **Repository**: https://github.com/yadda07/transformer
+**QGIS Plugin**: https://plugins.qgis.org/plugins/Transfomer/
 
 For technical support, please include:
 
@@ -415,3 +418,7 @@ For technical support, please include:
 ## Contributing
 
 Contributions are welcome. Please contact the development team for information about contributing to the project.
+
+## Credits
+
+Designed and maintained by Youcef ADDA (GEODECI, https://geodeci.xyz). Development is AI-assisted; every release is reviewed and tested by the author.
