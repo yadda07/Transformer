@@ -2,6 +2,14 @@
 
 ETL plugin for vector layer transformation in QGIS. Calculated fields, geometry expressions, smart filtering, and PostgreSQL integration.
 
+Built by **GEODECI** — custom GIS solutions and QGIS plugins. [geodeci.xyz](https://geodeci.xyz) · [contact@geodeci.xyz](mailto:contact@geodeci.xyz)
+
+### Besoin d'un plugin sur mesure ?
+
+**FR** — GEODECI conçoit des plugins QGIS et des solutions SIG adaptés à votre métier. Décrivez votre besoin : [contact@geodeci.xyz](mailto:contact@geodeci.xyz)
+
+**EN** — Need a custom plugin? GEODECI designs QGIS plugins and GIS solutions around your workflow. Tell us what you need: [contact@geodeci.xyz](mailto:contact@geodeci.xyz)
+
 ## Overview
 
 **Transformer** provides ETL (Extract, Transform, Load) functionality for vector data transformation within QGIS. Processes layers loaded in your QGIS project using calculated fields, geometry expressions, coordinate transformations, and database integration.
