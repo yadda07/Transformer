@@ -14,7 +14,7 @@ tracker=https://github.com/yadda07/transformer/issues
 repository=https://github.com/yadda07/transformer
 
 ; Homepage (optional)
-homepage=https://github.com/yadda07/transformer
+homepage=https://geodeci.xyz
 
 about=ETL plugin for QGIS vector layer transformation (v2.1.0). 
     Processes QGIS project layers with calculated fields, geometry expressions, and coordinate reprojection. 
