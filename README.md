@@ -2,13 +2,13 @@
 
 ETL plugin for vector layer transformation in QGIS. Calculated fields, geometry expressions, smart filtering, and PostgreSQL integration.
 
-Built by **GEODECI** — custom GIS solutions and QGIS plugins. [geodeci.xyz](https://geodeci.xyz) · [contact@geodeci.xyz](mailto:contact@geodeci.xyz)
+Built by **GEODECI**, custom GIS solutions and QGIS plugins. [geodeci.xyz](https://geodeci.xyz) · [contact@geodeci.xyz](mailto:contact@geodeci.xyz)
 
 ### Besoin d'un plugin sur mesure ?
 
-**FR** — GEODECI conçoit des plugins QGIS et des solutions SIG adaptés à votre métier. Décrivez votre besoin : [contact@geodeci.xyz](mailto:contact@geodeci.xyz)
+**FR.** GEODECI conçoit des plugins QGIS et des solutions SIG adaptés à votre métier. Décrivez votre besoin : [contact@geodeci.xyz](mailto:contact@geodeci.xyz)
 
-**EN** — Need a custom plugin? GEODECI designs QGIS plugins and GIS solutions around your workflow. Tell us what you need: [contact@geodeci.xyz](mailto:contact@geodeci.xyz)
+**EN.** Need a custom plugin? GEODECI designs QGIS plugins and GIS solutions around your workflow. Tell us what you need: [contact@geodeci.xyz](mailto:contact@geodeci.xyz)
 
 ## Overview
 
@@ -409,11 +409,11 @@ The goal is to continue developing comprehensive solutions that leverage QGIS's 
 
 ## Technical Support
 
-**Developed by**: Yadda
-**Contact**: youcef.geodesien@gmail.com
+**Developed by**: Youcef ADDA (GEODECI)
+**Contact**: contact@geodeci.xyz
 **Version**: 2.1.0
 **License**: Open Source
-**Repository**: https://github.com/yadda07/transformer
+**Repository**: https://github.com/yadda07/Transformer
 **QGIS Plugin**: https://plugins.qgis.org/plugins/Transfomer/
 
 For technical support, please include:
