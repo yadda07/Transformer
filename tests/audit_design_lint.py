@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
+# Youcef ADDA | GEODECI | https://geodeci.xyz/ | youcef.geodesien@gmail.com
 """
 Design lint gate for Transformer plugin (UIUX-010).
 
@@ -71,7 +72,7 @@ def main():
             all_violations.extend(scan_file(filepath))
 
     if not all_violations:
-        print(f"DESIGN LINT: PASS (0 violations)")
+        print("DESIGN LINT: PASS (0 violations)")
         return 0
 
     print(f"DESIGN LINT: FAIL ({len(all_violations)} violations)\n")

@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Youcef ADDA | GEODECI | https://geodeci.xyz/ | youcef.geodesien@gmail.com
 """Field-type icons for attribute lists (int, float, string, date…)."""
 
 from typing import Optional
@@ -70,8 +71,8 @@ def resolve_field_output_type(
 
             detected = detect_field_type_from_expression(expr, source_layer)
             return detected.typeName()
-        except Exception:
-            pass
+        except Exception as exc:
+            source_type = None if exc else None
 
         source_type = _source_field_type_name(source_layer, field_name)
         if source_type and (expr == f'"{field_name}"' or expr.replace('"', "") == field_name):

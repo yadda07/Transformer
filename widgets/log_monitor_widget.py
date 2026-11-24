@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# Youcef ADDA | GEODECI | https://geodeci.xyz/ | youcef.geodesien@gmail.com
 """
 LogMonitorWidget - Enterprise-grade log viewer.
 
@@ -15,15 +16,15 @@ Features:
 - Listens to TransformerLogger.log_entry_created signal
 """
 
+from collections import deque
 from datetime import datetime
-from typing import List
 
-from qgis.PyQt.QtCore import Qt, QSize
+from qgis.PyQt.QtCore import QSize, QTimer
 from qgis.PyQt.QtGui import QColor, QFont, QPalette
 from qgis.PyQt.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QHeaderView, QLineEdit, QComboBox, QCheckBox, QLabel,
-    QFileDialog, QToolButton, QMessageBox, QSizePolicy,
+    QLineEdit, QComboBox, QCheckBox, QLabel, QFileDialog,
+    QToolButton, QMessageBox,
 )
 
 from ..shared.compat import (
@@ -49,6 +50,8 @@ NoEditTriggers = (
 SEVERITY_ORDER = {"debug": 0, "info": 1, "warning": 2, "error": 3, "critical": 4}
 
 # Severity palette roles (theme-aware: derived from QPalette where possible)
+
+
 def _severity_color(palette: QPalette, severity: str) -> QColor:
     """Return a color for a severity, derived from palette to respect theme."""
     base = palette_color(palette, None, 'Text')
@@ -100,17 +103,22 @@ class LogMonitorWidget(QWidget):
     COL_MOD = 2
     COL_CODE = 3
     COL_MSG = 4
-    COLUMNS = ["Time", "Lvl", "Module", "Code", "Message"]
+    COLUMNS = ["Heure", "Niv.", "Module", "Code", "Message"]
 
     def __init__(self, transformer_logger=None, parent=None):
         super().__init__(parent)
         self._logger = transformer_logger
-        self._all_entries: List[dict] = []  # full buffer (filtered out + visible)
+        self._all_entries = deque(maxlen=self.MAX_ROWS)  # O(1) bounded ring buffer
         self._auto_scroll = True
         self._paused = False
+        self._dirty = False
         self._severity_filter = "debug"  # show all by default (>= debug)
         self._module_filter = "all"
         self._search_text = ""
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(150)
+        self._search_timer.timeout.connect(self._refresh_table)
 
         self._build_ui()
         self._wire_logger()
@@ -128,14 +136,14 @@ class LogMonitorWidget(QWidget):
         toolbar.setSpacing(6)
 
         # Severity filter
-        toolbar.addWidget(QLabel("Level:"))
+        toolbar.addWidget(QLabel("Niveau :"))
         self.severity_combo = QComboBox()
         for label, value in (
-            ("All", "debug"),
+            ("Tous", "debug"),
             ("Info+", "info"),
-            ("Warn+", "warning"),
-            ("Error+", "error"),
-            ("Critical", "critical"),
+            ("Avert.+", "warning"),
+            ("Erreur+", "error"),
+            ("Critique", "critical"),
         ):
             idx = self.severity_combo.count()
             self.severity_combo.addItem(label, value)
@@ -145,9 +153,9 @@ class LogMonitorWidget(QWidget):
         toolbar.addWidget(self.severity_combo)
 
         # Module filter
-        toolbar.addWidget(QLabel("Module:"))
+        toolbar.addWidget(QLabel("Module :"))
         self.module_combo = QComboBox()
-        self.module_combo.addItem("All", "all")
+        self.module_combo.addItem("Tous", "all")
         self.module_combo.setItemIcon(0, log_toolbar_icon("log_module_system"))
         for mod in ("system", "transformer", "exporter", "db", "ui"):
             idx = self.module_combo.count()
@@ -159,7 +167,7 @@ class LogMonitorWidget(QWidget):
 
         # Search
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Search messages...")
+        self.search_edit.setPlaceholderText("Rechercher dans le journal...")
         self.search_edit.setClearButtonEnabled(True)
         self.search_edit.textChanged.connect(self._on_search_changed)
         self.search_edit.setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Fixed)
@@ -176,7 +184,7 @@ class LogMonitorWidget(QWidget):
         toolbar.addWidget(self.pause_btn)
 
         # Auto-scroll
-        self.autoscroll_check = QCheckBox("Auto-scroll")
+        self.autoscroll_check = QCheckBox("Défilement auto")
         self.autoscroll_check.setChecked(True)
         self.autoscroll_check.toggled.connect(self._on_autoscroll_toggled)
         toolbar.addWidget(self.autoscroll_check)
@@ -186,7 +194,7 @@ class LogMonitorWidget(QWidget):
         self.clear_btn.setToolButtonStyle(ToolButtonTextBesideIcon)
         self.clear_btn.setIcon(log_toolbar_icon("log_clear"))
         self.clear_btn.setIconSize(QSize(16, 16))
-        self.clear_btn.setText("Clear")
+        self.clear_btn.setText("Vider")
         self.clear_btn.clicked.connect(self.clear_logs)
         toolbar.addWidget(self.clear_btn)
 
@@ -195,7 +203,7 @@ class LogMonitorWidget(QWidget):
         self.export_btn.setToolButtonStyle(ToolButtonTextBesideIcon)
         self.export_btn.setIcon(log_toolbar_icon("log_export"))
         self.export_btn.setIconSize(QSize(16, 16))
-        self.export_btn.setText("Export")
+        self.export_btn.setText("Exporter")
         self.export_btn.clicked.connect(self.export_logs)
         toolbar.addWidget(self.export_btn)
 
@@ -204,7 +212,7 @@ class LogMonitorWidget(QWidget):
         # Stats row
         stats_row = QHBoxLayout()
         stats_row.setContentsMargins(0, 0, 0, 0)
-        self.count_label = QLabel("0 entries")
+        self.count_label = QLabel("0 entrée")
         font = self.count_label.font()
         font.setPointSize(max(font.pointSize() - 1, 8))
         self.count_label.setFont(font)
@@ -249,23 +257,40 @@ class LogMonitorWidget(QWidget):
                 buffer = getattr(self._logger, "_log_buffer", None)
                 if buffer:
                     self.replay_buffer(list(buffer))
-            except Exception:
-                pass
+            except Exception as exc:
+                self.count_label.setText(f"0 entries ({type(exc).__name__})")
 
     # ------------------------------------------------------------------
     # Slots
     # ------------------------------------------------------------------
+    def showEvent(self, event):
+        super().showEvent(event)
+        if getattr(self, "_dirty", False) and not self._paused:
+            self._dirty = False
+            self._refresh_table()
+
+    def teardown(self):
+        """Stop pending timers and disconnect from centralized logger."""
+        if hasattr(self, "_search_timer") and self._search_timer is not None:
+            try:
+                self._search_timer.stop()
+            except RuntimeError:
+                pass
+        if self._logger is not None and hasattr(self._logger, "log_entry_created"):
+            try:
+                self._logger.log_entry_created.disconnect(self._on_log_entry)
+            except (TypeError, RuntimeError):
+                pass
+
     def _on_log_entry(self, entry):
         """Receive a LogEntry from the logger signal."""
-        if self._paused:
-            # Still buffer, just don't refresh table
-            self._all_entries.append(self._entry_to_dict(entry))
-            self._enforce_buffer_cap()
-            return
-
         d = self._entry_to_dict(entry)
         self._all_entries.append(d)
         self._enforce_buffer_cap()
+
+        if self._paused or not self.isVisible():
+            self._dirty = True
+            return
 
         if self._row_visible(d):
             self._append_table_row(d)
@@ -281,11 +306,14 @@ class LogMonitorWidget(QWidget):
 
     def _on_search_changed(self, text: str):
         self._search_text = text.strip().lower()
-        self._refresh_table()
+        if len(self._all_entries) <= 200:
+            self._refresh_table()
+        else:
+            self._search_timer.start()
 
     def _on_pause_toggled(self, paused: bool):
         self._paused = paused
-        self.pause_btn.setText("Resume" if paused else "Pause")
+        self.pause_btn.setText("Reprendre" if paused else "Pause")
         self.pause_btn.setIcon(
             log_toolbar_icon("log_resume" if paused else "log_pause")
         )
@@ -314,7 +342,7 @@ class LogMonitorWidget(QWidget):
         return d
 
     def _enforce_buffer_cap(self):
-        if len(self._all_entries) > self.MAX_ROWS:
+        if not isinstance(self._all_entries, deque) and len(self._all_entries) > self.MAX_ROWS:
             del self._all_entries[: len(self._all_entries) - self.MAX_ROWS]
 
     def _row_visible(self, d: dict) -> bool:
@@ -360,7 +388,7 @@ class LogMonitorWidget(QWidget):
         item.setTextAlignment(AlignCenter)
         return item
 
-    def _append_table_row(self, d: dict):
+    def _append_table_row(self, d: dict, scroll: bool = True):
         row = self.table.rowCount()
         self.table.insertRow(row)
 
@@ -412,28 +440,31 @@ class LogMonitorWidget(QWidget):
         while self.table.rowCount() > self.MAX_ROWS:
             self.table.removeRow(0)
 
-        if self._auto_scroll:
+        if scroll and self._auto_scroll:
             self.table.scrollToBottom()
 
     def _refresh_table(self):
         """Rebuild table from full buffer applying filters."""
+        self._dirty = False
         self.table.setUpdatesEnabled(False)
         try:
             self.table.setRowCount(0)
             for d in self._all_entries:
                 if self._row_visible(d):
-                    self._append_table_row(d)
+                    self._append_table_row(d, scroll=False)
         finally:
             self.table.setUpdatesEnabled(True)
+        if self._auto_scroll and self.table.rowCount() > 0:
+            self.table.scrollToBottom()
         self._update_count()
 
     def _update_count(self):
         total = len(self._all_entries)
         shown = self.table.rowCount()
         if shown == total:
-            self.count_label.setText(f"{total} entries")
+            self.count_label.setText(f"{total} entrée(s)")
         else:
-            self.count_label.setText(f"{shown} / {total} entries")
+            self.count_label.setText(f"{shown} / {total} entrée(s)")
 
     # ------------------------------------------------------------------
     # Public API
@@ -445,8 +476,8 @@ class LogMonitorWidget(QWidget):
 
     def export_logs(self):
         path, _ = QFileDialog.getSaveFileName(
-            self, "Export Logs", "transformer_logs.txt",
-            "Text files (*.txt);;CSV files (*.csv);;All files (*)"
+            self, "Exporter le journal", "transformer_logs.txt",
+            "Fichiers texte (*.txt);;Fichiers CSV (*.csv);;Tous les fichiers (*)"
         )
         if not path:
             return
@@ -466,7 +497,7 @@ class LogMonitorWidget(QWidget):
                     ]
                     fh.write(sep.join(row) + "\n")
         except Exception as exc:
-            QMessageBox.warning(self, "Export failed", str(exc))
+            QMessageBox.warning(self, "Échec de l'export", str(exc))
 
     def replay_buffer(self, buffer):
         """Replay a list of LogEntry objects (e.g., on dock attach)."""
@@ -474,4 +505,9 @@ class LogMonitorWidget(QWidget):
             d = self._entry_to_dict(entry)
             self._all_entries.append(d)
         self._enforce_buffer_cap()
-        self._refresh_table()
+        if self.isVisible() and not self._paused:
+            self._dirty = False
+            self._refresh_table()
+        else:
+            self._dirty = True
+            self._update_count()

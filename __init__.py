@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Youcef ADDA | GEODECI | https://geodeci.xyz/ | youcef.geodesien@gmail.com
 """QGIS Transformer Plugin
 
 Vector file transformation w/ calculated fields.
@@ -16,10 +17,10 @@ if plugin_dir not in sys.path:
 def classFactory(iface):
     """
     Factory func for plugin init.
-    
+
     Args:
         iface: QGIS iface instance
-        
+
     Returns:
         TransformerPlugin: Plugin instance
     """
@@ -28,7 +29,7 @@ def classFactory(iface):
 
 
 # Plugin meta
-__version__ = "3.0.0"
+__version__ = "3.3.0"
 __author__ = "yadda"
 __email__ = "youcef.geodesien@gmail.com"
-__description__ = "QGIS attribute manager for vector layers with calculated fields"
+__description__ = "Atelier de recettes vectorielles pour QGIS 3.40 - 4.x (Qt 5 / Qt 6)"

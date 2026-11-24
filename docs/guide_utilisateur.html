@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Transformer · Guide &amp; Tutoriel pas à pas</title>
+<style>
+:root{
+  --bg:#0b0f19;--surf:#131926;--card:#1b2334;--bdr:#2a354d;
+  --ac:#38bdf8;--ac2:#0284c7;--ag:rgba(56,189,248,.12);
+  --or:#f97316;--og:rgba(249,115,22,.12);
+  --gr:#2ed573;--am:#ffab00;--rd:#ff4757;
+  --tx:#f1f5f9;--mt:#94a3b8;
+  --mono:'Cascadia Mono','Consolas',monospace;
+  --sans:'Segoe UI',system-ui,-apple-system,sans-serif;
+  --nw:236px;--r:8px
+}
+[data-theme="light"]{
+  --bg:#f8fafc;--surf:#f1f5f9;--card:#ffffff;--bdr:#cbd5e1;
+  --ac:#0284c7;--ac2:#0369a1;--ag:rgba(2,132,199,.10);
+  --or:#ea580c;--og:rgba(234,88,12,.10);
+  --gr:#15803d;--am:#b45309;--rd:#dc2626;
+  --tx:#0f172a;--mt:#475569;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;font-size:15px}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);line-height:1.65;display:flex;min-height:100vh}
+/* SCROLL PROGRESS */
+.scroll-progress{position:fixed;top:0;left:var(--nw);right:0;height:3px;background:transparent;z-index:200;pointer-events:none}
+.scroll-progress::after{content:'';display:block;height:100%;width:var(--p,0%);background:linear-gradient(90deg,var(--ac),var(--or));transition:width .1s linear}
+/* NAV */
+nav{position:fixed;top:0;left:0;width:var(--nw);height:100vh;background:var(--surf);border-right:1px solid var(--bdr);display:flex;flex-direction:column;z-index:100;overflow-y:auto}
+.nb{padding:18px 18px 14px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;gap:8px}
+.nb .lg{font-family:var(--mono);font-size:1.08rem;font-weight:700;color:var(--ac);display:flex;align-items:center;gap:8px}
+.nb .vr{font-size:.68rem;color:var(--mt);margin-top:2px;font-family:var(--mono)}
+.theme-btn{background:var(--card);border:1px solid var(--bdr);color:var(--tx);border-radius:6px;padding:5px 9px;font-size:.72rem;font-weight:600;cursor:pointer;transition:border-color .15s,background .15s}
+.theme-btn:hover{border-color:var(--ac);background:var(--ag)}
+.nst{display:flex;align-items:center;gap:7px;padding:8px 18px;background:var(--ag);border-bottom:1px solid var(--bdr);font-size:.68rem;color:var(--ac);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ac);flex-shrink:0}
+nav ul{list-style:none;padding:8px 0;flex:1}
+nav ul li a{display:flex;align-items:center;gap:9px;padding:8px 18px;color:var(--mt);text-decoration:none;font-size:.8rem;font-weight:500;transition:all .15s;border-left:3px solid transparent}
+nav ul li a:hover,nav ul li a.active{color:var(--tx);background:var(--ag);border-left-color:var(--ac)}
+.nn{font-family:var(--mono);font-size:.66rem;color:var(--ac);width:18px;flex-shrink:0;font-weight:700}
+.nav-foot{padding:12px 18px;border-top:1px solid var(--bdr);font-size:.7rem;color:var(--mt);line-height:1.45}
+.nav-foot a{color:var(--ac);text-decoration:none}
+/* MAIN */
+main{margin-left:var(--nw);flex:1;max-width:920px;padding:0 40px 80px}
+/* HERO */
+.hero{position:relative;padding:44px 0 36px;border-bottom:1px solid var(--bdr);overflow:hidden}
+.hbadge{display:inline-flex;align-items:center;gap:6px;background:var(--ag);border:1px solid var(--ac2);border-radius:20px;padding:4px 12px;font-size:.69rem;font-weight:700;color:var(--ac);letter-spacing:.07em;text-transform:uppercase;margin-bottom:14px}
+.hero h1{font-size:2.2rem;font-weight:700;line-height:1.18;letter-spacing:-.02em;margin-bottom:12px}
+.hero h1 span{color:var(--ac)}
+.hero p{font-size:.98rem;color:var(--mt);max-width:660px;line-height:1.68}
+.hmeta{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:22px}
+.mi{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);padding:10px 14px}
+.mi .ml{font-size:.64rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mt);margin-bottom:2px}
+.mi .mv{font-family:var(--mono);font-size:.8rem;font-weight:600;color:var(--tx)}
+/* SEARCH */
+.search-wrap{margin:20px 0 6px;position:relative}
+.search-input{width:100%;background:var(--card);border:1.5px solid var(--bdr);border-radius:var(--r);padding:11px 40px 11px 14px;color:var(--tx);font-family:var(--sans);font-size:.88rem;transition:border-color .2s,box-shadow .2s}
+.search-input:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 3px var(--ag)}
+.search-input::placeholder{color:var(--mt)}
+.search-meta{font-size:.73rem;color:var(--ac);font-family:var(--mono);margin-top:6px;min-height:16px}
+/* SECTIONS */
+section{padding:40px 0 16px;border-bottom:1px solid var(--bdr)}
+section:last-of-type{border-bottom:none}
+.sh{display:flex;align-items:flex-start;gap:14px;margin-bottom:20px}
+.sn{font-family:var(--mono);font-size:2.1rem;font-weight:700;color:var(--ac);opacity:.45;line-height:1;flex-shrink:0;margin-top:2px}
+.stw h2{font-size:1.35rem;font-weight:700;letter-spacing:-.01em}
+.stw p{color:var(--mt);font-size:.85rem;margin-top:3px}
+h3{font-size:.98rem;margin:18px 0 8px;font-weight:600;color:var(--tx)}
+p{margin-bottom:.8em}p:last-child{margin-bottom:0}
+/* CHAIN */
+.chain{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:20px 0}
+.cn{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);padding:14px 10px;text-align:center;position:relative;transition:transform .2s,border-color .2s}
+.cn:hover{transform:translateY(-2px);border-color:var(--ac)}
+.cn.hi{border-color:var(--ac);background:var(--ag)}
+.cn-ico{width:30px;height:30px;margin:0 auto 8px;color:var(--ac)}
+.cn-ico svg{width:100%;height:100%;display:block}
+.cn .cl{font-size:.63rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mt);margin-bottom:3px}
+.cn .cn2{font-weight:600;font-size:.83rem;color:var(--tx)}
+/* CALLOUTS */
+.al{display:flex;gap:12px;padding:13px 16px;border-radius:var(--r);margin:14px 0;font-size:.83rem;line-height:1.58;border:1px solid}
+.al.i{background:var(--ag);border-color:var(--ac2);color:var(--tx)}
+.al.t{background:rgba(46,213,115,.08);border-color:rgba(46,213,115,.35);color:var(--tx)}
+.al.w{background:var(--og);border-color:var(--or);color:var(--tx)}
+.ai{font-weight:700;font-family:var(--mono);color:var(--ac);flex-shrink:0}
+.al.t .ai{color:var(--gr)}.al.w .ai{color:var(--or)}
+/* STEPS */
+.steps{counter-reset:st;margin:14px 0}
+.step{display:flex;gap:16px;padding:14px 0 14px 22px;border-left:2px solid var(--bdr);margin-left:12px;position:relative}
+.step::before{counter-increment:st;content:counter(st);position:absolute;left:-13px;top:15px;width:24px;height:24px;background:var(--card);border:2px solid var(--ac);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.7rem;font-weight:700;color:var(--ac)}
+.step.a::before{background:var(--ac);color:#0b0f19}
+.step h3{font-size:.94rem;font-weight:600;margin:0 0 4px}
+.step p{font-size:.83rem;color:var(--mt);line-height:1.6}
+/* CARDS GRID */
+.dg{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:16px 0}
+.dc{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);padding:16px;transition:border-color .2s,transform .2s}
+.dc:hover{border-color:var(--ac);transform:translateY(-2px)}
+.dh-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.dico{width:36px;height:36px;flex-shrink:0;color:var(--ac);background:var(--ag);border-radius:8px;padding:6px;display:flex;align-items:center;justify-content:center}
+.dico svg{width:100%;height:100%;display:block}
+.dt{font-size:.95rem;font-weight:600;color:var(--tx)}
+.ds{font-size:.74rem;color:var(--mt)}
+.db{font-size:.82rem;color:var(--mt);line-height:1.58}
+.db strong{color:var(--tx)}
+.eb{font-family:var(--mono);font-size:.68rem;font-weight:600;padding:2px 7px;border-radius:4px;background:var(--ag);color:var(--ac);border:1px solid var(--ac2);margin-left:auto}
+/* BEFORE / AFTER */
+.ba-box{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);padding:15px 17px;margin:13px 0}
+.ba-box h4{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--tx);margin-bottom:4px}
+.ba-sub{font-size:.78rem;color:var(--mt);margin-bottom:12px}
+.bag{display:grid;grid-template-columns:1fr 30px 1fr;gap:12px;align-items:stretch;font-family:var(--mono);font-size:.76rem}
+.bc{padding:12px;border-radius:6px;border:1px solid var(--bdr)}
+.bc.bef{background:rgba(255,71,87,.05);border-color:rgba(255,71,87,.3)}
+.bc.aft{background:rgba(46,213,115,.05);border-color:rgba(46,213,115,.3)}
+.ba-tag{display:inline-block;font-family:var(--sans);font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;padding:2px 7px;border-radius:3px;margin-bottom:6px}
+.bc.bef .ba-tag{background:var(--rd);color:#fff}
+.bc.aft .ba-tag{background:var(--gr);color:#0b0f19}
+.ba-arrow{display:flex;align-items:center;justify-content:center;color:var(--ac);font-size:1.3rem;font-weight:700}
+.bi{padding:3px 0;color:var(--tx);word-break:break-word}
+/* TABLES */
+table.std{width:100%;border-collapse:collapse;font-size:.81rem;margin:14px 0;background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);overflow:hidden}
+table.std th{background:var(--surf);color:var(--mt);font-weight:700;font-size:.69rem;text-transform:uppercase;letter-spacing:.06em;padding:9px 12px;text-align:left;border-bottom:1px solid var(--bdr)}
+table.std td{padding:9px 12px;border-bottom:1px solid var(--bdr);vertical-align:top;color:var(--tx)}
+table.std tr:last-child td{border-bottom:none}
+/* CODE & COPY */
+code,.ic{font-family:var(--mono);font-size:.82em;background:var(--surf);border:1px solid var(--bdr);padding:2px 6px;border-radius:4px;color:var(--ac);cursor:pointer;transition:background .15s,border-color .15s}
+code:hover{background:var(--ag);border-color:var(--ac)}
+code.copied{background:var(--gr)!important;border-color:var(--gr)!important;color:#0b0f19!important}
+/* GLOSSARY & FAQ */
+.dl{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.gi{background:var(--card);border:1px solid var(--bdr);border-radius:6px;padding:12px 14px}
+.gi dt{font-family:var(--mono);font-size:.8rem;font-weight:700;color:var(--ac);margin-bottom:4px}
+.gi dd{font-size:.8rem;color:var(--mt);line-height:1.55}
+.hidden{display:none!important}
+footer{margin-left:var(--nw);padding:24px 40px;border-top:1px solid var(--bdr);font-size:.76rem;color:var(--mt);line-height:1.6}
+footer a{color:var(--ac);text-decoration:none}
+@media(max-width:860px){
+  :root{--nw:0px}nav{display:none}
+  main,footer{margin-left:0;padding-left:18px;padding-right:18px}
+  .scroll-progress{left:0}
+  .hmeta,.chain,.dg,.bag,.dl{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="scroll-progress" id="sp"></div>
+<nav>
+  <div class="nb">
+    <div>
+      <div class="lg">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0"/><path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0"/><path d="M3 6v13"/><path d="M12 6v13"/><path d="M21 6v13"/></svg>
+        Transformer
+      </div>
+      <div class="vr">v3.3.0 · QGIS 3.40 - 4.x (Qt 5 / Qt 6)</div>
+    </div>
+    <button type="button" class="theme-btn" id="themeBtn" title="Basculer entre thème sombre et thème clair">Clair / Sombre</button>
+  </div>
+  <div class="nst"><span class="dot"></span>Guide tous publics &amp; SIG</div>
+  <ul>
+    <li><a href="#comprendre"><span class="nn">01</span>Comprendre en 30 s</a></li>
+    <li><a href="#tutoriel"><span class="nn">02</span>Tutoriel pas à pas</a></li>
+    <li><a href="#reperes"><span class="nn">03</span>Repères de l'écran</a></li>
+    <li><a href="#exemples"><span class="nn">04</span>Exemples Avant / Après</a></li>
+    <li><a href="#rejouer"><span class="nn">05</span>Enregistrer &amp; rejouer</a></li>
+    <li><a href="#formats"><span class="nn">06</span>Choisir le bon format</a></li>
+    <li><a href="#expressions"><span class="nn">07</span>Formules &amp; géométrie</a></li>
+    <li><a href="#postgresql"><span class="nn">08</span>Base PostgreSQL</a></li>
+    <li><a href="#faq"><span class="nn">09</span>Questions fréquentes</a></li>
+    <li><a href="#glossaire"><span class="nn">10</span>Glossaire &amp; contact</a></li>
+  </ul>
+  <div class="nav-foot">
+    <strong>Youcef ADDA | GEODECI</strong><br>
+    Astuce : cliquez sur une formule <code>code</code> pour la copier.<br>
+    <a href="https://geodeci.xyz/">geodeci.xyz</a>
+  </div>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="hbadge"><span class="dot"></span>Documentation interactive · Débutants &amp; Géomaticiens</div>
+  <h1>Transformer ·<br><span>Des données propres et prêtes à livrer</span></h1>
+  <p>Que vous soyez non-spécialiste ou géomaticien expérimenté, <strong>Transformer</strong> vous permet de nettoyer vos colonnes, filtrer vos lignes, adapter vos géométries, vérifier les changements <strong>Avant / Après</strong> et livrer un fichier fiable sans jamais altérer votre fichier d'origine.</p>
+  <div class="hmeta">
+    <div class="mi"><div class="ml">Garantie n°1</div><div class="mv">Source 100 % intacte</div></div>
+    <div class="mi"><div class="ml">Sans formule</div><div class="mv">Nettoyage &amp; filtre guidés</div></div>
+    <div class="mi"><div class="ml">Contrôle visuel</div><div class="mv">Tableau Avant / Après</div></div>
+    <div class="mi"><div class="ml">Réutilisable</div><div class="mv">Recettes rejouables</div></div>
+  </div>
+  <div class="search-wrap">
+    <input type="search" id="docSearch" class="search-input" placeholder="Rechercher dans le guide (ex. majuscules, filtre, Excel, GeoPackage, projection, PostgreSQL)…" aria-label="Rechercher dans la documentation">
+    <div class="search-meta" id="searchMeta"></div>
+  </div>
+</header>
+
+<section id="comprendre" class="searchable-sec">
+  <div class="sh"><div class="sn">01</div><div class="stw"><h2>Comprendre Transformer en 30 secondes</h2><p>Pourquoi utiliser ce plugin plutôt que de modifier directement ses fichiers ?</p></div></div>
+  <p>Lorsqu'on reçoit un fichier (tableau Excel/CSV, couche Shapefile, GeoPackage ou export métier), il contient souvent des <strong>espaces invisibles</strong>, des <strong>noms de colonnes mal orthographiés</strong>, des <strong>cases vides</strong> ou des <strong>lignes inutiles</strong>. Le modifier directement comporte deux risques : perdre une donnée d'origine par erreur, et devoir tout recommencer manuellement la semaine suivante sur un nouveau fichier.</p>
+  <p><strong>Transformer</strong> fonctionne comme un atelier sécurisé en 5 étapes simples :</p>
+  <div class="chain">
+    <div class="cn">
+      <div class="cn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4.5l-8 4.5l-8 -4.5l8 -4.5"/><path d="M20 12l-8 4.5l-8 -4.5"/><path d="M20 16.5l-8 4.5l-8 -4.5"/></svg></div>
+      <div class="cl">Étape 1</div><div class="cn2">Choisir l'entrée</div>
+    </div>
+    <div class="cn">
+      <div class="cn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h14"/></svg></div>
+      <div class="cl">Étape 2</div><div class="cn2">Nettoyer &amp; Filtrer</div>
+    </div>
+    <div class="cn hi">
+      <div class="cn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9 12l2 2l4 -4"/></svg></div>
+      <div class="cl">Étape 3</div><div class="cn2">Comparer Avant/Après</div>
+    </div>
+    <div class="cn">
+      <div class="cn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="7 4 20 12 7 20 7 4"/></svg></div>
+      <div class="cl">Étape 4</div><div class="cn2">Créer le résultat</div>
+    </div>
+    <div class="cn">
+      <div class="cn-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/><path d="M12 11v6"/><path d="M9.5 14.5l2.5 2.5l2.5 -2.5"/></svg></div>
+      <div class="cl">Étape 5</div><div class="cn2">Livrer le fichier</div>
+    </div>
+  </div>
+  <div class="al t"><span class="ai">✓</span><div><strong>Règle d'or de sécurité :</strong> votre couche ou fichier de départ n'est <strong>jamais modifié</strong>. Vous pouvez essayer, comparer et annuler librement : seul le nouveau résultat créé à l'étape 4 porte vos transformations.</div></div>
+</section>
+
+<section id="tutoriel" class="searchable-sec">
+  <div class="sh"><div class="sn">02</div><div class="stw"><h2>Tutoriel pas à pas (aucune connaissance technique requise)</h2><p>Réalisez votre première préparation complète en moins de 2 minutes</p></div></div>
+  <div class="steps">
+    <div class="step a searchable-item">
+      <div>
+        <h3>Choisir vos données de départ</h3>
+        <p>À l'ouverture de Transformer, la couche active de votre projet QGIS est déjà sélectionnée dans le panneau gauche <strong>Mes données</strong>. Si votre fichier n'est pas encore dans QGIS, cliquez simplement sur le bouton <strong>Ajouter des données…</strong> (en haut à gauche ou dans le bandeau d'accès rapide) et choisissez votre fichier (<code>.gpkg</code>, <code>.shp</code>, <code>.geojson</code>, <code>.csv</code>, <code>.tab</code>).</p>
+      </div>
+    </div>
+    <div class="step a searchable-item">
+      <div>
+        <h3>Nettoyer une colonne de texte sans écrire de formule</h3>
+        <p>Dans le bandeau bleu <strong>Accès rapide</strong> en haut de l'écran, cliquez sur <strong>Nettoyer texte</strong>. Un encadré s'ouvre : choisissez la <strong>Colonne</strong> (par exemple <code>commune</code> ou <code>identifiant</code>), choisissez le <strong>Changement</strong> souhaité (<em>Retirer les espaces autour</em>, <em>Mettre en majuscules</em>, <em>Mettre en minuscules</em> ou <em>Compléter les textes vides</em>), puis cliquez sur <strong>Appliquer à cette colonne</strong>. Si vous changez d'avis, cliquez sur <strong>Annuler ce changement</strong>.</p>
+      </div>
+    </div>
+    <div class="step searchable-item">
+      <div>
+        <h3>Supprimer ou renommer une colonne inutile</h3>
+        <p>Dans le tableau <strong>Colonnes du résultat</strong> : cliquez sur une colonne que vous ne voulez pas livrer puis cliquez sur <strong>Exclure</strong> (elle sera absente du fichier final, mais reste intacte dans votre fichier source). Pour renommer une colonne ou changer son type (Texte, Nombre entier, Nombre décimal, Date), double-cliquez dessus ou cliquez sur <strong>Définir…</strong>.</p>
+      </div>
+    </div>
+    <div class="step searchable-item">
+      <div>
+        <h3>Garder uniquement les lignes qui vous intéressent (Filtre)</h3>
+        <p>Cliquez sur l'onglet <strong>Lignes</strong> (ou sur le raccourci <strong>Filtrer lignes</strong>). Choisissez la colonne dans <em>Garder les lignes dont</em>, choisissez la condition (<em>est égal à</em>, <em>contient le texte</em>, <em>n'est pas renseigné</em>, <em>est supérieur à</em>), tapez la valeur recherchée et cliquez sur <strong>Appliquer cette condition</strong>.</p>
+      </div>
+    </div>
+    <div class="step a searchable-item">
+      <div>
+        <h3>Vérifier ce qui va changer avec « Comparer »</h3>
+        <p>Cliquez sur le bouton bleu <strong>Comparer les changements</strong> en bas à droite (ou dans la barre du haut). L'onglet <strong>Comparer</strong> s'ouvre et affiche jusqu'à 50 lignes de votre fichier avec, pour chaque colonne, la valeur <strong>Avant</strong> et la valeur <strong>Après</strong>. Chaque valeur modifiée est signalée par une icône orange pour que vous puissiez vérifier votre travail d'un seul coup d'œil.</p>
+      </div>
+    </div>
+    <div class="step a searchable-item">
+      <div>
+        <h3>Créer le résultat puis livrer votre fichier</h3>
+        <p>Une fois l'aperçu vérifié, le bouton principal en bas à droite devient <strong>Créer le résultat</strong> : cliquez dessus. Votre nouvelle couche propre est créée ! Cliquez ensuite sur <strong>Choisir comment livrer</strong> (ou sur l'onglet <strong>Livrer</strong> en haut), choisissez le format (<strong>GeoPackage</strong> est recommandé), choisissez où enregistrer avec <strong>Parcourir…</strong>, puis cliquez sur <strong>Créer le fichier</strong>. Une fois terminé, cliquez sur <strong>Ouvrir dans QGIS</strong> si vous souhaitez l'afficher sur la carte.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="reperes" class="searchable-sec">
+  <div class="sh"><div class="sn">03</div><div class="stw"><h2>Les repères de l'écran expliqués simplement</h2><p>Chaque zone a un rôle unique et prévisible</p></div></div>
+  <div class="dg">
+    <div class="dc searchable-item">
+      <div class="dh-top">
+        <div class="dico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4.5l-8 4.5l-8 -4.5l8 -4.5"/><path d="M20 12l-8 4.5l-8 -4.5"/></svg></div>
+        <div><div class="dt">Panneau gauche : Mes données</div><div class="ds">Vos couches ouvertes et vos préparations enregistrées</div></div>
+      </div>
+      <div class="db">Affiche toutes les couches vectorielles de QGIS avec une icône indiquant leur nature (point, ligne, polygone ou table sans géométrie) ainsi que vos <strong>préparations enregistrées</strong> (icône d'engrenage).</div>
+    </div>
+    <div class="dc searchable-item">
+      <div class="dh-top">
+        <div class="dico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01"/><path d="M11 12h1v4h1"/></svg></div>
+        <div><div class="dt">Bandeau d'accès rapide</div><div class="ds">Vos raccourcis en 1 clic en haut de l'atelier</div></div>
+      </div>
+      <div class="db">Apparaît en haut des étapes de préparation pour ouvrir directement <strong>Nettoyer texte</strong>, <strong>Filtrer lignes</strong>, <strong>Géométrie / SCR</strong> ou lancer <strong>Comparer</strong>. Il s'efface tout seul sur l'écran de comparaison pour libérer toute la hauteur.</div>
+    </div>
+    <div class="dc searchable-item">
+      <div class="dh-top">
+        <div class="dico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="10" x2="9" y2="20"/></svg></div>
+        <div><div class="dt">Les 5 onglets de l'atelier</div><div class="ds">Colonnes · Lignes · Géométrie · Comparer · Résultats</div></div>
+      </div>
+      <div class="db">Vous n'êtes jamais obligé de remplir les 5 onglets : utilisez uniquement ceux dont vous avez besoin. Si votre entrée est un simple tableau sans carte (CSV/Excel), l'onglet <strong>Géométrie</strong> se désactive automatiquement.</div>
+    </div>
+    <div class="dc searchable-item">
+      <div class="dh-top">
+        <div class="dico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/></svg></div>
+        <div><div class="dt">Onglets supérieurs : Préparer · Livrer · PostgreSQL</div><div class="ds">Du réglage jusqu'à la livraison finale</div></div>
+      </div>
+      <div class="db"><strong>Préparer</strong> construit et vérifie votre résultat ; <strong>Livrer</strong> crée un fichier sur votre ordinateur en contrôlant l'encodage et les types ; <strong>PostgreSQL</strong> publie vers une base de données d'entreprise.</div>
+    </div>
+  </div>
+</section>
+
+<section id="exemples" class="searchable-sec">
+  <div class="sh"><div class="sn">04</div><div class="stw"><h2>Exemples concrets Avant / Après</h2><p>Ce que Transformer résout au quotidien</p></div></div>
+
+  <div class="ba-box searchable-item">
+    <h4>Cas n°1 : Harmoniser des identifiants ou des noms de communes</h4>
+    <div class="ba-sub">Action utilisée : <strong>Nettoyer texte</strong> &rarr; <em>Retirer les espaces autour</em> puis <em>Mettre en majuscules</em></div>
+    <div class="bag">
+      <div class="bc bef">
+        <span class="ba-tag">Avant (Fichier reçu)</span>
+        <div class="bi">"  saint-éloi  "</div>
+        <div class="bi">" n-00142 "</div>
+      </div>
+      <div class="ba-arrow">&rarr;</div>
+      <div class="bc aft">
+        <span class="ba-tag">Après (Résultat livré)</span>
+        <div class="bi">"SAINT-ÉLOI"</div>
+        <div class="bi">"N-00142"</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ba-box searchable-item">
+    <h4>Cas n°2 : Remplacer les cellules vides avant une livraison client</h4>
+    <div class="ba-sub">Action utilisée : <strong>Nettoyer texte</strong> &rarr; <em>Compléter les textes vides</em> avec <code>Non renseigné</code></div>
+    <div class="bag">
+      <div class="bc bef">
+        <span class="ba-tag">Avant (Valeurs manquantes)</span>
+        <div class="bi">état = NULL (vide)</div>
+        <div class="bi">état = "   " (espaces)</div>
+      </div>
+      <div class="ba-arrow">&rarr;</div>
+      <div class="bc aft">
+        <span class="ba-tag">Après (Texte propre)</span>
+        <div class="bi">état = "Non renseigné"</div>
+        <div class="bi">état = "Non renseigné"</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ba-box searchable-item">
+    <h4>Cas n°3 : Transformer des parcelles (polygones) en points ou en zones de sécurité</h4>
+    <div class="ba-sub">Action utilisée : onglet <strong>Géométrie</strong> &rarr; <em>Représenter chaque objet par un point</em> ou <em>Créer une zone autour de chaque objet</em></div>
+    <div class="bag">
+      <div class="bc bef">
+        <span class="ba-tag">Avant (Entrée EPSG:2154)</span>
+        <div class="bi">Polygone d'emprise du chantier</div>
+        <div class="bi">Coordonnées en Lambert-93 (mètres)</div>
+      </div>
+      <div class="ba-arrow">&rarr;</div>
+      <div class="bc aft">
+        <span class="ba-tag">Après (Calcul puis reprojection)</span>
+        <div class="bi">Point central (centroïde) ou zone tampon de 25 m</div>
+        <div class="bi">Converti proprement vers le SCR cible choisi</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="rejouer" class="searchable-sec">
+  <div class="sh"><div class="sn">05</div><div class="stw"><h2>Enregistrer une préparation (Recette) et la rejouer</h2><p>Faites le travail une seule fois, réutilisez-le chaque semaine</p></div></div>
+  <p>Dans Transformer, l'ensemble de vos réglages (colonnes gardées, renommages, nettoyages, filtre, géométrie, système de coordonnées et fichier de sortie) s'appelle une <strong>Préparation</strong> (ou <strong>Recette</strong>).</p>
+  <ul class="steps">
+    <div class="step searchable-item">
+      <div>
+        <h3>Enregistrer votre préparation</h3>
+        <p>Donnez un nom clair dans le champ <strong>Préparation</strong> en haut (par exemple <code>Livraison_Mensuelle_Voirie</code>) puis cliquez sur <strong>Enregistrer la préparation</strong> en bas (ou <code>Ctrl+S</code>). Elle apparaît aussitôt dans le panneau gauche <strong>Mes données</strong>.</p>
+      </div>
+    </div>
+    <div class="step searchable-item">
+      <div>
+        <h3>Changer de fichier le mois suivant (« Changer de données… »)</h3>
+        <p>Lorsque vous recevez un nouveau fichier ayant les mêmes colonnes, sélectionnez votre préparation enregistrée à gauche puis cliquez sur <strong>Changer de données…</strong> (ou clic droit &rarr; <strong>Relier une livraison…</strong>). Choisissez la nouvelle couche : Transformer vérifie automatiquement que toutes les colonnes requises sont présentes, vous signale toute différence et rejoue tout le traitement en un clic !</p>
+      </div>
+    </div>
+    <div class="step searchable-item">
+      <div>
+        <h3>Partager vos préparations avec un collègue</h3>
+        <p>Dans la barre du haut, cliquez sur <strong>Outils &rarr; Exporter les recettes…</strong> pour enregistrer un fichier <code>.json</code> contenant vos préparations. Votre collègue n'aura plus qu'à cliquer sur <strong>Importer…</strong> (<code>Ctrl+O</code>) pour retrouver exactement vos règles.</p>
+      </div>
+    </div>
+  </ul>
+</section>
+
+<section id="formats" class="searchable-sec">
+  <div class="sh"><div class="sn">06</div><div class="stw"><h2>Choisir le bon format de livraison</h2><p>Quel format choisir dans l'onglet « Livrer » selon votre destinataire ?</p></div></div>
+  <table class="std">
+    <thead>
+      <tr><th>Format</th><th>Extension</th><th>Formes (Carte)</th><th>Quand le choisir et points d'attention</th></tr>
+    </thead>
+    <tbody>
+      <tr class="searchable-item"><td><strong>GeoPackage (recommandé)</strong></td><td><code>.gpkg</code></td><td>Oui</td><td><strong>Le meilleur choix moderne pour QGIS et les SIG.</strong> Un seul fichier, pas de limite de longueur sur les noms de colonnes, conserve les accents (UTF-8) et les types exacts.</td></tr>
+      <tr class="searchable-item"><td><strong>GeoJSON</strong></td><td><code>.geojson</code></td><td>Oui</td><td>Idéal pour les échanges web et les applications cartographiques légères. Un seul fichier texte lisible en UTF-8.</td></tr>
+      <tr class="searchable-item"><td><strong>Classeur Excel / CSV</strong></td><td><code>.xlsx</code> / <code>.csv</code></td><td>Non (table)</td><td>Parfait pour envoyer un tableau de chiffres et de textes à un destinataire qui n'utilise pas de logiciel de cartographie.</td></tr>
+      <tr class="searchable-item"><td><strong>Shapefile</strong></td><td><code>.shp</code></td><td>Oui</td><td>Format ancien très répandu mais contraignant : produit plusieurs fichiers inséparables (<code>.shp</code>, <code>.dbf</code>, <code>.shx</code>, <code>.prj</code>), <strong>tronque les noms de colonnes à 10 caractères</strong> et limite les textes à 254 octets. Transformer vous avertit <em>avant</em> l'écriture si un champ dépasse ces limites !</td></tr>
+      <tr class="searchable-item"><td><strong>MapInfo TAB</strong></td><td><code>.tab</code></td><td>Oui</td><td>Pour les partenaires travaillant sous MapInfo. Conserver ensemble tous les fichiers associés produits.</td></tr>
+      <tr class="searchable-item"><td><strong>Dessin DXF / KML / GML / FlatGeobuf</strong></td><td><code>.dxf</code>, <code>.kml</code>, <code>.fgb</code></td><td>Oui</td><td><strong>DXF</strong> pour les logiciels de CAO/DAO (AutoCAD) ; <strong>KML</strong> pour Google Earth ; <strong>FlatGeobuf</strong> pour les très gros volumes rapides.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="expressions" class="searchable-sec">
+  <div class="sh"><div class="sn">07</div><div class="stw"><h2>Coin des géomaticiens : formules QGIS, géométrie et SCR</h2><p>Cliquez sur n'importe quelle formule pour la copier dans votre presse-papiers</p></div></div>
+  <p>En cliquant sur le bouton <strong>Expression avancée</strong> en bas de l'onglet <strong>Colonnes</strong>, vous accédez au constructeur d'expressions natif de QGIS sur la même préparation que les outils guidés.</p>
+  <table class="std">
+    <thead>
+      <tr><th>Besoin métier</th><th>Expression QGIS (cliquer pour copier)</th><th>Explication</th></tr>
+    </thead>
+    <tbody>
+      <tr class="searchable-item"><td>Majuscules sans espaces autour</td><td><code>upper(trim("nom_colonne"))</code></td><td>Retire les espaces au début/fin puis convertit en majuscules.</td></tr>
+      <tr class="searchable-item"><td>Assembler deux colonnes</td><td><code>concat("commune", ' - ', "code_insee")</code></td><td>Combine plusieurs champs avec un séparateur (gère les valeurs NULL proprement).</td></tr>
+      <tr class="searchable-item"><td>Valeur par défaut si NULL</td><td><code>coalesce("observation", 'RAS')</code></td><td>Renvoie la première valeur non nulle.</td></tr>
+      <tr class="searchable-item"><td>Arrondir une mesure décimale</td><td><code>round("longueur_m", 2)</code></td><td>Arrondit à 2 chiffres après la virgule.</td></tr>
+      <tr class="searchable-item"><td>Calculer la surface ou longueur</td><td><code>round(area($geometry), 2)</code> / <code>round(length($geometry), 2)</code></td><td>Calcule la surface (m²) ou la longueur (m) dans les unités du SCR source.</td></tr>
+      <tr class="searchable-item"><td>Centroïde (polygone &rarr; point)</td><td><code>centroid($geometry)</code></td><td>À saisir dans l'étape <strong>Géométrie</strong> : remplace chaque polygone par son centre.</td></tr>
+      <tr class="searchable-item"><td>Zone tampon (buffer)</td><td><code>buffer($geometry, 25)</code></td><td>Crée une zone de 25 unités autour de chaque géométrie (exige un SCR métrique comme EPSG:2154).</td></tr>
+      <tr class="searchable-item"><td>Simplifier une géométrie lourde</td><td><code>simplify($geometry, 1.0)</code></td><td>Allège le nombre de sommets avec une tolérance de 1 mètre.</td></tr>
+    </tbody>
+  </table>
+  <div class="al w"><span class="ai">!</span><div><strong>Ordre géométrique garanti :</strong> l'expression géométrique est toujours évaluée dans le <strong>système de coordonnées (SCR) de la source</strong>, puis la géométrie obtenue est reprojetée vers le SCR de sortie choisi. Si votre couche source est en degrés (WGS84 / EPSG:4326), un tampon (<code>buffer</code>) en degrés est bloqué pour éviter toute erreur d'échelle.</div></div>
+</section>
+
+<section id="postgresql" class="searchable-sec">
+  <div class="sh"><div class="sn">08</div><div class="stw"><h2>Publication PostgreSQL / PostGIS en toute sécurité</h2><p>Analyse sans écriture, correspondance des colonnes et transaction atomique</p></div></div>
+  <div class="dg">
+    <div class="dc searchable-item">
+      <div class="dh-top"><div class="dt">1. Analyse 100 % non destructive</div><span class="eb">LECTURE SEULE</span></div>
+      <div class="db">Lorsque vous lancez l'analyse vers PostgreSQL, Transformer inspecte les schémas, tables, types et SRID existants <strong>sans jamais créer, modifier ni vider aucune table</strong> avant votre confirmation explicite.</div>
+    </div>
+    <div class="dc searchable-item">
+      <div class="dh-top"><div class="dt">2. Remplacement transactionnel (Rollback)</div><span class="eb">ATOMIQUE</span></div>
+      <div class="db">En mode <strong>Remplacer les données</strong>, la suppression des anciennes lignes et l'insertion des nouvelles partagent la <strong>même transaction SQL</strong> : si une seule ligne échoue ou si vous annulez, PostgreSQL restaure intégralement les anciennes données.</div>
+    </div>
+  </div>
+  <div class="al i"><span class="ai">i</span><div><strong>Protection des mots de passe :</strong> Transformer s'appuie sur le coffre d'authentification natif de QGIS (<code>authcfg</code>). Aucun mot de passe n'est jamais écrit en clair dans vos recettes JSON, vos fichiers de profils, vos journaux ou vos diagnostics.</div></div>
+</section>
+
+<section id="faq" class="searchable-sec">
+  <div class="sh"><div class="sn">09</div><div class="stw"><h2>Questions fréquentes &amp; dépannage</h2><p>Réponses immédiates aux situations courantes</p></div></div>
+  <div class="dl">
+    <div class="gi searchable-item">
+      <dt>Mon fichier d'origine peut-il être écrasé par erreur ?</dt>
+      <dd>Non. Le calcul produit toujours une nouvelle couche indépendante dans QGIS, et l'export fichier vérifie d'abord tout le contenu dans un fichier temporaire avant de vous demander confirmation si le fichier de destination existe déjà.</dd>
+    </div>
+    <div class="gi searchable-item">
+      <dt>Pourquoi l'onglet « Géométrie » est-il parfois grisé ?</dt>
+      <dd>Lorsque votre source est un tableau pur sans carte (par exemple un fichier CSV ou Excel sans coordonnées), l'onglet Géométrie se désactive automatiquement tout en vous laissant nettoyer et filtrer toutes vos colonnes.</dd>
+    </div>
+    <div class="gi searchable-item">
+      <dt>Que signifie « Modifiée · Contrôle à actualiser » ?</dt>
+      <dd>Cela indique que vous avez changé une règle depuis votre dernier clic sur <strong>Comparer</strong>. Cliquez sur <strong>Comparer les changements</strong> pour mettre à jour l'aperçu Avant/Après.</dd>
+    </div>
+    <div class="gi searchable-item">
+      <dt>Pourquoi un export Shapefile est-il refusé avant l'écriture ?</dt>
+      <dd>Le format Shapefile refuse les noms de colonnes de plus de 10 octets ou les textes dépassant 254 octets. Choisissez le format <strong>GeoPackage</strong> dans l'onglet <em>Livrer</em> ou raccourcissez le nom du champ indiqué dans le message.</dd>
+    </div>
+  </div>
+</section>
+
+<section id="glossaire" class="searchable-sec">
+  <div class="sh"><div class="sn">10</div><div class="stw"><h2>Petit glossaire sans jargon &amp; Support</h2><p>Les mots techniques traduits en français de tous les jours</p></div></div>
+  <div class="dl">
+    <div class="gi searchable-item"><dt>Couche (Layer)</dt><dd>Un jeu de données affiché dans QGIS (par exemple la carte des communes, des réseaux ou un simple tableau).</dd></div>
+    <div class="gi searchable-item"><dt>Colonne / Champ / Attribut</dt><dd>Une colonne d'information dans votre tableau (ex. <code>nom</code>, <code>date_visite</code>, <code>longueur</code>).</dd></div>
+    <div class="gi searchable-item"><dt>Ligne / Objet / Entité</dt><dd>Un enregistrement individuel de votre couche (par exemple un bâtiment, un tronçon de route ou une ligne de tableau).</dd></div>
+    <div class="gi searchable-item"><dt>SCR (Système de Coordonnées)</dt><dd>Le référentiel qui indique comment les coordonnées sont mesurées : par exemple <code>EPSG:2154</code> (Lambert-93, en mètres pour la France) ou <code>EPSG:4326</code> (GPS WGS84, en degrés).</dd></div>
+    <div class="gi searchable-item"><dt>Valeur NULL</dt><dd>Une case véritablement vide (absence de donnée), distincte du chiffre <code>0</code> ou d'un texte contenant des espaces.</dd></div>
+    <div class="gi searchable-item"><dt>Préparation / Recette</dt><dd>Vos réglages enregistrés sous un nom pour pouvoir refaire exactement le même traitement sur un prochain fichier en un clic.</dd></div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <strong>Youcef ADDA | GEODECI</strong> | <a href="https://geodeci.xyz/">https://geodeci.xyz/</a> | <a href="mailto:youcef.geodesien@gmail.com">youcef.geodesien@gmail.com</a>
+</footer>
+
+<script>
+(function(){
+  const sp = document.getElementById('sp');
+  window.addEventListener('scroll', () => {
+    const h = document.documentElement;
+    const max = Math.max(1, h.scrollHeight - h.clientHeight);
+    sp.style.setProperty('--p', Math.min(100, Math.round((h.scrollTop / max) * 100)) + '%');
+  }, {passive: true});
+
+  const themeBtn = document.getElementById('themeBtn');
+  if (themeBtn) {
+    themeBtn.addEventListener('click', () => {
+      const root = document.documentElement;
+      const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+      if (next === 'light') root.setAttribute('data-theme', 'light');
+      else root.removeAttribute('data-theme');
+    });
+  }
+
+  document.querySelectorAll('code').forEach(el => {
+    el.title = 'Cliquer pour copier';
+    el.addEventListener('click', () => {
+      if (navigator.clipboard) navigator.clipboard.writeText(el.textContent.trim());
+      el.classList.add('copied');
+      setTimeout(() => el.classList.remove('copied'), 900);
+    });
+  });
+
+  const input = document.getElementById('docSearch');
+  const meta = document.getElementById('searchMeta');
+  const items = Array.from(document.querySelectorAll('.searchable-item'));
+  if (input) {
+    function filterDoc() {
+      const q = input.value.toLowerCase().trim();
+      let shown = 0;
+      items.forEach(item => {
+        const match = !q || item.textContent.toLowerCase().includes(q);
+        item.classList.toggle('hidden', !match);
+        if (match) shown++;
+      });
+      meta.textContent = q ? (shown + ' bloc(s) correspondent à « ' + input.value.trim() + ' »') : '';
+    }
+    input.addEventListener('input', filterDoc);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { input.value = ''; filterDoc(); }
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+        e.preventDefault();
+        input.focus();
+      }
+    });
+  }
+
+  const links = Array.from(document.querySelectorAll('nav ul li a'));
+  const secs = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  window.addEventListener('scroll', () => {
+    const pos = window.scrollY + 120;
+    let active = secs[0];
+    for (const s of secs) {
+      if (s.offsetTop <= pos) active = s;
+    }
+    links.forEach(a => a.classList.toggle('active', active && a.getAttribute('href') === '#' + active.id));
+  }, {passive: true});
+})();
+</script>
+</body>
+</html>

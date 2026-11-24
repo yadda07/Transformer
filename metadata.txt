@@ -1,10 +1,10 @@
 ; QGIS Plugin Configuration
 [general]
 name=Transformer
-qgisMinimumVersion=3.44
-description=Controlled QGIS attribute manager for vector layers: precise fields, smart filters, repeatable JSON configurations, export, and PostgreSQL publishing.
-version=3.0.0
-author=Yadda
+qgisMinimumVersion=3.40
+description=Controlled vector and tabular data preparation workbench for QGIS (3.40 to 4.x, Qt 5 / Qt 6): guided cleaning without formulas, strict filters, geometry rules, Before/After comparison, replayable recipes, native Processing algorithms, and file or PostgreSQL/PostGIS delivery.
+version=3.3.0
+author=Youcef ADDA
 email=youcef.geodesien@gmail.com
 
 ; Bug tracker URL (required for publication)
@@ -16,15 +16,19 @@ repository=https://github.com/yadda07/Transformer
 ; Homepage (optional)
 homepage=https://geodeci.xyz/
 
-about=Transformer is a focused QGIS attribute manager for enterprise vector data preparation (v3.0.0).
-    It turns project layers into controlled, repeatable data products with native QGIS expressions, smart filters, JSON configurations, export, and PostgreSQL publishing.
-    The interface is designed around clear decisions: select the source, shape fields, validate rules, and publish with visible operational feedback.
+icon=logo.png
+
+about=Transformer is a controlled vector and tabular data preparation workbench for QGIS 3.40 LTR (Qt 5) through QGIS 4.x (Qt 6). It lets both non-specialists and GIS professionals clean attributes, filter features, apply geometry expressions before reprojection, inspect Before/After diffs, save replayable JSON recipes, run native QGIS Processing algorithms (Graphical Modeler, batch, qgis_process) or the headless Python API (Transfomer.api), and deliver verified multi-format files or transactional PostgreSQL/PostGIS updates without ever modifying source layers.
+    Atelier de préparation vectorielle et tabulaire QGIS (3.40 LTR à 4.x, Qt 5 / Qt 6) : nettoyage et filtrage guidés sans formule, expressions QGIS natives, comparaison Avant/Après, recettes rejouables, fournisseur Processing natif, API Python headless, guide HTML interactif en dock QGIS, export multi-formats contrôlé et publication PostgreSQL transactionnelle.
+    Verified on QGIS 3.40.15 LTR (Qt 5.15) and QGIS 4.2.1 (Qt 6.11).
+    Youcef ADDA | GEODECI | https://geodeci.xyz/ | youcef.geodesien@gmail.com
 
 ; Tags separated by commas
-tags=vector,transformation,calculated fields,data processing,geojson,geopackage,kml,shapefile,export,postgresql
+tags=vector,transformation,calculated fields,data processing,cleaning,filter,geojson,geopackage,kml,shapefile,export,postgresql,postgis,etl
 
 ; Plugin category
 category=Vector
+hasProcessingProvider=yes
 
 ; Experimental version
 experimental=False
@@ -37,6 +41,25 @@ qgisMaximumVersion=4.99
 
 ; Changelog
 changelog=
+    Version 3.3.0 (2026-11-24):
+    - Compatibilité étendue de QGIS 3.40 LTR (Qt 5) jusqu'à QGIS 4.x (Qt 6) avec couche d'interopérabilité complète (polices, icônes HiDPI, types de champs, énums Qt/QGIS, Processing)
+    - Nouveau fournisseur QGIS Processing natif (hasProcessingProvider=yes) compatible Modeleur graphique, traitements par lots et qgis_process : transformer:apply_recipe, transformer:transform_vector et transformer:publish_postgresql
+    - Nouvelle API Python headless (Transfomer.api) avec chargement paresseux de l'interface graphique pour les scripts PyQGIS et exécutions sans écran
+    - Optimisations performances, mémoire et robustesse PostgreSQL (historique des recettes borné, échantillonnage limité du testeur d'expressions, travail différé des panneaux masqués, pool PostgreSQL résilient avec annulation active)
+    - Réparation des encodages UTF-8 dans l'interface et les journaux, et archive de livraison strictement limitée aux fichiers runtime
+    Version 3.2.0 (2026-10-25):
+    - Ouverture directe sur l'atelier avec sélection automatique de la couche active et bandeau de raccourcis en 1 clic
+    - Contraste et lisibilité renforcés pour les thèmes sombre (Night Mapping) et clair de QGIS (Qt 5 et Qt 6)
+    - Nouveau bouton SVG et dock QGIS dédié « Guide & Tutoriel » avec documentation HTML interactive tous publics
+    - Nettoyage et filtrage guidés compacts sans formule, combinés aux expressions QGIS expertes sur la même recette
+    - Page de livraison dédiée avec précontrôle d'encodage, réouverture à la demande et rejeu des destinations
+    Version 3.1.0 (2026-10-24):
+    - Atelier de recettes Qt 6 : matrice typée, étapes dédiées et contrôle avant/après
+    - Sauvegarde complète, import protégé, sources identifiées et recettes absentes conservées
+    - Géométrie avant reprojection, filtres stricts et résultats d'annulation explicites
+    - Analyse PostgreSQL sans modification et remplacement transactionnel confirmé
+    - Export fichier en tâches natives, destination rejouable et comptes rendus
+    - Authentification QGIS et aide native accessible au clavier
     Version 3.0.0 (2026-06-29):
     - Removed Joiner module (spatial/attribute join) to focus on attribute transformation and PostgreSQL integration
     - Removed Pipeline Builder (unstable feature)

@@ -1,14 +1,55 @@
 
 # -*- coding: utf-8 -*-
+# Youcef ADDA | GEODECI | https://geodeci.xyz/ | youcef.geodesien@gmail.com
 """
 Enhanced Transformer Dialog - Interface principale
 """
 
+from ..shared.logger import logger as _global_logger
+from ..widgets.log_monitor_widget import LogMonitorWidget
+from ..core.transform_task import TransformTask
+from ..shared.compat import (
+    AlignCenter, AlignTop, AlignVCenter,
+    ApplicationShortcut, BackgroundRole, ForegroundRole,
+    CursorEnd, CursorKeepAnchor, CursorStartOfLine,
+    FontBold, FontNormal, KeepAspectRatio, PointingHandCursor,
+    QAction, QShortcut,
+    SmoothTransformation, CustomContextMenu, WrapWidgetWidth,
+    InstantPopup, KeyNew, KeyOpen, KeySave,
+    KeyHelpContents, _DialogCode, _DockOption,
+    _DockWidgetArea, _DockWidgetFeature, _FrameShape, _ItemDataRole, _MsgBoxButton, _MsgBoxIcon, _Orientation,
+    _ScrollBarPolicy, _SelectionMode,
+    _SizePolicy, _TabPosition, _TextFormat,
+    _ToolBarArea, _ToolButtonStyle, _WidgetAttribute, palette_color,
+    MsgInfo, MsgWarning, MsgCritical,
+    MsgSuccess, WriterNoError, GeomNull,
+)
+from ..shared.field_classification import is_dark_palette
+from ..shared.expression_utils import validate_expression_syntax, evaluate_expression
+from ..shared.icons import (
+    icon as ui_icon,
+    clear_icon_cache,
+    set_action_outcome,
+    set_actions_outcome,
+)
+from ..shared.helpers import (
+    create_layer_expression_context,
+    is_filter_enabled,
+    get_filter_expression,
+)
+from ..shared.constants import VECTOR_EXTENSIONS
+from ..shared.interface_config import InterfaceTheme, InterfaceSettings
+from ..shared.logger import logger as plugin_logger, log_info, log_warning, log_error
+from ..widgets.sliding_tab_bar import SlidingTabWidget
+from ..widgets.expression_tester_dialog import ExpressionTesterDialog
+from ..widgets.field_widget import FieldWidget
+from ..widgets.smart_filter_widget import SmartFilterWidget
+from ..widgets.advanced_expression_widget import AdvancedExpressionWidget
 import os
 import json
-import copy
 import html
 import re
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -16,71 +57,38 @@ from qgis.PyQt.QtCore import (
     Qt, pyqtSignal, QSettings, QSize, QTimer
 )
 
-from qgis.PyQt.QtGui import QPixmap, QIcon, QColor, QKeySequence, QCursor, QFont
+from qgis.PyQt.QtGui import QPixmap, QIcon, QColor, QKeySequence, QFont
 from qgis.PyQt.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
-    QLabel, QLineEdit, QPushButton, QTextEdit, QPlainTextEdit, QComboBox, QCheckBox,
-    QSpinBox, QTabWidget, QGroupBox, QFrame, QSplitter, QScrollArea, 
-    QTreeWidget, QTreeWidgetItem, QTableWidget, QTableWidgetItem, QHeaderView,
-    QToolButton, QMenu, QAction, QActionGroup, QStatusBar, QMenuBar, QProgressBar,
-    QFileDialog, QMessageBox, QInputDialog, QListWidget, QListWidgetItem,
-    QDockWidget, QAbstractItemView, QApplication, QDialog
+    QLabel, QLineEdit, QPushButton, QTextEdit, QPlainTextEdit, QTabWidget, QGroupBox,
+    QFrame, QSplitter, QScrollArea, QTreeWidget, QTreeWidgetItem, QToolButton,
+    QMenu, QProgressBar, QFileDialog, QMessageBox,
+    QDockWidget, QApplication, QDialog, QToolBar
 )
-
-from qgis.PyQt.QtWidgets import QToolBar, QSizePolicy, QShortcut
 
 from qgis.core import (
     QgsVectorLayer, QgsProject, QgsCoordinateReferenceSystem,
-    QgsMessageLog, QgsWkbTypes, QgsFeatureRequest, QgsExpression,
-    QgsFields, QgsField, QgsFeature, QgsGeometry, QgsSettings, QgsApplication,
-    QgsVectorFileWriter, QgsCoordinateTransformContext
+    QgsCoordinateTransform, QgsMessageLog, QgsWkbTypes, QgsFeatureRequest,
+    QgsApplication, QgsVectorFileWriter
 )
 
-from qgis.gui import (
-    QgsExpressionBuilderDialog, QgsProjectionSelectionWidget, QgsMapLayerComboBox,
-    QgsProjectionSelectionDialog, QgsMessageBar
-)
 
 # Import QgsCoordinateReferenceSystemProxyModel - optional
 QgsCoordinateReferenceSystemProxyModel = None
 try:
-    from qgis.gui import QgsCoordinateReferenceSystemProxyModel
+    pass
 except ImportError:
     try:
-        from qgis.core import QgsCoordinateReferenceSystemProxyModel
+        pass
     except ImportError:
         # Cette classe n'est pas disponible dans toutes les versions QGIS
         pass
 
 # Import des widgets directement pour éviter les imports circulaires
-from ..widgets.advanced_expression_widget import AdvancedExpressionWidget
-from ..widgets.smart_filter_widget import SmartFilterWidget
-from ..widgets.field_widget import FieldWidget
-from ..widgets.expression_tester_dialog import ExpressionTesterDialog
-from ..widgets.sliding_tab_bar import SlidingTabWidget
 
 # Import des fonctions de logging
-from ..shared.logger import logger as plugin_logger, log_info, log_warning, log_error, log_success
 
 # Import interface configuration classes
-from ..shared.interface_config import InterfaceTheme, PanelMode, InterfaceSettings
-from ..shared.constants import VECTOR_EXTENSIONS
-from ..shared.helpers import (
-    create_layer_expression_context,
-    is_filter_enabled,
-    get_filter_expression,
-    apply_compact_button,
-)
-from ..shared.icons import (
-    IconTone,
-    icon as ui_icon,
-    clear_icon_cache,
-    set_action_outcome,
-    set_actions_outcome,
-    svg_html,
-)
-from ..shared.expression_utils import validate_expression_syntax, evaluate_expression
-from ..shared.field_classification import is_dark_palette
 
 # Import additional modules with error handling
 try:
@@ -100,40 +108,20 @@ except ImportError as e:
     POSTGRESQL_INTEGRATION_AVAILABLE = False
 
 # Qt5/Qt6 enum compatibility
-from ..shared.compat import (
-    AlignCenter, AlignTop, AlignVCenter,
-    ApplicationShortcut, BackgroundRole, ForegroundRole,
-    FontBold, FontNormal, Horizontal, KeepAspectRatio,
-    PointingHandCursor, RichText, ScrollBarAsNeeded,
-    SmoothTransformation, ToolButtonTextBesideIcon, UserRole, Vertical,
-    CustomContextMenu, WrapWidgetWidth, InstantPopup,
-    KeyNew, KeyOpen, KeySave, KeyQuit, KeyUndo, KeyRedo, KeyHelpContents,
-    _AlignmentFlag, _DialogCode,
-    _DockOption, _DockWidgetArea, _DockWidgetFeature,
-    _FrameShape, FrameHLine, _HeaderResizeMode, _ItemDataRole,
-    _MsgBoxButton, _MsgBoxIcon, _Orientation,
-    _ScrollBarPolicy, _SelectionBehavior, _SelectionMode,
-    _SizePolicy, _TabPosition, _TextFormat,
-    _ToolBarArea, _ToolButtonStyle, _WidgetAttribute,
-    palette_color, TabSouth,
-    MsgInfo, MsgWarning, MsgCritical, MsgSuccess, WriterNoError, GeomNull,
-)
 # Background task for async transformations (keeps UI responsive)
-from ..core.transform_task import TransformTask
-from ..widgets.log_monitor_widget import LogMonitorWidget
 
-from ..shared.logger import logger as _global_logger
 
 PLUGIN_WEBSITE_URL = "https://geodeci.xyz/"
 PLUGIN_REPOSITORY_URL = "https://github.com/yadda07/Transformer"
 PLUGIN_ISSUES_URL = "https://github.com/yadda07/Transformer/issues"
 
-class EnhancedTransformerDialog(QMainWindow):
+
+class TransformerWindowBase(QMainWindow):
     """Enhanced main interface with native QGIS features"""
-    
+
     transformation_requested = pyqtSignal(str)
     window_closed = pyqtSignal()
-    
+
     def __init__(self, config_manager, transformer, parent=None):
         super().__init__(parent)
         self.config_manager = config_manager
@@ -142,11 +130,11 @@ class EnhancedTransformerDialog(QMainWindow):
         self.loaded_shapefiles = {}
         self.current_table_config = {}
         self.interface_settings = InterfaceSettings()
-        self._manual_fields_configured = False # Flag to preserve manually configured fields
+        self._manual_fields_configured = False  # Flag to preserve manually configured fields
         self._draft_config_source = None  # layer with auto-populated preview, not yet edited
         self._config_modified_by_user = False
         self._suppress_table_name_side_effects = False
-        
+
         self.setup_main_window()
         self.setup_central_widget()
         self.setup_dockwidgets()
@@ -154,34 +142,36 @@ class EnhancedTransformerDialog(QMainWindow):
         self.setup_statusbar()
         self.setup_menubar()
         self.setup_connections()
-        
+
         # Configure the centralized logger after creating the docks
         self.setup_centralized_logger()
-        
+
         # Test the centralized logger
         self.test_centralized_logger()
-        
+
         self.apply_theme()
         self.restore_window_state()
-        QTimer.singleShot(250, self._ensure_help_dock_content)
-        
+        self._ensure_help_dock_content()
+
         # Configure default tabs (after restore_window_state to avoid interference)
-        self.config_dock.raise_() # Configuration Preview par défaut
-        
+        self.config_dock.raise_()  # Configuration Preview par défaut
+
         # Auto-load QGIS layers and their existing configurations
         self.auto_load_qgis_layers()
         self.refresh_shapefile_list()
-        self.auto_load_configs() # Load configurations for existing layers
-        
+        self.auto_load_configs()  # Load configurations for existing layers
+
         # Initialize statistics with real values
-        QTimer.singleShot(100, self.update_statistics) # Delay to allow complete initialization
-        
+        self.update_statistics()
+        self._layers_dirty = False
+        self._dock_state_restored = False
+
     def setup_main_window(self):
         """Configure the main window"""
         self.setWindowTitle("Transformer")
         self.setMinimumSize(1200, 800)
         self.resize(1600, 1000)
-        
+
         # Application icon - logo du plugin
         logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logo.png")
         if os.path.exists(logo_path):
@@ -189,55 +179,50 @@ class EnhancedTransformerDialog(QMainWindow):
         else:
             # Fallback vers l'icône par défaut si le logo n'est pas trouvé
             self.setWindowIcon(ui_icon("window"))
-        
+
         # Configuration avancée pour repositionnement et redimensionnement fluide
         try:
             # Qt6: enums under QMainWindow.DockOption; Qt5: directly on QMainWindow
-            dock_options = (
-                _DockOption.AllowNestedDocks |
-                _DockOption.AllowTabbedDocks |
-                _DockOption.AnimatedDocks |
-                _DockOption.GroupedDragging
-            )
-            
+            dock_options = (_DockOption.AllowNestedDocks | _DockOption.AllowTabbedDocks | _DockOption.AnimatedDocks | _DockOption.GroupedDragging)
+
             if hasattr(_DockOption, 'VerticalTabs'):
                 dock_options |= _DockOption.VerticalTabs
-                
+
             self.setDockOptions(dock_options)
             self.setTabPosition(_DockWidgetArea.AllDockWidgetAreas, _TabPosition.North)
-            
+
             if hasattr(self, 'setDockNestingEnabled'):
                 self.setDockNestingEnabled(True)
-            
+
             self.setAttribute(_WidgetAttribute.WA_TranslucentBackground, False)
-            
+
             log_info("Native Qt dock drop zones activated (like QGIS)")
-            
+
         except Exception as e:
             log_error(f"Error setting dock options: {str(e)}")
-    
+
     def setup_central_widget(self):
         """Configure the central widget"""
         central_widget = QWidget()
         central_layout = QVBoxLayout()
         central_layout.setContentsMargins(4, 4, 4, 4)
-        
+
         # Main tabs
         self.main_tabs = QTabWidget()
         self.main_tabs.setTabPosition(_TabPosition.North)
         self.main_tabs.setMovable(True)
         self.main_tabs.setTabsClosable(False)
-        
+
         # Configuration tab
         config_tab = self.create_configuration_tab()
         self.main_tabs.addTab(config_tab, ui_icon("config"), "Configuration")
-        
+
         # Export tab (integrated) - Using local imports
         if EXPORT_CLASSES_AVAILABLE and ExportWidget is not None:
             try:
                 self.export_widget = ExportWidget()
                 self.main_tabs.addTab(self.export_widget, ui_icon("export"), "Export")
-                self.log_message("Export tab created", "Success") # Internal log only
+                self.log_message("Export tab created", "Success")  # Internal log only
             except Exception as e:
                 QgsMessageLog.logMessage(f"Error creating ExportWidget: {str(e)}", "Transformer", MsgCritical)
                 self.export_widget = None
@@ -246,7 +231,7 @@ class EnhancedTransformerDialog(QMainWindow):
             QgsMessageLog.logMessage("Export module not available - Creating fallback tab", "Transformer", MsgWarning)
             self.export_widget = None
             self._create_fallback_export_tab()
-        
+
         # PostgreSQL Integration tab
         if POSTGRESQL_INTEGRATION_AVAILABLE and PostgreSQLIntegrationWidget is not None:
             try:
@@ -272,190 +257,218 @@ class EnhancedTransformerDialog(QMainWindow):
             postgresql_layout.addWidget(QLabel("Check your PostgreSQL configuration and dependencies."))
             if not POSTGRESQL_INTEGRATION_AVAILABLE:
                 postgresql_layout.addWidget(QLabel("Missing psycopg2 dependency or import error."))
+                install_btn = QPushButton("Install psycopg2")
+                install_btn.clicked.connect(self._on_install_psycopg2)
+                postgresql_layout.addWidget(install_btn)
             postgresql_fallback.setLayout(postgresql_layout)
             self.main_tabs.addTab(postgresql_fallback, ui_icon("postgresql"), "PostgreSQL")
             self.postgresql_widget = None
 
         # Ready for core transformation components
-        
+
         # Finalize the central layout
         central_layout.addWidget(self.main_tabs)
         central_widget.setLayout(central_layout)
         self.setCentralWidget(central_widget)
-    
+
+    def _on_install_psycopg2(self):
+        """Attempt to install psycopg2-binary via pip in background task."""
+        try:
+            from ..shared.dependency_installer import install_dependency
+        except Exception as exc:
+            log_warning(f"_on_install_psycopg2: import failed: {exc}")
+            QMessageBox.warning(
+                self, "Installer Unavailable",
+                f"The dependency installer could not be loaded:\n{exc}\n\n"
+                "Install psycopg2 manually: pip install psycopg2-binary",
+            )
+            return
+        sender = self.sender()
+        if sender is not None:
+            sender.setEnabled(False)
+        log_info("_on_install_psycopg2: user requested installation")
+        install_dependency(
+            import_name="psycopg2",
+            pip_name="psycopg2-binary",
+            display_name="psycopg2",
+            parent=self,
+        )
+        if sender is not None:
+            sender.setEnabled(True)
+
     def create_configuration_tab(self):
         """Create main configuration tab"""
         tab_widget = QWidget()
         layout = QHBoxLayout()
         layout.setContentsMargins(2, 2, 2, 2)
-        
+
         # Main splitter
         main_splitter = QSplitter(_Orientation.Horizontal)
         main_splitter.setChildrenCollapsible(False)
-        
+
         # Panel central - Expression Builder
         center_panel = self.create_expression_panel()
         center_panel.setMinimumWidth(500)
-        
+
         main_splitter.addWidget(center_panel)
-        
+
         # Proportions
         main_splitter.setStretchFactor(0, 1)
-        
+
         layout.addWidget(main_splitter)
         tab_widget.setLayout(layout)
-        
+
         return tab_widget
-    
+
     def create_expression_panel(self):
         """Create main expression panel with dynamic resizing and toggleable components"""
         panel = QFrame()
         panel.setFrameStyle(_FrameShape.NoFrame)
         main_layout = QVBoxLayout()
         main_layout.setContentsMargins(4, 4, 4, 4)
-        
+
         # Components visibility toolbar
         visibility_toolbar = QToolBar("Components Visibility")
         visibility_toolbar.setToolButtonStyle(_ToolButtonStyle.ToolButtonTextBesideIcon)
         visibility_toolbar.setIconSize(QSize(16, 16))
         visibility_toolbar.setFloatable(False)
         visibility_toolbar.setMovable(False)
-        
-        # Visibility toggle actions 
+
+        # Visibility toggle actions
         self.table_config_action = QAction(ui_icon("table_config"), "Table Configuration", self)
         self.table_config_action.setCheckable(True)
         self.table_config_action.setChecked(True)
         self.table_config_action.setToolTip("Toggle Table Configuration visibility")
         self.table_config_action.toggled.connect(lambda checked: self.toggle_component_visibility('table_config', checked))
-        
+
         self.filter_action = QAction(ui_icon("filter"), "Smart Filter", self)
         self.filter_action.setCheckable(True)
         self.filter_action.setChecked(True)
         self.filter_action.setToolTip("Toggle Smart Filter visibility")
         self.filter_action.toggled.connect(lambda checked: self.toggle_component_visibility('smart_filter', checked))
-        
+
         self.expression_action = QAction(ui_icon("expression"), "Expression Builder", self)
         self.expression_action.setCheckable(True)
         self.expression_action.setChecked(True)
         self.expression_action.setToolTip("Toggle Expression Builder visibility")
         self.expression_action.toggled.connect(lambda checked: self.toggle_component_visibility('expression_builder', checked))
-        
+
         self.fields_action = QAction(ui_icon("fields"), "Field Management", self)
         self.fields_action.setCheckable(True)
         self.fields_action.setChecked(True)
         self.fields_action.setToolTip("Toggle Field Management visibility")
         self.fields_action.toggled.connect(lambda checked: self.toggle_component_visibility('field_management', checked))
-        
+
         visibility_toolbar.addAction(self.table_config_action)
         visibility_toolbar.addAction(self.filter_action)
         visibility_toolbar.addAction(self.expression_action)
         visibility_toolbar.addAction(self.fields_action)
-        
+
         # Separator and reset button
         visibility_toolbar.addSeparator()
         reset_visibility_action = QAction(ui_icon("show_all"), "Show All", self)
         reset_visibility_action.setToolTip("Show all components")
         reset_visibility_action.triggered.connect(self.show_all_components)
         visibility_toolbar.addAction(reset_visibility_action)
-        
+
         # Apply highlight color only to checked/selected buttons
         visibility_toolbar.setStyleSheet("QToolButton:checked { background-color: palette(highlight); color: palette(highlighted-text); }")
-        
+
         main_layout.addWidget(visibility_toolbar)
-        
+
         # Create vertical splitter for dynamic resizing between components
         self.config_splitter = QSplitter(_Orientation.Vertical)
         self.config_splitter.setChildrenCollapsible(False)
         # Wider handle for smooth, precise manual resizing
         self.config_splitter.setHandleWidth(8)
-        
+
         # Store component references for visibility management
         self.config_components = {}
-        
+
         # Table configuration - compact fixed header
         self.config_components['table_config'] = QGroupBox("Table Configuration")
         config_layout = QFormLayout()
         config_layout.setVerticalSpacing(8)
         config_layout.setContentsMargins(10, 12, 10, 8)
-        
+
         self.table_name_edit = QLineEdit()
         self.table_name_edit.setPlaceholderText("Enter output table name...")
         self.table_name_edit.setMaximumHeight(24)
         config_layout.addRow("Table Name:", self.table_name_edit)
-        
+
         self.config_components['table_config'].setLayout(config_layout)
         # Fixed height prevents the header from jumping during resize
         self.config_components['table_config'].setFixedHeight(75)
         self.config_components['table_config'].setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Fixed)
         self.config_splitter.addWidget(self.config_components['table_config'])
-        
+
         # Smart filter widget
         self.config_components['smart_filter'] = QGroupBox("Smart Filter")
         filter_layout = QVBoxLayout()
-        
+
         self.smart_filter = SmartFilterWidget()
         filter_layout.addWidget(self.smart_filter)
-        
+
         self.config_components['smart_filter'].setLayout(filter_layout)
         self.config_components['smart_filter'].setMinimumHeight(100)
         self.config_components['smart_filter'].setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Preferred)
         self.config_splitter.addWidget(self.config_components['smart_filter'])
-        
+
         # Advanced expression builder
         self.config_components['expression_builder'] = QGroupBox("Expression Builder")
         expr_layout = QVBoxLayout()
-        
+
         self.advanced_expression = AdvancedExpressionWidget()
         expr_layout.addWidget(self.advanced_expression)
-        
+
         self.config_components['expression_builder'].setLayout(expr_layout)
         self.config_components['expression_builder'].setMinimumHeight(200)
         self.config_components['expression_builder'].setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
         self.config_components['expression_builder'].setMaximumHeight(16777215)
         self.config_splitter.addWidget(self.config_components['expression_builder'])
-        
+
         # Smart fields widget
         self.config_components['field_management'] = QGroupBox("Field Management (Column Configuration)")
         fields_layout = QVBoxLayout()
-        
+
         # Add explanatory label
         info_label = QLabel("Add, edit and manage calculated fields (columns) for your output table:")
         info_font = info_label.font()
         info_font.setItalic(True)
         info_label.setFont(info_font)
         fields_layout.addWidget(info_label)
-        
+
         self.smart_fields = FieldWidget(self.advanced_expression)
         # Configurer pour expansion verticale optimale
         self.smart_fields.setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
         fields_layout.addWidget(self.smart_fields)
-        
+
         self.config_components['field_management'].setLayout(fields_layout)
         self.config_components['field_management'].setMinimumHeight(130)
         self.config_components['field_management'].setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
         self.config_components['field_management'].setMaximumHeight(16777215)
         self.config_splitter.addWidget(self.config_components['field_management'])
-        
+
         # Smooth proportional stretch: fixed header, then evenly weighted panels
-        self.config_splitter.setStretchFactor(0, 0) # Table Configuration (fixed)
-        self.config_splitter.setStretchFactor(1, 1) # Smart Filter
-        self.config_splitter.setStretchFactor(2, 2) # Expression Builder
-        self.config_splitter.setStretchFactor(3, 2) # Field Management
-        
+        self.config_splitter.setStretchFactor(0, 0)  # Table Configuration (fixed)
+        self.config_splitter.setStretchFactor(1, 1)  # Smart Filter
+        self.config_splitter.setStretchFactor(2, 2)  # Expression Builder
+        self.config_splitter.setStretchFactor(3, 2)  # Field Management
+
         # Balanced starting sizes
         self.config_splitter.setSizes([75, 140, 260, 260])
-        
+
         # Persist manual resizing across sessions
         self.config_splitter.splitterMoved.connect(self._save_config_splitter_sizes)
-        
+
         main_layout.addWidget(self.config_splitter)
         panel.setLayout(main_layout)
-        
+
         # Load saved component visibility states (restores splitter sizes too)
         QTimer.singleShot(100, self.restore_component_visibility)
-        
+
         return panel
-    
+
     def _save_config_splitter_sizes(self):
         """Persist the vertical module splitter sizes."""
         try:
@@ -465,7 +478,7 @@ class EnhancedTransformerDialog(QMainWindow):
                 settings.setValue("Transformer/config_splitter_sizes", sizes)
         except Exception as e:
             self.log_message(f"Error saving config splitter sizes: {str(e)}", "Warning")
-    
+
     def _restore_config_splitter_sizes(self):
         """Restore the vertical module splitter sizes from settings."""
         try:
@@ -488,20 +501,20 @@ class EnhancedTransformerDialog(QMainWindow):
             log_info(f"Restored config splitter sizes: {sizes}")
         except Exception as e:
             self.log_message(f"Error restoring config splitter sizes: {str(e)}", "Warning")
-    
+
     def toggle_component_visibility(self, component_name, visible):
         """Toggle visibility of a configuration component"""
         try:
             if component_name in self.config_components:
                 component = self.config_components[component_name]
                 component.setVisible(visible)
-                
+
                 # Update corresponding toolbar action
                 if hasattr(self, 'config_toolbar_actions'):
                     action = self.config_toolbar_actions.get(component_name)
                     if action:
                         action.setChecked(visible)
-                
+
                 # Update corresponding menu action
                 if hasattr(self, 'component_menu_actions'):
                     menu_action = self.component_menu_actions.get(component_name)
@@ -510,28 +523,28 @@ class EnhancedTransformerDialog(QMainWindow):
                         menu_action.blockSignals(True)
                         menu_action.setChecked(visible)
                         menu_action.blockSignals(False)
-                
+
                 # Save visibility state
                 self.save_component_visibility_state(component_name, visible)
-                
+
                 # Restore splitter layout when showing a component to avoid zero-height re-entry
                 if visible:
                     self._restore_config_splitter_sizes()
-                
+
                 # Log the action
                 display_names = {
                     'table_config': 'Table Configuration',
-                    'smart_filter': 'Smart Filter', 
+                    'smart_filter': 'Smart Filter',
                     'expression_builder': 'Expression Builder',
                     'field_management': 'Field Management'
                 }
                 display_name = display_names.get(component_name, component_name)
                 status = "shown" if visible else "hidden"
                 self.log_message(f"Component '{display_name}' {status}", "Info")
-                
+
         except Exception as e:
             self.log_message(f"Error toggling component visibility: {str(e)}", "Error")
-    
+
     def show_all_components(self):
         """Show all configuration components"""
         try:
@@ -540,7 +553,7 @@ class EnhancedTransformerDialog(QMainWindow):
             self.log_message("All configuration components shown", "Info")
         except Exception as e:
             self.log_message(f"Error showing all components: {str(e)}", "Warning")
-    
+
     def save_component_visibility_state(self, component_name, visible):
         """Save component visibility state to settings"""
         try:
@@ -548,7 +561,7 @@ class EnhancedTransformerDialog(QMainWindow):
             settings.setValue(f"Transformer/component_{component_name}_visible", visible)
         except Exception as e:
             self.log_message(f"Error saving component visibility state: {str(e)}", "Warning")
-    
+
     def restore_component_visibility(self):
         """Restore saved component visibility states from QSettings"""
         try:
@@ -556,30 +569,30 @@ class EnhancedTransformerDialog(QMainWindow):
             for component_name in self.config_components.keys():
                 # Default to True (visible) if no setting exists
                 visible = settings.value(f"Transformer/component_{component_name}_visible", True, type=bool)
-                
+
                 # Set component visibility without triggering menu synchronization
                 # (to avoid recursive calls during initialization)
                 component = self.config_components[component_name]
                 component.setVisible(visible)
-                
+
                 # Update menu action state if available
                 if hasattr(self, 'component_menu_actions'):
                     menu_action = self.component_menu_actions.get(component_name)
                     if menu_action:
                         menu_action.setChecked(visible)
-                        
+
                 # Update toolbar action state if available
                 if hasattr(self, 'config_toolbar_actions'):
                     action = self.config_toolbar_actions.get(component_name)
                     if action:
                         action.setChecked(visible)
-            
+
             # Restore splitter sizes after visibility states are applied
             self._restore_config_splitter_sizes()
-            
+
         except Exception as e:
             self.log_message(f"Error restoring component visibility: {str(e)}", "Warning")
-    
+
     def _create_fallback_export_tab(self):
         """Create a fallback export tab when the export module is not available."""
         fallback = QWidget()
@@ -593,77 +606,72 @@ class EnhancedTransformerDialog(QMainWindow):
             ui_icon("export"),
             "Export",
         )
-    
+
     def setup_dockwidgets(self):
         """Configure modern fluid dock widgets with enhanced UX"""
         try:
             # Dock options are already set in setup_main_window()
             # Just ensure they are properly configured
             if not (self.dockOptions() & _DockOption.GroupedDragging):
-                self.setDockOptions(
-                    _DockOption.AnimatedDocks | 
-                    _DockOption.AllowNestedDocks | 
-                    _DockOption.AllowTabbedDocks |
-                    _DockOption.GroupedDragging
-                )
-            
+                self.setDockOptions(_DockOption.AnimatedDocks | _DockOption.AllowNestedDocks | _DockOption.AllowTabbedDocks | _DockOption.GroupedDragging)
+
             # === PRIMARY DOCKS (existants) ===
-            
+
             # Vector Sources (Left)
             self.source_dock = self._create_modern_dock(
-                "Vector Sources", 
+                "Vector Sources",
                 "source_dock",
                 self.create_shapefiles_widget()
             )
-            
+
             # Configuration Preview (Right)
             self.config_dock = self._create_modern_dock(
-                "Configuration Preview", 
+                "Configuration Preview",
                 "config_dock",
                 self.create_config_preview_widget()
             )
-            
+
             # Activity Monitor (Bottom Right)
             self.log_dock = self._create_modern_dock(
-                "Activity Monitor", 
+                "Activity Monitor",
                 "log_dock",
                 self.create_logs_widget()
             )
-            
+
             # Quick Help (Tabbed with Config)
             self.help_dock = self._create_modern_dock(
-                "Quick Help", 
+                "Quick Help",
                 "help_dock",
                 self.create_help_widget()
             )
-            
+
             # === NOUVEAUX DOCKS MODULAIRES (ex-blocs centraux) ===
-            
+
             # Note: Table Configuration reste intégrée dans le bloc central Configuration
-            
+
             # Note: Smart Filter reste intégré dans le bloc central Configuration
-            
+
             # Note: Expression Builder reste intégré dans le bloc central Configuration
-            
+
             # Note: Field Management reste intégré dans le bloc central Configuration
-            
+
             # === DOCK LAYOUT ===
             self._arrange_fluid_layout()
-            
+
             # === ENHANCED FEATURES ===
             self._setup_dock_signals()
             self._setup_dock_styling()
             self._setup_layout_presets()
-            
+
             # === FINALIZE SETUP ===
             # Le système Qt natif gère déjà parfaitement le drag & drop
             # Il suffit de s'assurer que tout est correctement configuré
             QTimer.singleShot(100, self._finalize_dock_setup)
-            
+
         except Exception as e:
             log_error(f"Error setting up modern dock widgets: {str(e)}")
             self._setup_fallback_docks()
-    
+
     def _setup_fallback_docks(self):
         """Minimal fallback dock layout when modern setup fails."""
         try:
@@ -686,7 +694,7 @@ class EnhancedTransformerDialog(QMainWindow):
             log_info("Fallback dock layout applied")
         except Exception as e:
             log_error(f"Fallback dock setup also failed: {str(e)}")
-    
+
     def _setup_layout_presets(self):
         """Setup quick layout presets for different processing needs"""
         try:
@@ -695,30 +703,30 @@ class EnhancedTransformerDialog(QMainWindow):
                 # Create layout menu button
                 layout_menu = QMenu("Layouts", self)
                 layout_menu.setIcon(ui_icon("options"))
-                
+
                 # Add layout actions
                 default_action = QAction("Default Layout", self)
                 default_action.triggered.connect(self._layout_default)
                 layout_menu.addAction(default_action)
-                
+
                 vertical_action = QAction("Vertical Split", self)
                 vertical_action.triggered.connect(self._layout_vertical)
                 layout_menu.addAction(vertical_action)
-                
+
                 horizontal_action = QAction("Horizontal Layout", self)
                 horizontal_action.triggered.connect(self._layout_horizontal)
                 layout_menu.addAction(horizontal_action)
-                
+
                 layout_menu.addSeparator()
-                
+
                 focus_config_action = QAction("Focus Configuration", self)
                 focus_config_action.triggered.connect(self._layout_focus_config)
                 layout_menu.addAction(focus_config_action)
-                
+
                 focus_monitor_action = QAction("Focus Activity Monitor", self)
                 focus_monitor_action.triggered.connect(self._layout_focus_monitor)
                 layout_menu.addAction(focus_monitor_action)
-                
+
                 # Add menu to toolbar
                 layout_button = QToolButton()
                 layout_button.setMenu(layout_menu)
@@ -727,10 +735,10 @@ class EnhancedTransformerDialog(QMainWindow):
                 layout_button.setText("Layouts")
                 layout_button.setToolTip("Quick layout presets for different processing needs")
                 self.toolbar.addWidget(layout_button)
-                
+
         except Exception as e:
             log_error(f"Error setting up layout presets: {str(e)}")
-    
+
     def _setup_dock_signals(self):
         """Setup enhanced dock signals for user feedback"""
         try:
@@ -742,14 +750,14 @@ class EnhancedTransformerDialog(QMainWindow):
                     dock.topLevelChanged.connect(lambda floating, d=dock: self._on_dock_floating_changed(d, floating))
         except Exception as e:
             log_error(f"Error setting up dock signals: {str(e)}")
-    
+
     def _on_dock_moved(self, dock, area):
         """Handle dock movement with user feedback"""
         try:
             dock_name = dock.windowTitle()
             area_names = {
                 _DockWidgetArea.LeftDockWidgetArea: "left",
-                _DockWidgetArea.RightDockWidgetArea: "right", 
+                _DockWidgetArea.RightDockWidgetArea: "right",
                 _DockWidgetArea.TopDockWidgetArea: "top",
                 _DockWidgetArea.BottomDockWidgetArea: "bottom"
             }
@@ -757,7 +765,7 @@ class EnhancedTransformerDialog(QMainWindow):
             self.log_message(f"Moved '{dock_name}' to {area_name} area")
         except Exception as e:
             log_error(f"Error handling dock movement: {str(e)}")
-    
+
     def _on_dock_visibility_changed(self, dock, visible):
         """Handle dock visibility changes"""
         try:
@@ -766,7 +774,7 @@ class EnhancedTransformerDialog(QMainWindow):
             self.log_message(f"'{dock_name}' is now {status}")
         except Exception as e:
             log_error(f"Error handling dock visibility: {str(e)}")
-    
+
     def _on_dock_floating_changed(self, dock, floating):
         """Handle dock floating state changes"""
         try:
@@ -775,7 +783,7 @@ class EnhancedTransformerDialog(QMainWindow):
             self.log_message(f"'{dock_name}' is now {status}")
         except Exception as e:
             log_error(f"Error handling dock floating: {str(e)}")
-    
+
     def _prepare_docks_for_layout(self):
         """Show and undock all panels before applying a layout preset."""
         for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
@@ -793,47 +801,47 @@ class EnhancedTransformerDialog(QMainWindow):
             self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.log_dock)
-            
+
             # Split config and log vertically on the right
             self.splitDockWidget(self.config_dock, self.log_dock, _Orientation.Vertical)
-            
+
             # Tab help with config
             self.tabifyDockWidget(self.config_dock, self.help_dock)
             self.config_dock.raise_()
-            
+
             # Show all docks
             for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
                 dock.setVisible(True)
-                
+
             self.log_message("Applied default layout")
         except Exception as e:
             log_error(f"Error applying default layout: {str(e)}")
-    
+
     def _layout_vertical(self):
         """Vertical layout: Config top, Monitor bottom"""
         try:
             self._prepare_docks_for_layout()
             # Left: Sources
             self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
-            
+
             # Right top: Config
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
-            
+
             # Right bottom: Log
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.log_dock)
             self.splitDockWidget(self.config_dock, self.log_dock, _Orientation.Vertical)
-            
+
             # Tab help with config
             self.tabifyDockWidget(self.config_dock, self.help_dock)
             self.config_dock.raise_()
-            
+
             # Adjust sizes - Config larger than log
             self.resizeDocks([self.config_dock], [300], _Orientation.Vertical)
-            
+
             self.log_message("Applied vertical layout")
         except Exception as e:
             log_error(f"Error applying vertical layout: {str(e)}")
-    
+
     def _layout_horizontal(self):
         """Horizontal layout: All panels side by side"""
         try:
@@ -842,183 +850,178 @@ class EnhancedTransformerDialog(QMainWindow):
             self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.log_dock)
-            
+
             # Split horizontally
             self.splitDockWidget(self.config_dock, self.log_dock, _Orientation.Horizontal)
-            
+
             # Add help at bottom
             self.addDockWidget(_DockWidgetArea.BottomDockWidgetArea, self.help_dock)
-            
+
             self.log_message("Applied horizontal layout")
         except Exception as e:
             log_error(f"Error applying horizontal layout: {str(e)}")
-    
+
     def _layout_focus_config(self):
         """Focus on configuration: Large config panel"""
         try:
             self._prepare_docks_for_layout()
             # Config takes most space
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
-            
+
             # Sources on left
             self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
-            
+
             # Log and help tabbed at bottom
             self.addDockWidget(_DockWidgetArea.BottomDockWidgetArea, self.log_dock)
             self.tabifyDockWidget(self.log_dock, self.help_dock)
             self.log_dock.raise_()
-            
+
             # Resize to focus on config
             self.resizeDocks([self.config_dock], [500], _Orientation.Horizontal)
-            
+
             self.log_message("Applied configuration focus layout")
         except Exception as e:
             log_error(f"Error applying config focus layout: {str(e)}")
-    
+
     def _layout_focus_monitor(self):
         """Focus on monitoring: Large activity monitor"""
         try:
             self._prepare_docks_for_layout()
             # Monitor takes most space
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.log_dock)
-            
+
             # Sources on left
             self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
-            
+
             # Config and help tabbed at bottom
             self.addDockWidget(_DockWidgetArea.BottomDockWidgetArea, self.config_dock)
             self.tabifyDockWidget(self.config_dock, self.help_dock)
             self.config_dock.raise_()
-            
+
             # Resize to focus on monitor
             self.resizeDocks([self.log_dock], [500], _Orientation.Horizontal)
-            
+
             self.log_message("Applied activity monitor focus layout")
         except Exception as e:
             log_error(f"Error applying monitor focus layout: {str(e)}")
-    
+
     def _setup_dock_styling(self):
         """Setup dock widget styling - laisser le thème QGIS par défaut"""
-        pass
-    
+
     def _create_modern_dock(self, title, object_name, widget):
         """Create a modern dock widget with enhanced repositioning and resizing"""
         try:
             dock = QDockWidget(title, self)
             dock.setObjectName(object_name)
-            
+
             # Ensure widget is valid
             if widget is None:
                 widget = QLabel(f"Error: No widget for {title}")
-                
+
             dock.setWidget(widget)
-            
+
             # Features complètes comme les docks QGIS natifs
             dock.setFeatures(
-                _DockWidgetFeature.DockWidgetMovable | # Déplaçable
-                _DockWidgetFeature.DockWidgetFloatable | # Flottant 
-                _DockWidgetFeature.DockWidgetClosable # Fermable
+                _DockWidgetFeature.DockWidgetMovable |  # Déplaçable
+                _DockWidgetFeature.DockWidgetFloatable |  # Flottant
+                _DockWidgetFeature.DockWidgetClosable  # Fermable
             )
-            
+
             # PAS de custom title bar - utiliser titre natif
-            
+
             # Zones autorisées : TOUTES pour flexibilité maximale comme QGIS
             dock.setAllowedAreas(_DockWidgetArea.AllDockWidgetAreas)
-            
+
             # PAS d'attributs custom qui peuvent bloquer les drop zones natives
             # dock.setProperty("dragEnabled", True) # <- Inutile, Qt le fait déjà
             # dock.setAttribute(Qt.WA_DeleteOnClose, False) # <- Peut interférer
-            
+
             # Tailles optimales pour redimensionnement
-            dock.setMinimumSize(250, 180) # Taille minimum plus généreuse
+            dock.setMinimumSize(250, 180)  # Taille minimum plus généreuse
             dock.setSizePolicy(_SizePolicy.Preferred, _SizePolicy.Preferred)
-            
+
             # Tailles par défaut selon le type de dock
             if 'source' in object_name.lower():
-                dock.resize(350, 400) # Sources plus larges
+                dock.resize(350, 400)  # Sources plus larges
             elif 'config' in object_name.lower():
-                dock.resize(400, 300) # Config plus carrée
+                dock.resize(400, 300)  # Config plus carrée
             elif 'log' in object_name.lower():
-                dock.resize(450, 250) # Log plus large
+                dock.resize(450, 250)  # Log plus large
             else:
-                dock.resize(300, 200) # Taille par défaut
-            
+                dock.resize(300, 200)  # Taille par défaut
+
             # SIMPLE : Laisser Qt gérer les animations nativement
             # dock.setProperty("animated", True) # <- Inutile, Qt le fait déjà
-            
+
             # Visible et actif (nécessaire)
             dock.setVisible(True)
             dock.setEnabled(True)
-            
+
             return dock
-            
+
         except Exception as e:
             log_error(f"Error creating modern dock '{title}': {str(e)}")
             # Fallback: create basic dock with all features
             dock = QDockWidget(title, self)
             dock.setWidget(widget if widget else QLabel(f"Error loading {title}"))
-            dock.setFeatures(
-                _DockWidgetFeature.DockWidgetMovable |
-                _DockWidgetFeature.DockWidgetFloatable |
-                _DockWidgetFeature.DockWidgetClosable
-            ) # Full features restored
-            dock.setAllowedAreas(_DockWidgetArea.AllDockWidgetAreas) # Allow all areas
+            dock.setFeatures(_DockWidgetFeature.DockWidgetMovable | _DockWidgetFeature.DockWidgetFloatable | _DockWidgetFeature.DockWidgetClosable)  # Full features restored
+            dock.setAllowedAreas(_DockWidgetArea.AllDockWidgetAreas)  # Allow all areas
             return dock
-    
+
     def _arrange_fluid_layout(self):
         """Arrange docks with intelligent positioning and resizing"""
         try:
             # === POSITIONNEMENT INTELLIGENT ===
-            
+
             # Gauche: Vector Sources (zone principale pour les fichiers)
             self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
-            
+
             # Droite: Configuration Preview (zone de travail principale)
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
-            
+
             # Droite: Activity Monitor (monitoring en continu)
             self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.log_dock)
-            
+
             # === SPLITS INTELLIGENTS ===
             # Split vertical pour séparer config (haut) et log (bas)
             self.splitDockWidget(self.config_dock, self.log_dock, _Orientation.Vertical)
-            
+
             # Tabifier Help avec Config pour économiser l'espace
             self.tabifyDockWidget(self.config_dock, self.help_dock)
-            
+
             # Mettre Config en avant par défaut
             self.config_dock.raise_()
-            
+
             # === REDIMENSIONNEMENT INTELLIGENT ===
-            
+
             # Calculer les tailles optimales selon la taille de fenêtre
             window_width = self.width()
             window_height = self.height()
-            
+
             # Proportions optimales
-            source_width = int(window_width * 0.25) # 25% pour sources
-            config_height = int(window_height * 0.55) # 55% pour config
-            log_height = int(window_height * 0.35) # 35% pour log
-            
+            source_width = int(window_width * 0.25)  # 25% pour sources
+            config_height = int(window_height * 0.55)  # 55% pour config
+            log_height = int(window_height * 0.35)  # 35% pour log
+
             # Appliquer les tailles avec gestion d'erreur
             QTimer.singleShot(50, lambda: self._apply_intelligent_sizing(
                 source_width, config_height, log_height))
-            
-            # === VISIBILITÉ ET ACTIVATION ===
+
+            # === VISIBILITÃ‰ ET ACTIVATION ===
             for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
                 if dock:
                     dock.setVisible(True)
-                    dock.activateWindow() # S'assurer que le dock est actif
-            
+                    dock.activateWindow()  # S'assurer que le dock est actif
+
             # === CONFIGURATION FINALE ===
             # Activer la sauvegarde automatique des positions
             self.setDockNestingEnabled(True) if hasattr(self, 'setDockNestingEnabled') else None
-            
+
             log_info("Dock layout configured with intelligent positioning")
-                
+
         except Exception as e:
             log_error(f"Error arranging fluid layout: {str(e)}")
-    
+
     def _apply_intelligent_sizing(self, source_width, config_height, log_height):
         """Apply intelligent sizing to dock widgets with error handling"""
         try:
@@ -1029,54 +1032,54 @@ class EnhancedTransformerDialog(QMainWindow):
                     self.resizeDocks([self.source_dock], [source_width], _Orientation.Horizontal)
                 except Exception as e:
                     log_error(f"Error resizing source dock horizontally: {str(e)}")
-            
+
             # === REDIMENSIONNEMENT VERTICAL ===
             # Optimiser la répartition config/log
             docks_to_resize = []
             heights = []
-            
+
             if self.config_dock and self.config_dock.isVisible():
                 docks_to_resize.append(self.config_dock)
                 heights.append(config_height)
-            
+
             if self.log_dock and self.log_dock.isVisible():
                 docks_to_resize.append(self.log_dock)
                 heights.append(log_height)
-            
+
             if docks_to_resize:
                 try:
                     self.resizeDocks(docks_to_resize, heights, _Orientation.Vertical)
                 except Exception as e:
                     log_error(f"Error resizing docks vertically: {str(e)}")
-            
-            # === OPTIMISATIONS SUPPLÉMENTAIRES ===
-            
+
+            # === OPTIMISATIONS SUPPLÃ‰MENTAIRES ===
+
             # S'assurer que les splitters sont visibles et redimensionnables
             for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
                 if dock and dock.isVisible():
                     try:
                         # Optimiser la politique de taille
                         dock.setSizePolicy(_SizePolicy.Preferred, _SizePolicy.Preferred)
-                        
+
                         # S'assurer que le widget interne peut se redimensionner
                         widget = dock.widget()
                         if widget:
                             widget.setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
-                            
+
                     except Exception as e:
                         log_error(f"Error optimizing dock {dock.objectName()}: {str(e)}")
-            
+
             log_info(f"Applied intelligent sizing - Source: {source_width}px, Config: {config_height}px, Log: {log_height}px")
-            
+
         except Exception as e:
             log_error(f"Error applying intelligent sizing: {str(e)}")
-    
+
     def _finalize_dock_setup(self):
         """Finalize dock setup with QGIS-native features and repositioning enhancements"""
         try:
-            # === VÉRIFICATIONS FINALES ===
+            # === VÃ‰RIFICATIONS FINALES ===
             all_docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
-            
+
             for dock in all_docks:
                 if dock:
                     # S'assurer que toutes les fonctionnalités sont activées
@@ -1086,35 +1089,30 @@ class EnhancedTransformerDialog(QMainWindow):
                         _DockWidgetFeature.DockWidgetClosable
                     )
                     dock.setAllowedAreas(_DockWidgetArea.AllDockWidgetAreas)
-                    
+
                     # Vérifier la visibilité et l'état actif
                     if not dock.isVisible():
                         dock.setVisible(True)
                     if not dock.isEnabled():
                         dock.setEnabled(True)
-                    
+
                     # PAS de propriétés custom qui bloquent les drop zones natives !
                     # dock.setProperty("dragEnabled", True) # <- Qt le fait déjà
                     # dock.setAttribute(Qt.WA_Hover, True) # <- Peut interférer
-            
+
             # === CONFIGURATION NATIVE QT COMME QGIS ===
-            
+
             # S'assurer que les options sont exactement comme QGIS (PAS ForceTabbedDocks !)
             current_options = self.dockOptions()
             if not (current_options & _DockOption.GroupedDragging):
-                self.setDockOptions(
-                    _DockOption.AnimatedDocks | 
-                    _DockOption.AllowNestedDocks | 
-                    _DockOption.AllowTabbedDocks |
-                    _DockOption.GroupedDragging
-                )
-            
+                self.setDockOptions(_DockOption.AnimatedDocks | _DockOption.AllowNestedDocks | _DockOption.AllowTabbedDocks | _DockOption.GroupedDragging)
+
             # Activer les fonctionnalités de redimensionnement avancé
             if hasattr(self, 'setDockNestingEnabled'):
                 self.setDockNestingEnabled(True)
-            
+
             # === OPTIMISATIONS DE PERFORMANCE ===
-            
+
             # Créer des splitters redimensionnables
             for dock in all_docks:
                 if dock and dock.isVisible():
@@ -1123,56 +1121,56 @@ class EnhancedTransformerDialog(QMainWindow):
                         widget = dock.widget()
                         if widget and hasattr(widget, 'setSizePolicy'):
                             widget.setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
-                        
+
                         # S'assurer que le dock peut être redimensionné
                         dock.setMinimumSize(200, 150)
-                        dock.setMaximumSize(16777215, 16777215) # Pas de limite max
-                        
+                        dock.setMaximumSize(16777215, 16777215)  # Pas de limite max
+
                     except Exception as e:
                         log_error(f"Error optimizing dock {dock.objectName()}: {str(e)}")
-            
+
             # === FINALISATION ===
-            
+
             # Configurer les menus contextuels pour repositionnement
             self._setup_dock_context_menus()
-            
+
             # Vérifier que le layout est stable
             self.update()
-            
+
             # Test final : vérifier que les drop zones natives fonctionnent
             self._validate_native_drop_zones()
-            
+
             # === RACCOURCIS CLAVIER ===
             # Configurer les raccourcis maintenant que tous les docks sont initialisés
             self._setup_dock_shortcuts()
-            
+
             # Message de confirmation
             log_info("Dock system finalized with QGIS native repositioning, resizing features, context menus, and keyboard shortcuts")
-            
+
         except Exception as e:
             log_error(f"Error finalizing dock setup: {str(e)}")
-    
+
     def _validate_native_drop_zones(self):
         """Validate that Qt native drop zones are properly configured"""
         try:
             # Vérifier les options critiques
             options = self.dockOptions()
-            
+
             required_options = [
                 (_DockOption.AllowNestedDocks, "AllowNestedDocks"),
                 (_DockOption.AllowTabbedDocks, "AllowTabbedDocks"),
                 (_DockOption.AnimatedDocks, "AnimatedDocks"),
                 (_DockOption.GroupedDragging, "GroupedDragging")
             ]
-            
+
             missing_options = []
             for option, name in required_options:
                 if not (options & option):
                     missing_options.append(name)
-            
+
             if missing_options:
                 log_error(f"Missing dock options for native drop zones: {', '.join(missing_options)}")
-            
+
             # Vérifier que ForceTabbedDocks n'est PAS activé (bloquerait les drop zones)
             if options & _DockOption.ForceTabbedDocks:
                 log_error("WARNING: ForceTabbedDocks is enabled - this blocks native drop zones!")
@@ -1180,7 +1178,7 @@ class EnhancedTransformerDialog(QMainWindow):
                 corrected_options = options & ~_DockOption.ForceTabbedDocks
                 self.setDockOptions(corrected_options)
                 log_info("ForceTabbedDocks removed - native drop zones should now work")
-            
+
             # Vérifier les features des docks
             all_docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
             for dock in all_docks:
@@ -1188,28 +1186,28 @@ class EnhancedTransformerDialog(QMainWindow):
                     features = dock.features()
                     if not (features & _DockWidgetFeature.DockWidgetMovable):
                         log_error(f"Dock {dock.objectName()} is not movable - drag & drop won't work!")
-            
+
             log_info("Native Qt drop zones validation completed - should work like QGIS now")
-            
+
         except Exception as e:
             log_error(f"Error validating native drop zones: {str(e)}")
-    
+
     def save_dock_state(self):
         """Save current dock positions and sizes for restoration"""
         try:
             # Utiliser le système QSettings natif de Qt/QGIS
             from qgis.core import QgsSettings
-            
+
             settings = QgsSettings()
             settings.beginGroup("transformer_plugin")
-            
+
             # Sauvegarder l'état complet des docks (positions, tailles, visibilité)
             dock_state = self.saveState()
             settings.setValue("dock_state", dock_state)
-            
+
             # Sauvegarder la géométrie de la fenêtre
             settings.setValue("window_geometry", self.saveGeometry())
-            
+
             # Sauvegarder les positions individuelles pour debug
             for dock_name in ['source_dock', 'config_dock', 'log_dock', 'help_dock']:
                 dock = getattr(self, dock_name, None)
@@ -1218,72 +1216,67 @@ class EnhancedTransformerDialog(QMainWindow):
                     settings.setValue(f"{dock_name}_floating", dock.isFloating())
                     if dock.isFloating():
                         settings.setValue(f"{dock_name}_floating_geometry", dock.geometry())
-            
+
             settings.endGroup()
             log_info("Dock positions and window state saved")
-            
+
         except Exception as e:
             log_error(f"Error saving dock state: {str(e)}")
-    
+
     def restore_dock_state(self):
         """Restore previously saved dock positions and sizes"""
         try:
             from qgis.core import QgsSettings
-            
+
             settings = QgsSettings()
             settings.beginGroup("transformer_plugin")
-            
+
             # Restaurer l'état complet des docks
             dock_state = settings.value("dock_state")
             if dock_state:
                 self.restoreState(dock_state)
                 log_info("Dock state restored from previous session")
-            
+
             # Restaurer la géométrie de la fenêtre
             window_geometry = settings.value("window_geometry")
             if window_geometry:
                 self.restoreGeometry(window_geometry)
-            
+
             # Fallback: vérifier la visibilité individuelle
             for dock_name in ['source_dock', 'config_dock', 'log_dock', 'help_dock']:
                 dock = getattr(self, dock_name, None)
                 if dock:
                     visible = settings.value(f"{dock_name}_visible", True, type=bool)
                     dock.setVisible(visible)
-            
+
         except Exception as e:
             log_error(f"Error setting up dock styling: {str(e)}")
 
-    def closeEvent(self, event):
-        """Override close event to save dock positions automatically"""
-        try:
-            # Sauvegarder automatiquement les positions avant fermeture
-            self.save_dock_state()
-            
-            # Appeler la méthode parent pour fermer proprement
-            super().closeEvent(event)
-            
-        except Exception as e:
-            log_error(f"Error during close event: {str(e)}")
-            # S'assurer que la fenêtre se ferme même en cas d'erreur
-            event.accept()
-    
     def showEvent(self, event):
         """Override show event to restore dock positions when window opens"""
         try:
-            # Appeler la méthode parent d'abord
             super().showEvent(event)
 
             self.ensure_project_layer_signals()
-            QTimer.singleShot(100, self.sync_layers_from_project)
-            
-            # Restaurer les positions des docks après affichage
-            if hasattr(self, 'source_dock'): # S'assurer que les docks sont créés
-                QTimer.singleShot(200, self.restore_dock_state)
-            
+            if getattr(self, '_layers_dirty', False):
+                if not hasattr(self, '_show_sync_timer'):
+                    self._show_sync_timer = QTimer(self)
+                    self._show_sync_timer.setSingleShot(True)
+                    self._show_sync_timer.timeout.connect(self.sync_layers_from_project)
+                self._show_sync_timer.start(100)
+
+            # Restore dock layout once when window first opens
+            if hasattr(self, 'source_dock') and not getattr(self, '_dock_state_restored', False):
+                self._dock_state_restored = True
+                if not hasattr(self, '_show_dock_timer'):
+                    self._show_dock_timer = QTimer(self)
+                    self._show_dock_timer.setSingleShot(True)
+                    self._show_dock_timer.timeout.connect(self.restore_dock_state)
+                self._show_dock_timer.start(200)
+
         except Exception as e:
             log_error(f"Error during show event: {str(e)}")
-    
+
     def reset_dock_layout(self):
         """Reset all docks to default positions and sizes"""
         try:
@@ -1294,15 +1287,15 @@ class EnhancedTransformerDialog(QMainWindow):
             settings.remove("dock_state")
             settings.remove("window_geometry")
             settings.endGroup()
-            
+
             # Appliquer le layout par défaut
             self._layout_default()
-            
+
             log_info("Dock layout reset to default configuration")
-            
+
         except Exception as e:
             log_error(f"Error resetting dock layout: {str(e)}")
-    
+
     def move_dock_to_area(self, dock_name, area):
         """Move a specific dock to a different area programmatically"""
         try:
@@ -1310,7 +1303,7 @@ class EnhancedTransformerDialog(QMainWindow):
             if not dock:
                 log_error(f"Dock '{dock_name}' not found")
                 return False
-            
+
             # Convertir l'area si nécessaire
             area_map = {
                 'left': _DockWidgetArea.LeftDockWidgetArea,
@@ -1318,21 +1311,21 @@ class EnhancedTransformerDialog(QMainWindow):
                 'top': _DockWidgetArea.TopDockWidgetArea,
                 'bottom': _DockWidgetArea.BottomDockWidgetArea
             }
-            
+
             if isinstance(area, str):
                 area = area_map.get(area.lower(), area)
-            
+
             # Déplacer le dock
             self.addDockWidget(area, dock)
             dock.setVisible(True)
-            
+
             log_info(f"Dock '{dock_name}' moved to {area}")
             return True
-            
+
         except Exception as e:
             log_error(f"Error moving dock '{dock_name}': {str(e)}")
             return False
-    
+
     def resize_dock_to_percentage(self, dock_name, width_percent=None, height_percent=None):
         """Resize a dock to a percentage of the window size"""
         try:
@@ -1340,26 +1333,26 @@ class EnhancedTransformerDialog(QMainWindow):
             if not dock:
                 log_error(f"Dock '{dock_name}' not found")
                 return False
-            
+
             window_size = self.size()
-            
+
             # Calculer les nouvelles tailles
             new_width = int(window_size.width() * width_percent / 100) if width_percent else dock.width()
             new_height = int(window_size.height() * height_percent / 100) if height_percent else dock.height()
-            
+
             # Appliquer le redimensionnement
             if width_percent:
                 self.resizeDocks([dock], [new_width], _Orientation.Horizontal)
             if height_percent:
                 self.resizeDocks([dock], [new_height], _Orientation.Vertical)
-            
+
             log_info(f"Dock '{dock_name}' resized - Width: {new_width}px, Height: {new_height}px")
             return True
-            
+
         except Exception as e:
             log_error(f"Error resizing dock '{dock_name}': {str(e)}")
             return False
-    
+
     def toggle_dock_floating(self, dock_name):
         """Toggle a dock between docked and floating state"""
         try:
@@ -1367,74 +1360,74 @@ class EnhancedTransformerDialog(QMainWindow):
             if not dock:
                 log_error(f"Dock '{dock_name}' not found")
                 return False
-            
+
             # Basculer l'état flottant
             dock.setFloating(not dock.isFloating())
-            
+
             state = "floating" if dock.isFloating() else "docked"
             log_info(f"Dock '{dock_name}' is now {state}")
             return True
-            
+
         except Exception as e:
             log_error(f"Error toggling dock '{dock_name}' floating state: {str(e)}")
             return False
-    
-    def reset_dock_layout(self):
+
+    def reset_dock_layout(self):  # noqa: F811
         """Reset all dock widgets to their default positions"""
         try:
             # Réinitialiser à la configuration par défaut
             # D'abord, s'assurer que tous les docks sont visibles et ancrés
             all_docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
-            
+
             for dock in all_docks:
                 if dock:
                     dock.setVisible(True)
                     dock.setFloating(False)
-            
+
             # Supprimer tous les dock widgets du layout
             for dock in all_docks:
                 if dock:
                     self.removeDockWidget(dock)
-            
+
             # Réapliquer l'arrangement par défaut
             self._arrange_fluid_layout()
             self._apply_intelligent_sizing()
-            
+
             self.log_message("Dock layout reset to default configuration", "Success")
-            
+
         except Exception as e:
             log_error(f"Error resetting dock layout: {str(e)}")
-    
+
     def toggle_all_docks(self):
         """Toggle visibility of all dock widgets"""
         try:
             all_docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
-            
+
             # Déterminer l'action : si au moins un dock est visible, cacher tous, sinon afficher tous
             visible_count = sum(1 for dock in all_docks if dock and dock.isVisible())
             show_all = visible_count == 0
-            
+
             for dock in all_docks:
                 if dock:
                     dock.setVisible(show_all)
-            
+
             action = "shown" if show_all else "hidden"
             self.log_message(f" All dock widgets {action}", "Info")
-            
+
         except Exception as e:
             log_error(f"Error toggling all docks visibility: {str(e)}")
-    
+
     def _setup_dock_shortcuts(self):
         """Setup keyboard shortcuts for dock repositioning and management"""
         try:
             # Vérifier que les docks existent avant de configurer les raccourcis
             dock_mapping = {
                 'F1': 'help_dock',
-                'F2': 'source_dock', 
+                'F2': 'source_dock',
                 'F3': 'config_dock',
                 'F4': 'log_dock'
             }
-            
+
             # Vérifier l'existence des docks
             missing_docks = []
             for key, dock_name in dock_mapping.items():
@@ -1442,41 +1435,41 @@ class EnhancedTransformerDialog(QMainWindow):
                 if not dock:
                     missing_docks.append(dock_name)
                     log_error(f"Dock '{dock_name}' not found for shortcut {key}")
-            
+
             if missing_docks:
                 log_error(f"Cannot setup shortcuts - missing docks: {missing_docks}")
                 return
-            
+
             # Configurer les raccourcis pour les docks
             for key, dock_name in dock_mapping.items():
                 try:
                     shortcut = QShortcut(QKeySequence(key), self)
-                    shortcut.setContext(ApplicationShortcut) # Assure le contexte global
-                    
+                    shortcut.setContext(ApplicationShortcut)  # Assure le contexte global
+
                     # Créer une fonction de callback spécifique
                     def make_toggle_callback(dn):
                         return lambda: self._toggle_dock_visibility(dn)
-                    
+
                     shortcut.activated.connect(make_toggle_callback(dock_name))
-                    
+
                     # Ajouter tooltip avec le raccourci
                     dock = getattr(self, dock_name)
                     current_tooltip = dock.toolTip()
                     new_tooltip = f"{current_tooltip}\n\nShortcut: {key}" if current_tooltip else f"Shortcut: {key}"
                     dock.setToolTip(new_tooltip)
-                    
+
                     log_info(f"Shortcut {key} configured for {dock_name}")
-                    
+
                 except Exception as e:
                     log_error(f"Error creating shortcut {key} for {dock_name}: {str(e)}")
-            
+
             # Raccourcis spéciaux
             special_shortcuts = {
                 'F9': ('Reset dock layout to default', self.reset_dock_layout),
                 'F10': ('Save current dock layout', self.save_dock_state),
                 'F11': ('Toggle all docks visibility', self._toggle_all_docks_visibility)
             }
-            
+
             for key, (description, callback) in special_shortcuts.items():
                 try:
                     shortcut = QShortcut(QKeySequence(key), self)
@@ -1485,12 +1478,12 @@ class EnhancedTransformerDialog(QMainWindow):
                     log_info(f"Special shortcut {key} configured: {description}")
                 except Exception as e:
                     log_error(f"Error creating special shortcut {key}: {str(e)}")
-            
+
             log_info("All dock keyboard shortcuts configured successfully")
-            
+
         except Exception as e:
             log_error(f"Error setting up dock shortcuts: {str(e)}")
-    
+
     def _toggle_dock_visibility(self, dock_name):
         """Toggle visibility of a specific dock"""
         try:
@@ -1502,7 +1495,7 @@ class EnhancedTransformerDialog(QMainWindow):
                 new_state = dock.isVisible()
                 state_text = "visible" if new_state else "hidden"
                 log_info(f"Dock '{dock_name}' toggled: {current_state} -> {new_state} ({state_text})")
-                
+
                 # Forcer la mise à jour de l'affichage
                 dock.raise_()
                 if new_state:
@@ -1512,26 +1505,26 @@ class EnhancedTransformerDialog(QMainWindow):
                 log_error(f"Dock '{dock_name}' not found - cannot toggle visibility")
         except Exception as e:
             log_error(f"Error toggling visibility of dock '{dock_name}': {str(e)}")
-    
+
     def _toggle_all_docks_visibility(self):
         """Toggle visibility of all docks at once"""
         try:
             all_docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
-            
+
             # Vérifier si au moins un dock est visible
             any_visible = any(dock and dock.isVisible() for dock in all_docks)
-            
+
             # Si au moins un est visible, cacher tous, sinon afficher tous
             for dock in all_docks:
                 if dock:
                     dock.setVisible(not any_visible)
-            
+
             state = "visible" if not any_visible else "hidden"
             log_info(f"All docks are now {state}")
-            
+
         except Exception as e:
             log_error(f"Error toggling all docks visibility: {str(e)}")
-    
+
     def _setup_dock_context_menus(self):
         """Setup context menus for dock widgets to facilitate repositioning"""
         try:
@@ -1541,17 +1534,17 @@ class EnhancedTransformerDialog(QMainWindow):
                 'log_dock': 'Activity Monitor',
                 'help_dock': 'Quick Help'
             }
-            
+
             for dock_name, dock_title in all_docks.items():
                 dock = getattr(self, dock_name, None)
                 if dock:
                     self._add_context_menu_to_dock(dock, dock_name, dock_title)
-            
+
             log_info("Context menus added to all docks")
-            
+
         except Exception as e:
             log_error(f"Error setting up dock context menus: {str(e)}")
-    
+
     def _add_context_menu_to_dock(self, dock, dock_name, dock_title):
         """Add a context menu to a specific dock widget"""
         try:
@@ -1560,90 +1553,90 @@ class EnhancedTransformerDialog(QMainWindow):
             dock.customContextMenuRequested.connect(
                 lambda pos, dn=dock_name, dt=dock_title: self._show_dock_context_menu(pos, dock, dn, dt)
             )
-            
+
         except Exception as e:
             log_error(f"Error adding context menu to dock '{dock_name}': {str(e)}")
-    
+
     def _show_dock_context_menu(self, position, dock, dock_name, dock_title):
         """Show context menu for dock repositioning and management"""
         try:
             menu = QMenu(f"{dock_title} Options", self)
-            
+
             # === ACTIONS DE POSITIONNEMENT ===
             move_menu = QMenu("Move to Area", menu)
             move_menu.setIcon(ui_icon("move"))
-            
+
             areas = [
                 ('Left', _DockWidgetArea.LeftDockWidgetArea),
                 ('Right', _DockWidgetArea.RightDockWidgetArea),
                 ('Top', _DockWidgetArea.TopDockWidgetArea),
                 ('Bottom', _DockWidgetArea.BottomDockWidgetArea)
             ]
-            
+
             for area_name, area_const in areas:
                 action = QAction(f"Move to {area_name}", move_menu)
                 action.triggered.connect(
                     lambda checked, area=area_const: self.move_dock_to_area(dock_name, area)
                 )
                 move_menu.addAction(action)
-            
+
             menu.addMenu(move_menu)
-            
+
             # === ACTIONS DE REDIMENSIONNEMENT ===
             resize_menu = QMenu("Resize", menu)
             resize_menu.setIcon(ui_icon("resize"))
-            
+
             resize_options = [
                 ('Small (20%)', 20, 20),
                 ('Medium (30%)', 30, 30),
                 ('Large (40%)', 40, 40),
                 ('Extra Large (50%)', 50, 50)
             ]
-            
+
             for size_name, width_pct, height_pct in resize_options:
                 action = QAction(size_name, resize_menu)
                 action.triggered.connect(
-                    lambda checked, w=width_pct, h=height_pct: 
+                    lambda checked, w=width_pct, h=height_pct:
                     self.resize_dock_to_percentage(dock_name, w, h)
                 )
                 resize_menu.addAction(action)
-            
+
             menu.addMenu(resize_menu)
             menu.addSeparator()
-            
-            # === ACTIONS GÉNÉRALES ===
-            
+
+            # === ACTIONS GÃ‰NÃ‰RALES ===
+
             # Flottant/Ancré
             float_text = "Dock" if dock.isFloating() else "Float"
             float_action = QAction(f"{float_text} Window", menu)
             float_action.setIcon(ui_icon("float"))
             float_action.triggered.connect(lambda: self.toggle_dock_floating(dock_name))
             menu.addAction(float_action)
-            
+
             # Masquer/Afficher
             visibility_text = "Hide" if dock.isVisible() else "Show"
             visibility_action = QAction(f"{visibility_text} Panel", menu)
             visibility_action.setIcon(ui_icon("show_all_layers"))
             visibility_action.triggered.connect(lambda: self._toggle_dock_visibility(dock_name))
             menu.addAction(visibility_action)
-            
+
             menu.addSeparator()
-            
+
             # === ACTIONS DE LAYOUT ===
             layout_action = QAction("Reset All Docks Layout", menu)
             layout_action.setIcon(ui_icon("refresh"))
             layout_action.triggered.connect(self.reset_dock_layout)
             menu.addAction(layout_action)
-            
+
             save_action = QAction("Save Current Layout", menu)
             save_action.setIcon(ui_icon("save"))
             save_action.triggered.connect(self.save_dock_state)
             menu.addAction(save_action)
-            
+
             # Afficher le menu à la position du clic
             global_pos = dock.mapToGlobal(position)
             menu.exec(global_pos)
-            
+
         except Exception as e:
             log_error(f"Error showing context menu for dock '{dock_name}': {str(e)}")
 
@@ -1656,180 +1649,173 @@ class EnhancedTransformerDialog(QMainWindow):
                 'Activity Monitor': self.log_dock,
                 'Quick Help': self.help_dock
             }
-            
+
             for name, dock in docks.items():
                 if dock:
                     features = dock.features()
                     areas = dock.allowedAreas()
-                    
+
                     movable = bool(features & _DockWidgetFeature.DockWidgetMovable)
                     floatable = bool(features & _DockWidgetFeature.DockWidgetFloatable)
                     closable = bool(features & _DockWidgetFeature.DockWidgetClosable)
-                    
+
                     self.log_message(f"DEBUG {name}: Movable={movable}, Floatable={floatable}, Closable={closable}")
                     self.log_message(f"DEBUG {name}: Allowed areas={areas}, Visible={dock.isVisible()}, Enabled={dock.isEnabled()}")
                 else:
                     self.log_message(f"DEBUG {name}: DOCK IS NULL!")
-                    
+
             # Debug main window dock options
             options = self.dockOptions()
             animated = bool(options & _DockOption.AnimatedDocks)
             nested = bool(options & _DockOption.AllowNestedDocks)
             tabbed = bool(options & _DockOption.AllowTabbedDocks)
             grouped = bool(options & _DockOption.GroupedDragging)
-            
+
             self.log_message(f"DEBUG MainWindow: Animated={animated}, Nested={nested}, Tabbed={tabbed}, Grouped={grouped}")
-            
+
         except Exception as e:
             self.log_message(f"DEBUG ERROR: {str(e)}")
-    
-    def _finalize_dock_setup(self):
+
+    def _finalize_dock_setup(self):  # noqa: F811
         """Finalize dock setup - Qt native system handles the rest"""
         try:
             # S'assurer que tous les docks sont visibles et activés
             docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
-            
+
             for dock in docks:
                 if dock:
                     # S'assurer que le dock est visible et activé
                     dock.setVisible(True)
                     dock.setEnabled(True)
-                    
+
                     # Vérifier les features - Qt gère automatiquement le drag & drop
                     features = dock.features()
                     if not (features & _DockWidgetFeature.DockWidgetMovable):
-                        dock.setFeatures(
-                            _DockWidgetFeature.DockWidgetMovable |
-                            _DockWidgetFeature.DockWidgetFloatable |
-                            _DockWidgetFeature.DockWidgetClosable
-                        )
-            
+                        dock.setFeatures(_DockWidgetFeature.DockWidgetMovable | _DockWidgetFeature.DockWidgetFloatable | _DockWidgetFeature.DockWidgetClosable)
+
             # Message de succès
-            
+
             # Forcer une mise à jour de l'interface
             self.update()
-            
+
         except Exception as e:
             self.log_message(f"Error in dock finalization: {str(e)}")
-    
+
     def _force_dock_drop_zones(self):
         """Force activation of dock drop zones"""
         try:
             # Forcer la mise à jour du layout
             self.update()
-            
+
             # S'assurer que tous les docks sont correctement enregistrés
             docks = [self.source_dock, self.config_dock, self.log_dock, self.help_dock]
-            
+
             for dock in docks:
                 if dock:
                     # Forcer la mise à jour des propriétés
                     dock.update()
-                    
+
                     # Réactiver les fonctionnalités si elles ont été désactivées
                     current_features = dock.features()
                     if not (current_features & _DockWidgetFeature.DockWidgetMovable):
-                        dock.setFeatures(
-                            _DockWidgetFeature.DockWidgetMovable |
-                            _DockWidgetFeature.DockWidgetFloatable
-                        )
+                        dock.setFeatures(_DockWidgetFeature.DockWidgetMovable | _DockWidgetFeature.DockWidgetFloatable)
                         self.log_message(f"FIXED: Re-enabled features for {dock.windowTitle()}")
-            
+
             # Forcer la recalculation du layout du QMainWindow
             QTimer.singleShot(100, self._delayed_layout_update)
-            
+
         except Exception as e:
             self.log_message(f"ERROR forcing dock drop zones: {str(e)}")
-    
+
     def _delayed_layout_update(self):
         """Delayed layout update to ensure proper dock zone activation"""
         try:
             # Forcer une mise à jour complète du layout
             self.centralWidget().update()
             self.update()
-            
+
             # Log de confirmation
             self.log_message("Layout update completed - dock drop zones should now be active")
-            
+
         except Exception as e:
             self.log_message(f"ERROR in delayed layout update: {str(e)}")
-    
+
     # Méthodes d'overlay supprimées - on utilise le système Qt natif
-    
+
     def create_shapefiles_widget(self):
         """Create shapefiles management widget"""
         widget = QWidget()
         layout = QVBoxLayout()
         layout.setContentsMargins(4, 4, 4, 4)
-        
+
         # Toolbar avec case à cocher
         toolbar_layout = QHBoxLayout()
         toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # Toolbar avec boutons d'action
         toolbar = QToolBar()
         toolbar.setIconSize(QSize(16, 16))
-        
+
         # Removed Load Vector Files - working with QGIS layers only
-        
+
         refresh_action = QAction(ui_icon("refresh"), "Refresh", self)
         refresh_action.triggered.connect(self.refresh_shapefile_list)
         toolbar.addAction(refresh_action)
-        
+
         remove_action = QAction(ui_icon("remove"), "Remove", self)
         remove_action.triggered.connect(self.remove_selected_shapefile)
         toolbar.addAction(remove_action)
-        
+
         # Bouton Duplicate Configuration
         self.duplicate_action = QAction(ui_icon("duplicate"), "Duplicate Configuration", self)
         self.duplicate_action.triggered.connect(self.duplicate_current_configuration)
-        self.duplicate_action.setEnabled(False) # Désactivé par défaut
+        self.duplicate_action.setEnabled(False)  # Désactivé par défaut
         toolbar.addAction(self.duplicate_action)
-        
+
         toolbar_layout.addWidget(toolbar)
-        toolbar_layout.addStretch() # Stretch to right align toolbar
-        
+        toolbar_layout.addStretch()  # Stretch to right align toolbar
+
         layout.addLayout(toolbar_layout)
-        
+
         # Shapefiles list with detailed information
         self.shp_tree = QTreeWidget()
         self.shp_tree.setHeaderLabels(["File", "Features", "Type", "CRS"])
         self.shp_tree.setAlternatingRowColors(True)
         self.shp_tree.setRootIsDecorated(False)
-        self.shp_tree.setSelectionMode(_SelectionMode.ExtendedSelection) # Enable multiple selection
-        
+        self.shp_tree.setSelectionMode(_SelectionMode.ExtendedSelection)  # Enable multiple selection
+
         # Configure columns
         header = self.shp_tree.header()
         header.resizeSection(0, 180)
         header.resizeSection(1, 80)
         header.resizeSection(2, 80)
         header.setStretchLastSection(True)
-        
+
         layout.addWidget(self.shp_tree)
-        
+
         # Legend removed - no longer needed since we only show QGIS layers automatically
-        
+
         # Selection information
         info_group = QGroupBox("Selection Info")
         info_layout = QFormLayout()
-        
+
         self.selection_info_label = QLabel("No selection")
         self.features_count_label = QLabel("0")
         self.geometry_type_label = QLabel("Unknown")
         self.crs_info_label = QLabel("Unknown")
-        
+
         info_layout.addRow("Layer:", self.selection_info_label)
         info_layout.addRow("Features:", self.features_count_label)
         info_layout.addRow("Geometry:", self.geometry_type_label)
         info_layout.addRow("CRS:", self.crs_info_label)
-        
+
         info_group.setLayout(info_layout)
         layout.addWidget(info_group)
-        
+
         # Reprojection system
         reprojection_group = QGroupBox("Reprojection")
         reprojection_layout = QVBoxLayout()
-        
+
         # Current projection
         current_crs_layout = QHBoxLayout()
         current_crs_layout.addWidget(QLabel("Current CRS:"))
@@ -1840,166 +1826,166 @@ class EnhancedTransformerDialog(QMainWindow):
         current_crs_layout.addWidget(self.current_crs_label)
         current_crs_layout.addStretch()
         reprojection_layout.addLayout(current_crs_layout)
-        
+
         # Target CRS selection
         target_crs_layout = QHBoxLayout()
         target_crs_layout.addWidget(QLabel("Target CRS:"))
-        
+
         # Search field
         self.crs_search_edit = QLineEdit()
         self.crs_search_edit.setPlaceholderText("Search EPSG code or name...")
         self.crs_search_edit.textChanged.connect(self.filter_crs_list)
         target_crs_layout.addWidget(self.crs_search_edit)
-        
+
         # CRS selection button
         self.crs_selection_button = QPushButton("Select CRS")
         self.crs_selection_button.clicked.connect(self.open_crs_dialog)
         target_crs_layout.addWidget(self.crs_selection_button)
-        
+
         reprojection_layout.addLayout(target_crs_layout)
-        
+
         # Target CRS selected display
         self.target_crs_label = QLabel("No target CRS selected")
         tcrs_font = self.target_crs_label.font()
         tcrs_font.setBold(True)
         self.target_crs_label.setFont(tcrs_font)
         reprojection_layout.addWidget(self.target_crs_label)
-        
+
         # List of recently used CRS
         favorites_layout = QHBoxLayout()
         favorites_layout.addWidget(QLabel("Quick Access:"))
-        
+
         # Recent CRS buttons (dynamically created)
         self.quick_crs_buttons = []
-        self.recent_crs_list = [] # List of recently used CRS
-        
+        self.recent_crs_list = []  # List of recently used CRS
+
         # Create empty buttons that will be filled dynamically
-        for i in range(4): # Maximum 4 recent buttons
+        for i in range(4):  # Maximum 4 recent buttons
             btn = QPushButton("---")
             btn.setMaximumWidth(80)
             btn.setEnabled(False)
             btn.setVisible(False)
             favorites_layout.addWidget(btn)
             self.quick_crs_buttons.append(btn)
-        
+
         favorites_layout.addStretch()
         reprojection_layout.addLayout(favorites_layout)
-        
+
         # Note: The reprojection is automatically done with the main transformation button
-        
+
         reprojection_group.setLayout(reprojection_layout)
         layout.addWidget(reprojection_group)
-        
+
         # Initialisation
         self.target_crs = None
         self.current_crs = None
-        
+
         # Connection to update the current CRS when a shapefile is selected
         self.shp_tree.currentItemChanged.connect(self.update_current_crs)
-        
+
         widget.setLayout(layout)
         return widget
-    
+
     def create_config_preview_widget(self):
         """Create the configuration preview widget with modern styling"""
         widget = QWidget()
         layout = QVBoxLayout()
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(6)
-        
+
         # Preview toolbar with modern icons
         toolbar = QToolBar()
         toolbar.setIconSize(QSize(20, 20))
         toolbar.setToolButtonStyle(_ToolButtonStyle.ToolButtonTextBesideIcon)
-        
+
         validate_action = QAction("Validate", self)
         validate_action.setIcon(ui_icon("validate"))
         validate_action.setToolTip("Validate current configuration")
         validate_action.triggered.connect(self.validate_configuration)
         toolbar.addAction(validate_action)
         self._preview_validate_action = validate_action
-        
+
         save_action = QAction("Save Current", self)
         save_action.setIcon(ui_icon("save"))
         save_action.setToolTip("Save current configuration shown in preview")
         save_action.triggered.connect(self.save_current_table_config)
         toolbar.addAction(save_action)
-        
+
         test_action = QAction("Test", self)
         test_action.setIcon(ui_icon("play"))
         test_action.setToolTip("Test current configuration")
         test_action.triggered.connect(self.test_configuration)
         toolbar.addAction(test_action)
-        
+
         toolbar.addSeparator()
-        
+
         apply_changes_action = QAction("Apply Changes", self)
         apply_changes_action.setIcon(ui_icon("refresh"))
         apply_changes_action.setToolTip("Apply manual JSON changes to configuration")
         apply_changes_action.triggered.connect(self.apply_json_changes)
         toolbar.addAction(apply_changes_action)
-        
+
         layout.addWidget(toolbar)
-        
+
         # JSON preview with syntax highlighting
         preview_label = QLabel("Configuration Preview:")
         pv_font = preview_label.font()
         pv_font.setBold(True)
         preview_label.setFont(pv_font)
         layout.addWidget(preview_label)
-        
+
         self.config_preview = QPlainTextEdit()
-        self.config_preview.setReadOnly(False) # Allow direct editing
+        self.config_preview.setReadOnly(False)  # Allow direct editing
         self.config_preview.setFont(QFont("Consolas", 9))
-        
+
         # Configuration pour redimensionnement fluide et maximisation de l'espace
-        self.config_preview.setMinimumHeight(120) # Hauteur minimum pour bonne lisibilité
-        self.config_preview.setMinimumWidth(200) # Largeur minimum pour éviter les problèmes
+        self.config_preview.setMinimumHeight(120)  # Hauteur minimum pour bonne lisibilité
+        self.config_preview.setMinimumWidth(200)  # Largeur minimum pour éviter les problèmes
         # Pas de hauteur maximum pour permettre l'expansion complète
-        
+
         # Politique de taille optimisée pour expansion maximale
         self.config_preview.setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Expanding)
-        
+
         # Options de scrolling fluides
         self.config_preview.setHorizontalScrollBarPolicy(_ScrollBarPolicy.ScrollBarAsNeeded)
         self.config_preview.setVerticalScrollBarPolicy(_ScrollBarPolicy.ScrollBarAsNeeded)
-        self.config_preview.setLineWrapMode(WrapWidgetWidth) # Retour à la ligne automatique
-        
+        self.config_preview.setLineWrapMode(WrapWidgetWidth)  # Retour à la ligne automatique
+
         self.config_preview.setPlaceholderText("Edit configuration JSON directly here...")
-        
+
         # Add with stretch factor maximal pour utiliser tout l'espace disponible
-        layout.addWidget(self.config_preview, 1) # stretch factor = 1 pour expansion maximale
-        
+        layout.addWidget(self.config_preview, 1)  # stretch factor = 1 pour expansion maximale
+
         # Enhanced statistics - Compact version to save space
         stats_group = QGroupBox("Statistics")
-        stats_group.setMaximumHeight(85) # Limite la hauteur pour économiser l'espace
+        stats_group.setMaximumHeight(85)  # Limite la hauteur pour économiser l'espace
         stats_layout = QFormLayout()
-        stats_layout.setVerticalSpacing(4) # Espacement réduit
-        stats_layout.setContentsMargins(8, 6, 8, 6) # Marges réduites
-        
+        stats_layout.setVerticalSpacing(4)  # Espacement réduit
+        stats_layout.setContentsMargins(8, 6, 8, 6)  # Marges réduites
+
         self.total_fields_label = QLabel("0")
         sf = self.total_fields_label.font()
         sf.setBold(True)
         self.total_fields_label.setFont(sf)
-        
+
         self.total_tables_label = QLabel("0")
         st = self.total_tables_label.font()
         st.setBold(True)
         self.total_tables_label.setFont(st)
-        
+
         self.filter_status_label = QLabel("Disabled")
         sfl = self.filter_status_label.font()
         sfl.setBold(True)
         self.filter_status_label.setFont(sfl)
-        
+
         stats_layout.addRow("Fields:", self.total_fields_label)
         stats_layout.addRow("Tables:", self.total_tables_label)
         stats_layout.addRow("Filter:", self.filter_status_label)
-        
+
         stats_group.setLayout(stats_layout)
-        layout.addWidget(stats_group, 0) # Pas de stretch pour les statistiques
-        
-        # Transform Actions — minimal Apple-style section
+        layout.addWidget(stats_group, 0)  # Pas de stretch pour les statistiques
+
+        # Transform Actions - minimal Apple-style section
         actions_group = QGroupBox("Transform Actions")
         actions_group.setObjectName("transform_actions_group")
         actions_group.setFlat(True)
@@ -2034,24 +2020,24 @@ class EnhancedTransformerDialog(QMainWindow):
         self.transform_selected_btn.setStyleSheet("""
             QPushButton#btn_transform_selected {
                 background: transparent;
-                border: 1px solid rgba(255, 255, 255, 0.14);
+                border: 1px solid palette(mid);
                 border-radius: 5px;
-                color: rgba(255, 255, 255, 0.62);
+                color: palette(button-text);
                 padding: 0 14px;
                 font-size: 11px;
             }
             QPushButton#btn_transform_selected:hover {
-                background: rgba(255, 255, 255, 0.06);
-                border-color: rgba(255, 255, 255, 0.28);
-                color: rgba(255, 255, 255, 0.90);
+                background: palette(alternate-base);
+                border-color: palette(highlight);
+                color: palette(button-text);
             }
             QPushButton#btn_transform_selected:pressed {
-                background: rgba(255, 255, 255, 0.11);
-                border-color: rgba(255, 255, 255, 0.22);
+                background: palette(midlight);
+                border-color: palette(highlight);
             }
             QPushButton#btn_transform_selected:disabled {
-                border-color: rgba(255, 255, 255, 0.06);
-                color: rgba(255, 255, 255, 0.20);
+                border-color: palette(mid);
+                color: palette(mid);
             }
         """)
         self.transform_selected_btn.clicked.connect(self.transform_selected_shapefile)
@@ -2089,27 +2075,27 @@ class EnhancedTransformerDialog(QMainWindow):
 
         actions_group.setLayout(actions_layout)
         layout.addWidget(actions_group, 0)
-        
+
         # PAS de layout.addStretch() pour éliminer l'espace vide
         widget.setLayout(layout)
         return widget
-    
+
     def create_logs_widget(self):
         """Create the enterprise log monitor widget (FM-style structured viewer)."""
         # Hidden legacy widget kept for compat with code paths that still write to it
         self.logs_text = QPlainTextEdit()
         self.logs_text.setReadOnly(True)
+        self.logs_text.setMaximumBlockCount(2000)
         self.logs_text.setVisible(False)
-        
+
         # Filter map kept for legacy compat (filter_combo no longer used)
         self.log_filters = {
             "Success": True, "Info": True, "Warning": True, "Error": True, "Panel": False,
         }
-        
+
         # New enterprise log monitor widget, wired to the global structured logger
         self.log_monitor = LogMonitorWidget(transformer_logger=_global_logger, parent=self)
         return self.log_monitor
-    
 
     def _help_content_styles(self):
         """Palette-aware tokens for Quick Help rich text."""
@@ -2298,32 +2284,32 @@ class EnhancedTransformerDialog(QMainWindow):
     def _expression_help_sections(self):
         return [
             {
-                'title': 'Geometry',
+                'title': 'Géométrie',
                 'items': [
-                    ('area($geometry)', 'Measure surface for reporting, filtering, or export fields'),
-                    ('perimeter($geometry)', 'Calculate boundary length with the project CRS context'),
-                    ('centroid($geometry)', 'Create a stable point reference from polygons or lines'),
-                    ('buffer($geometry, distance)', 'Build an analysis zone around each feature'),
-                    ('bounds($geometry)', 'Return the feature envelope for spatial checks'),
+                    ('area($geometry)', 'Calculer la surface pour les bilans, le filtrage ou les champs de sortie'),
+                    ('perimeter($geometry)', 'Calculer le périmètre dans le SCR de la couche'),
+                    ('centroid($geometry)', 'Créer un point de référence stable à partir de polygones ou de lignes'),
+                    ('buffer($geometry, distance)', 'Construire une zone tampon autour de chaque entité'),
+                    ('bounds($geometry)', 'Retourner l\'enveloppe rectangulaire de l\'entité'),
                 ],
             },
             {
-                'title': 'Numbers',
+                'title': 'Nombres',
                 'items': [
-                    ('round(value, decimals)', 'Control precision before publishing or sharing data'),
-                    ('abs(value)', 'Normalize signed values when direction is not relevant'),
-                    ('sqrt(value)', 'Derive analytical metrics from numeric fields'),
-                    ('min(val1, val2)', 'Keep the lower business value'),
-                    ('max(val1, val2)', 'Keep the higher business value'),
+                    ('round(value, decimals)', 'Maîtriser la précision décimale avant livraison ou publication'),
+                    ('abs(value)', 'Obtenir la valeur absolue d\'un champ numérique'),
+                    ('sqrt(value)', 'Calculer la racine carrée d\'une mesure numérique'),
+                    ('min(val1, val2)', 'Conserver la plus petite valeur métier'),
+                    ('max(val1, val2)', 'Conserver la plus grande valeur métier'),
                 ],
             },
             {
-                'title': 'Text',
+                'title': 'Texte',
                 'items': [
-                    ('upper(text)', 'Standardize codes and controlled labels'),
-                    ('lower(text)', 'Normalize text before comparison'),
-                    ('concat(text1, text2)', 'Compose readable identifiers from source fields'),
-                    ('regexp_replace(text, pattern, replacement)', 'Clean structured text with explicit rules'),
+                    ('upper(text)', 'Normaliser les codes et libellés en majuscules'),
+                    ('lower(text)', 'Normaliser le texte en minuscules avant comparaison'),
+                    ('concat(text1, text2)', 'Composer des identifiants lisibles à partir de plusieurs champs'),
+                    ('regexp_replace(text, pattern, replacement)', 'Nettoyer un texte structuré avec une expression régulière'),
                 ],
             },
         ]
@@ -2331,29 +2317,29 @@ class EnhancedTransformerDialog(QMainWindow):
     def _filter_help_sections(self):
         return [
             {
-                'title': 'Selection Patterns',
+                'title': 'Modèles de sélection',
                 'items': [
-                    ('area($geometry) > 1000', 'Keep features above a measurable threshold'),
-                    ('"TYPE" = \'Building\'', 'Select a controlled business category'),
-                    ('is_valid($geometry)', 'Process only geometries accepted by QGIS'),
-                    ('"POPULATION" BETWEEN 1000 AND 5000', 'Keep a bounded numeric range'),
+                    ('area($geometry) > 1000', 'Retenir les entités dépassant un seuil mesurable'),
+                    ('"TYPE" = \'Bâtiment\'', 'Sélectionner une catégorie métier contrôlée'),
+                    ('is_valid($geometry)', 'Retenir uniquement les géométries valides au sens QGIS'),
+                    ('"POPULATION" BETWEEN 1000 AND 5000', 'Retenir un intervalle numérique borné'),
                 ],
             },
             {
-                'title': 'Operators',
+                'title': 'Opérateurs',
                 'items': [
-                    ('=, !=, <, >, <=, >=', 'Compare values explicitly'),
-                    ('AND, OR, NOT', 'Combine rules without changing the source layer'),
-                    ('LIKE, ILIKE', 'Match text patterns with or without case sensitivity'),
-                    ("IN ('value1', 'value2')", 'Keep a curated list of accepted values'),
+                    ('=, !=, <, >, <=, >=', 'Comparer explicitement des valeurs'),
+                    ('AND, OR, NOT', 'Combiner plusieurs règles sans modifier la couche source'),
+                    ('LIKE, ILIKE', 'Filtrer par motif texte avec ou sans sensibilité à la casse'),
+                    ("IN ('valeur1', 'valeur2')", 'Retenir une liste explicite de valeurs acceptées'),
                 ],
             },
             {
-                'title': 'Enterprise Checks',
+                'title': 'Contrôles avancés',
                 'items': [
-                    ('"NAME" ILIKE \'%house%\'', 'Find naming patterns without manual sorting'),
-                    ('length($geometry) > 500 AND "TYPE" = \'Road\'', 'Combine spatial and attribute criteria'),
-                    ("touches($geometry, geom_from_wkt('POLYGON(...)'))", 'Use spatial relationships when the boundary matters'),
+                    ('"NOM" ILIKE \'%route%\'', 'Rechercher un motif de nommage sans tri manuel'),
+                    ('length($geometry) > 500 AND "TYPE" = \'Route\'', 'Combiner critères spatiaux et attributaires'),
+                    ("touches($geometry, geom_from_wkt('POLYGON(...)'))", 'Tester une relation spatiale de contiguïté'),
                 ],
             },
         ]
@@ -2363,28 +2349,28 @@ class EnhancedTransformerDialog(QMainWindow):
         code = styles['code']
         return [
             {
-                'title': 'Workflow',
+                'title': 'Parcours',
                 'items': [
-                    f'1. Prepare the source and target structure in <span style="color:{emphasis}; font-weight:600;">Configuration</span>',
-                    f'2. Validate filters and calculated fields before a full transformation',
-                    f'3. Publish through <span style="color:{emphasis}; font-weight:600;">Export</span> or <span style="color:{emphasis}; font-weight:600;">PostgreSQL</span> once the Activity Monitor is clean',
+                    f'1. Préparer la couche source et la structure cible dans <span style="color:{emphasis}; font-weight:600;">Préparer</span>',
+                    '2. Vérifier le filtre et les colonnes calculées sur un aperçu borné avant exécution complète',
+                    f'3. Livrer vers un fichier ou <span style="color:{emphasis}; font-weight:600;">PostgreSQL</span> une fois le contrôle validé',
                 ],
             },
             {
-                'title': 'Operating Principles',
+                'title': 'Principes de fonctionnement',
                 'items': [
-                    'Keep the source layer in QGIS; Transformer stores repeatable configuration, not hidden copies',
-                    'Use the native QGIS expression engine for calculations and filters',
-                    'Treat the Activity Monitor as the trace of record for errors and progress',
-                    f'Use <span style="color:{code}; font-family:Consolas,monospace;">Ctrl+1</span> to <span style="color:{code}; font-family:Consolas,monospace;">Ctrl+4</span> to reveal only the workspace you need',
+                    'La couche source reste intacte dans QGIS ; Transformer enregistre une recette reproductible',
+                    'Le moteur natif d\'expressions QGIS exécute les calculs et les filtres',
+                    'Le journal technique trace chaque opération, sa durée et les erreurs éventuelles',
+                    f'Utilisez <span style="color:{code}; font-family:Consolas,monospace;">F1</span> pour ouvrir le guide et tutoriel interactif pas à pas',
                 ],
             },
             {
-                'title': 'Layouts',
+                'title': 'Panneaux latéraux',
                 'items': [
-                    f'<span style="color:{emphasis}; font-weight:600;">Default:</span> balanced view for everyday work',
-                    f'<span style="color:{emphasis}; font-weight:600;">Configuration Focus:</span> more room for fields, filters, and expressions',
-                    f'<span style="color:{emphasis}; font-weight:600;">Activity Monitor Focus:</span> more room for diagnostics and long operations',
+                    f'<span style="color:{emphasis}; font-weight:600;">Disposition de travail :</span> vue équilibrée pour préparer et contrôler',
+                    f'<span style="color:{emphasis}; font-weight:600;">Recette JSON :</span> inspection et édition directe de la recette',
+                    f'<span style="color:{emphasis}; font-weight:600;">Journal technique :</span> suivi détaillé des transformations et livraisons',
                 ],
             },
         ]
@@ -2393,9 +2379,9 @@ class EnhancedTransformerDialog(QMainWindow):
         filter_sections = self._filter_help_sections()
         filter_sections[2]['accent'] = styles['accent_5']
         return [
-            ('Fields', 'Build precise fields', self._expression_help_sections()),
-            ('Filters', 'Select the right features', filter_sections),
-            ('Workflow', 'Run a controlled transformation', self._processing_help_sections(styles)),
+            ('Champs', 'Construire des champs précis', self._expression_help_sections()),
+            ('Filtres', 'Sélectionner les bonnes entités', filter_sections),
+            ('Parcours', 'Exécuter une transformation maîtrisée', self._processing_help_sections(styles)),
         ]
 
     def _style_help_tabs(self, help_tabs, styles):
@@ -2434,11 +2420,7 @@ class EnhancedTransformerDialog(QMainWindow):
                 return
             dock_widget = self.help_dock.widget()
             tabs = getattr(self, '_help_tabs', None)
-            needs_rebuild = (
-                dock_widget is None
-                or tabs is None
-                or tabs.count() == 0
-            )
+            needs_rebuild = (dock_widget is None or tabs is None or tabs.count() == 0)
             if not needs_rebuild and tabs.count() > 0:
                 first = tabs.widget(0)
                 if isinstance(first, QTextEdit) and not first.toPlainText().strip():
@@ -2508,74 +2490,70 @@ class EnhancedTransformerDialog(QMainWindow):
 
         layout.addWidget(help_tabs)
         return root
-    
+
 # ... (rest of the code remains the same)
-    def _create_modern_dock(self, title, object_name, widget):
+    def _create_modern_dock(self, title, object_name, widget):  # noqa: F811
         """Create a modern dock widget with enhanced properties"""
         dock = QDockWidget(title, self)
         dock.setObjectName(object_name)
         dock.setWidget(widget)
-        
+
         # Enable all dock features for maximum flexibility
-        dock.setFeatures(
-            _DockWidgetFeature.DockWidgetMovable |
-            _DockWidgetFeature.DockWidgetFloatable |
-            _DockWidgetFeature.DockWidgetClosable
-        )
-        
+        dock.setFeatures(_DockWidgetFeature.DockWidgetMovable | _DockWidgetFeature.DockWidgetFloatable | _DockWidgetFeature.DockWidgetClosable)
+
         # Create custom title bar with proper spacing
         title_widget = QWidget()
         title_layout = QHBoxLayout(title_widget)
         title_layout.setContentsMargins(8, 3, 8, 3)
         title_layout.setSpacing(10)
-        
+
         title_label = QLabel(title)
         tl_font = title_label.font()
         tl_font.setBold(True)
         title_label.setFont(tl_font)
         title_layout.addWidget(title_label)
         title_layout.addStretch(1)
-        
+
         spacer = QWidget()
         spacer.setMinimumWidth(30)
         title_layout.addWidget(spacer)
-        
+
         # Add float button
-        float_btn = QPushButton("⧉")
+        float_btn = QPushButton("â§‰")
         float_btn.setFixedSize(18, 18)
         float_btn.clicked.connect(lambda: dock.setFloating(not dock.isFloating()))
         title_layout.addWidget(float_btn)
-        
-        close_btn = QPushButton("×")
+
+        close_btn = QPushButton("Ã—")
         close_btn.setFixedSize(18, 18)
         close_btn.clicked.connect(dock.close)
         title_layout.addWidget(close_btn)
-        
+
         dock.setTitleBarWidget(title_widget)
-        
+
         # Allow docking in all areas
         dock.setAllowedAreas(_DockWidgetArea.AllDockWidgetAreas)
-        
+
         return dock
-    
-    def _arrange_fluid_layout(self):
+
+    def _arrange_fluid_layout(self):  # noqa: F811
         """Arrange docks in modern fluid layout"""
         # Add docks to main window
         self.addDockWidget(_DockWidgetArea.LeftDockWidgetArea, self.source_dock)
         self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.config_dock)
         self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.log_dock)
         self.addDockWidget(_DockWidgetArea.RightDockWidgetArea, self.help_dock)
-        
+
         # Create vertical split: Config (top) | Activity Monitor (bottom)
         self.splitDockWidget(self.config_dock, self.log_dock, _Orientation.Vertical)
-        
+
         # Create tab group: Configuration + Quick Help
         self.tabifyDockWidget(self.config_dock, self.help_dock)
-        
+
         # Set default active tab (Configuration)
         self.config_dock.raise_()
-    
-    def _setup_dock_signals(self):
+
+    def _setup_dock_signals(self):  # noqa: F811
         """Setup enhanced dock signals for user feedback"""
         # Track dock movements for user feedback
         for dock in [self.source_dock, self.config_dock, self.log_dock, self.help_dock]:
@@ -2588,31 +2566,31 @@ class EnhancedTransformerDialog(QMainWindow):
             dock.topLevelChanged.connect(
                 lambda floating, dock=dock: self._on_dock_floating_changed(dock, floating)
             )
-    
-    def _setup_layout_presets(self):
+
+    def _setup_layout_presets(self):  # noqa: F811
         """Setup quick layout presets for different processing needs"""
         # This will be connected to toolbar buttons
         self.layout_presets = {
             'default': self._layout_default,
-            'vertical': self._layout_vertical, 
+            'vertical': self._layout_vertical,
             'horizontal': self._layout_horizontal,
             'focus_config': self._layout_focus_config,
             'focus_monitor': self._layout_focus_monitor
         }
-    
-    def _on_dock_moved(self, dock, area):
+
+    def _on_dock_moved(self, dock, area):  # noqa: F811
         """Handle dock movement with user feedback"""
         area_names = {
             _DockWidgetArea.LeftDockWidgetArea: 'Left',
-            _DockWidgetArea.RightDockWidgetArea: 'Right', 
+            _DockWidgetArea.RightDockWidgetArea: 'Right',
             _DockWidgetArea.TopDockWidgetArea: 'Top',
             _DockWidgetArea.BottomDockWidgetArea: 'Bottom'
         }
-        area_name = area_names.get(area, 'Unknown')
+        area_names.get(area, 'Unknown')
 
     def setup_toolbar(self):
         """Configure a clean, sectioned toolbar.
-        
+
         Sections (left to right):
         1. SOURCE     - Add layers, reload project layers
         2. DESIGN     - Validate, Save active config
@@ -2627,13 +2605,10 @@ class EnhancedTransformerDialog(QMainWindow):
         toolbar.setIconSize(QSize(20, 20))
         toolbar.setMovable(True)
         toolbar.setFloatable(True)
-        toolbar.setAllowedAreas(
-            _ToolBarArea.TopToolBarArea | _ToolBarArea.LeftToolBarArea |
-            _ToolBarArea.RightToolBarArea | _ToolBarArea.BottomToolBarArea
-        )
+        toolbar.setAllowedAreas(_ToolBarArea.TopToolBarArea | _ToolBarArea.LeftToolBarArea | _ToolBarArea.RightToolBarArea | _ToolBarArea.BottomToolBarArea)
         toolbar.setSizePolicy(_SizePolicy.Preferred, _SizePolicy.Preferred)
         toolbar.orientationChanged.connect(self._on_toolbar_orientation_changed)
-        
+
         # === SECTION 1 : SOURCE =========================================
         add_layer_action = QAction(
             ui_icon("add_layer"),
@@ -2644,7 +2619,7 @@ class EnhancedTransformerDialog(QMainWindow):
         add_layer_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
         add_layer_action.triggered.connect(self.add_shapefiles_dialog)
         toolbar.addAction(add_layer_action)
-        
+
         reload_action = QAction(
             ui_icon("refresh"),
             "Reload",
@@ -2654,9 +2629,9 @@ class EnhancedTransformerDialog(QMainWindow):
         reload_action.setShortcut(QKeySequence("F5"))
         reload_action.triggered.connect(self._reload_project_layers)
         toolbar.addAction(reload_action)
-        
+
         toolbar.addSeparator()
-        
+
         # === SECTION 2 : DESIGN =========================================
         validate_action = QAction(
             ui_icon("validate"),
@@ -2667,7 +2642,7 @@ class EnhancedTransformerDialog(QMainWindow):
         validate_action.triggered.connect(self.validate_configuration)
         toolbar.addAction(validate_action)
         self._toolbar_validate_action = validate_action
-        
+
         save_action = QAction(
             ui_icon("save"),
             "Save",
@@ -2676,9 +2651,9 @@ class EnhancedTransformerDialog(QMainWindow):
         save_action.setToolTip("Save configurations of all selected vector files")
         save_action.triggered.connect(self.save_selected_configurations)
         toolbar.addAction(save_action)
-        
+
         toolbar.addSeparator()
-        
+
         # === SECTION 3 : RUN (primary actions) =========================
         self.transform_action = QAction(
             ui_icon("transform"),
@@ -2688,7 +2663,7 @@ class EnhancedTransformerDialog(QMainWindow):
         self.transform_action.setToolTip("Transform the selected vector file(s) (background task)")
         self.transform_action.triggered.connect(self.transform_selected_shapefile)
         toolbar.addAction(self.transform_action)
-        
+
         self.batch_action = QAction(
             ui_icon("batch"),
             "Transform All",
@@ -2699,7 +2674,7 @@ class EnhancedTransformerDialog(QMainWindow):
         toolbar.addAction(self.batch_action)
 
         toolbar.addSeparator()
-        
+
         # === SECTION 4 : LAYOUT presets ================================
         layout_preset_button = QToolButton(self)
         layout_preset_button.setText("Layouts")
@@ -2707,7 +2682,7 @@ class EnhancedTransformerDialog(QMainWindow):
         layout_preset_button.setToolButtonStyle(_ToolButtonStyle.ToolButtonTextBesideIcon)
         layout_preset_button.setToolTip("Quick layout presets")
         layout_preset_button.setPopupMode(InstantPopup)
-        
+
         layout_preset_menu = QMenu("Layouts", self)
         layout_preset_menu.addAction(self._mk_action("Default", self._layout_default, "Standard arrangement of all panels"))
         layout_preset_menu.addAction(self._mk_action("Vertical Stack", self._layout_vertical, "Stacked layout for wide screens"))
@@ -2715,15 +2690,15 @@ class EnhancedTransformerDialog(QMainWindow):
         layout_preset_menu.addSeparator()
         layout_preset_menu.addAction(self._mk_action("Focus: Configuration", self._layout_focus_config, "Maximize the configuration area"))
         layout_preset_menu.addAction(self._mk_action("Focus: Activity Monitor", self._layout_focus_monitor, "Maximize the activity monitor"))
-        
+
         layout_preset_button.setMenu(layout_preset_menu)
         toolbar.addWidget(layout_preset_button)
-        
+
         # === Spacer to push environment label to the right =============
         spacer = QWidget()
         spacer.setSizePolicy(_SizePolicy.Expanding, _SizePolicy.Preferred)
         toolbar.addWidget(spacer)
-        
+
         # === Environment label (version) ===============================
         try:
             from ..shared.compat import version_summary
@@ -2737,9 +2712,8 @@ class EnhancedTransformerDialog(QMainWindow):
             toolbar.addWidget(env_label)
         except Exception as exc:
             log_warning(f"env label setup failed: {exc}")
-        
+
         self.main_toolbar = toolbar
-    
 
     def _on_toolbar_orientation_changed(self, orientation):
         """Adapter automatiquement le style de la toolbar selon son orientation"""
@@ -2754,43 +2728,43 @@ class EnhancedTransformerDialog(QMainWindow):
                 log_info("Toolbar orientation: vertical")
         except Exception as e:
             log_error(f"Error adapting toolbar orientation: {str(e)}")
-    
+
     def setup_statusbar(self):
         """Configure the status bar with task indicator and counters."""
         self.status_bar = self.statusBar()
-        
+
         # Left: status label
         self.status_label = QLabel("Ready")
         self.status_bar.addWidget(self.status_label)
-        
+
         # Left: active task indicator (hidden when idle)
         self.task_indicator = QLabel("")
         ti_font = self.task_indicator.font()
         ti_font.setItalic(True)
         self.task_indicator.setFont(ti_font)
         self.status_bar.addWidget(self.task_indicator)
-        
+
         # Right: progress bar (used by transform tasks)
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         self.progress_bar.setMaximumWidth(220)
         self.progress_bar.setTextVisible(True)
         self.status_bar.addPermanentWidget(self.progress_bar)
-        
+
         # Right: counters
         self.stats_label = QLabel("0 tables | 0 vector files")
         self.status_bar.addPermanentWidget(self.stats_label)
-        
+
         # Right: mode label (bold)
         self.mode_label = QLabel("Configuration Mode")
         ml2_font = self.mode_label.font()
         ml2_font.setBold(True)
         self.mode_label.setFont(ml2_font)
         self.status_bar.addPermanentWidget(self.mode_label)
-    
+
     def set_active_task(self, name: str = ""):
         """Show or clear the active background task name in the status bar.
-        
+
         Call with empty string to clear.
         """
         try:
@@ -2798,11 +2772,10 @@ class EnhancedTransformerDialog(QMainWindow):
                 self.task_indicator.setText(f"  *  {name}" if name else "")
         except Exception as exc:
             log_warning(f"update_task_indicator failed: {exc}")
-    
 
     def setup_menubar(self):
         """Configure the menu bar with curated, useful actions only.
-        
+
         Design rules:
         - Every action must be wired to a real handler.
         - Disabled actions for unimplemented features (clear visual signal).
@@ -2810,107 +2783,107 @@ class EnhancedTransformerDialog(QMainWindow):
         - QGIS HIG: standard accelerators, separators between groups.
         """
         menubar = self.menuBar()
-        
+
         # =====================================================
         # File menu
         # =====================================================
         file_menu = menubar.addMenu("&File")
-        
+
         new_action = QAction(ui_icon("new"), "&New Configuration", self)
         new_action.setShortcut(KeyNew)
         new_action.setStatusTip("Start a new configuration (clears current settings)")
         new_action.triggered.connect(self.new_configuration)
         file_menu.addAction(new_action)
-        
+
         open_action = QAction(ui_icon("open"), "&Open Configuration...", self)
         open_action.setShortcut(KeyOpen)
         open_action.setStatusTip("Load a saved configuration file")
         open_action.triggered.connect(self.open_configuration)
         file_menu.addAction(open_action)
-        
+
         save_action = QAction(ui_icon("save"), "&Save Configuration", self)
         save_action.setShortcut(KeySave)
         save_action.setStatusTip("Save the current configuration")
         save_action.triggered.connect(self.save_configuration)
         file_menu.addAction(save_action)
-        
+
         file_menu.addSeparator()
-        
+
         # Add layers submenu
         add_layer_action = QAction(ui_icon("add_layer"), "&Add Shapefile/Vector...", self)
         add_layer_action.setShortcut(QKeySequence("Ctrl+Shift+O"))
         add_layer_action.setStatusTip("Add one or more vector files to transform")
         add_layer_action.triggered.connect(self.add_shapefiles_dialog)
         file_menu.addAction(add_layer_action)
-        
+
         reload_action = QAction(ui_icon("refresh"), "&Reload Project Layers", self)
         reload_action.setShortcut(QKeySequence("F5"))
         reload_action.setStatusTip("Reload layers from the current QGIS project")
         reload_action.triggered.connect(self._reload_project_layers)
         file_menu.addAction(reload_action)
-        
+
         file_menu.addSeparator()
-        
+
         import_action = QAction("&Import Configuration...", self)
         import_action.setStatusTip("Import a configuration from JSON")
         import_action.triggered.connect(self.import_configuration)
         file_menu.addAction(import_action)
-        
+
         export_action = QAction("&Export Configuration...", self)
         export_action.setStatusTip("Export the current configuration as JSON")
         export_action.triggered.connect(self.export_configuration)
         file_menu.addAction(export_action)
-        
+
         file_menu.addSeparator()
-        
+
         close_action = QAction("&Close Window", self)
         close_action.setShortcut(QKeySequence("Ctrl+W"))
         close_action.setStatusTip("Close the Transformer window")
         close_action.triggered.connect(self.close)
         file_menu.addAction(close_action)
-        
+
         # =====================================================
         # Edit menu
         # =====================================================
         edit_menu = menubar.addMenu("&Edit")
-        
+
         copy_config_action = QAction("&Copy Active Configuration", self)
         copy_config_action.setShortcut(QKeySequence("Ctrl+C"))
         copy_config_action.setStatusTip("Copy active table configuration to clipboard as JSON")
         copy_config_action.triggered.connect(self._copy_active_config_to_clipboard)
         edit_menu.addAction(copy_config_action)
-        
+
         paste_config_action = QAction("&Paste Configuration", self)
         paste_config_action.setShortcut(QKeySequence("Ctrl+V"))
         paste_config_action.setStatusTip("Paste a configuration JSON from the clipboard")
         paste_config_action.triggered.connect(self._paste_config_from_clipboard)
         edit_menu.addAction(paste_config_action)
-        
+
         edit_menu.addSeparator()
-        
+
         clear_fields_action = QAction("Clear All &Fields", self)
         clear_fields_action.setStatusTip("Remove all configured fields from the active table")
         clear_fields_action.triggered.connect(self._clear_all_fields)
         edit_menu.addAction(clear_fields_action)
-        
+
         clear_filter_action = QAction("Clear &Filter", self)
         clear_filter_action.setStatusTip("Reset the smart filter for the active table")
         clear_filter_action.triggered.connect(self._clear_active_filter)
         edit_menu.addAction(clear_filter_action)
-        
+
         edit_menu.addSeparator()
-        
+
         preferences_action = QAction(ui_icon("preferences"), "&Preferences...", self)
         preferences_action.setShortcut(QKeySequence("Ctrl+,"))
         preferences_action.setStatusTip("Open the Preferences dialog")
         preferences_action.triggered.connect(self.show_preferences)
         edit_menu.addAction(preferences_action)
-        
+
         # =====================================================
         # View menu
         # =====================================================
         view_menu = menubar.addMenu("&View")
-        
+
         # Dock toggles
         for dock_attr, label in [
             ('source_dock', 'Source Files'),
@@ -2921,56 +2894,56 @@ class EnhancedTransformerDialog(QMainWindow):
             dock = getattr(self, dock_attr, None)
             if dock is not None:
                 view_menu.addAction(dock.toggleViewAction())
-        
+
         view_menu.addSeparator()
-        
+
         # Configuration components submenu
         components_menu = view_menu.addMenu("Configuration &Components")
-        
+
         table_config_menu_action = QAction("&Table Configuration", self)
         table_config_menu_action.setCheckable(True)
         table_config_menu_action.setChecked(True)
         table_config_menu_action.setShortcut(QKeySequence("Ctrl+1"))
         table_config_menu_action.toggled.connect(lambda checked: self.toggle_component_visibility('table_config', checked))
         components_menu.addAction(table_config_menu_action)
-        
+
         filter_menu_action = QAction("Smart &Filter", self)
         filter_menu_action.setCheckable(True)
         filter_menu_action.setChecked(True)
         filter_menu_action.setShortcut(QKeySequence("Ctrl+2"))
         filter_menu_action.toggled.connect(lambda checked: self.toggle_component_visibility('smart_filter', checked))
         components_menu.addAction(filter_menu_action)
-        
+
         expression_menu_action = QAction("&Expression Builder", self)
         expression_menu_action.setCheckable(True)
         expression_menu_action.setChecked(True)
         expression_menu_action.setShortcut(QKeySequence("Ctrl+3"))
         expression_menu_action.toggled.connect(lambda checked: self.toggle_component_visibility('expression_builder', checked))
         components_menu.addAction(expression_menu_action)
-        
+
         fields_menu_action = QAction("Field &Management", self)
         fields_menu_action.setCheckable(True)
         fields_menu_action.setChecked(True)
         fields_menu_action.setShortcut(QKeySequence("Ctrl+4"))
         fields_menu_action.toggled.connect(lambda checked: self.toggle_component_visibility('field_management', checked))
         components_menu.addAction(fields_menu_action)
-        
+
         components_menu.addSeparator()
-        
+
         show_all_components_action = QAction("Show &All Components", self)
         show_all_components_action.setShortcut(QKeySequence("Ctrl+Shift+A"))
         show_all_components_action.triggered.connect(self.show_all_components)
         components_menu.addAction(show_all_components_action)
-        
+
         self.component_menu_actions = {
             'table_config': table_config_menu_action,
             'smart_filter': filter_menu_action,
             'expression_builder': expression_menu_action,
             'field_management': fields_menu_action,
         }
-        
+
         view_menu.addSeparator()
-        
+
         # Layout presets
         layout_menu = view_menu.addMenu("&Layout")
         layout_menu.addAction(self._mk_action("Default Layout", self._layout_default, "Reset docks to default arrangement"))
@@ -2981,60 +2954,60 @@ class EnhancedTransformerDialog(QMainWindow):
         reset_layout_action.setStatusTip("Reset window geometry and dock state to defaults")
         reset_layout_action.triggered.connect(self._reset_window_layout)
         layout_menu.addAction(reset_layout_action)
-        
+
         # =====================================================
         # Tools menu
         # =====================================================
         tools_menu = menubar.addMenu("&Tools")
-        
+
         validate_action = QAction(ui_icon("validate"), "&Validate All Configurations", self)
         validate_action.setStatusTip("Check every loaded configuration for errors")
         validate_action.triggered.connect(self.validate_all_configurations)
         tools_menu.addAction(validate_action)
-        
+
         cleanup_action = QAction("&Cleanup Missing Sources", self)
         cleanup_action.setStatusTip("Remove configurations whose source file no longer exists")
         cleanup_action.triggered.connect(self.cleanup_missing_sources)
         tools_menu.addAction(cleanup_action)
-        
+
         tools_menu.addSeparator()
-        
+
         expression_tester_action = QAction(ui_icon("expression"), "Expression &Tester...", self)
         expression_tester_action.setShortcut(QKeySequence("Ctrl+T"))
         expression_tester_action.setStatusTip("Open the QGIS expression tester")
         expression_tester_action.triggered.connect(self.open_expression_tester)
         tools_menu.addAction(expression_tester_action)
-        
+
         tools_menu.addSeparator()
-        
+
         open_qgis_log_action = QAction("Open QGIS &Message Log", self)
         open_qgis_log_action.setStatusTip("Toggle the native QGIS Message Log panel")
         open_qgis_log_action.triggered.connect(self._open_qgis_message_log)
         tools_menu.addAction(open_qgis_log_action)
-        
+
         # =====================================================
         # Help menu
         # =====================================================
         help_menu = menubar.addMenu("&Help")
-        
+
         help_action = QAction(ui_icon("help"), "&Help Contents", self)
         help_action.setShortcut(KeyHelpContents)
         help_action.setStatusTip("Show plugin help")
         help_action.triggered.connect(self.show_help)
         help_menu.addAction(help_action)
-        
+
         report_issue_action = QAction("Report &Issue...", self)
         report_issue_action.setStatusTip("Open the project bug tracker in your browser")
         report_issue_action.triggered.connect(self._open_issue_tracker)
         help_menu.addAction(report_issue_action)
-        
+
         help_menu.addSeparator()
-        
+
         about_action = QAction(ui_icon("about"), "&About Transformer", self)
         about_action.setStatusTip("Show plugin version and credits")
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
-    
+
     # ----------------------------------------------------------
     # Menu helpers (P3)
     # ----------------------------------------------------------
@@ -3052,7 +3025,7 @@ class EnhancedTransformerDialog(QMainWindow):
             act.setStatusTip(status_tip)
         act.triggered.connect(slot)
         return act
-    
+
     def _reload_project_layers(self):
         """Re-import vector layers from the QGIS project."""
         try:
@@ -3061,7 +3034,7 @@ class EnhancedTransformerDialog(QMainWindow):
             self.log_message("Project layers reloaded", "Info")
         except Exception as e:
             self.log_message(f"Reload failed: {e}", "Error")
-    
+
     def _copy_active_config_to_clipboard(self):
         """Copy the active table configuration as JSON to clipboard."""
         try:
@@ -3070,7 +3043,7 @@ class EnhancedTransformerDialog(QMainWindow):
             self.log_message("Configuration copied to clipboard", "Info")
         except Exception as e:
             self.log_message(f"Copy failed: {e}", "Error")
-    
+
     def _paste_config_from_clipboard(self):
         """Paste a JSON configuration from the clipboard into active table."""
         try:
@@ -3088,7 +3061,7 @@ class EnhancedTransformerDialog(QMainWindow):
             self.log_message(f"Invalid JSON in clipboard: {e}", "Error")
         except Exception as e:
             self.log_message(f"Paste failed: {e}", "Error")
-    
+
     def _clear_all_fields(self):
         """Remove all configured fields from the smart fields widget."""
         try:
@@ -3101,7 +3074,7 @@ class EnhancedTransformerDialog(QMainWindow):
                 self.log_message("All fields cleared", "Info")
         except Exception as e:
             self.log_message(f"Clear fields failed: {e}", "Error")
-    
+
     def _clear_active_filter(self):
         """Reset the smart filter for the active table."""
         try:
@@ -3113,7 +3086,7 @@ class EnhancedTransformerDialog(QMainWindow):
                 self.log_message("Filter cleared", "Info")
         except Exception as e:
             self.log_message(f"Clear filter failed: {e}", "Error")
-    
+
     def _reset_window_layout(self):
         """Reset window geometry, dock state, and layout to defaults."""
         try:
@@ -3125,7 +3098,7 @@ class EnhancedTransformerDialog(QMainWindow):
             self.log_message("Window layout reset to defaults", "Info")
         except Exception as e:
             self.log_message(f"Reset layout failed: {e}", "Error")
-    
+
     def _open_qgis_message_log(self):
         """Toggle the native QGIS Message Log panel."""
         try:
@@ -3137,7 +3110,7 @@ class EnhancedTransformerDialog(QMainWindow):
                 self.log_message("QGIS Message Log not available in this context", "Warning")
         except Exception as e:
             self.log_message(f"Open QGIS log failed: {e}", "Error")
-    
+
     def _open_issue_tracker(self):
         """Open the project issue tracker in the user's browser."""
         try:
@@ -3152,7 +3125,7 @@ class EnhancedTransformerDialog(QMainWindow):
             )
         except Exception as e:
             self.log_message(f"Failed to open issue tracker: {e}", "Error")
-    
+
     def add_shapefiles_dialog(self):
         """Open file dialog to add shapefiles/vector files."""
         try:
@@ -3174,13 +3147,12 @@ class EnhancedTransformerDialog(QMainWindow):
                 self.log_message(f"{len(files)} file(s) added", "Info")
         except Exception as e:
             self.log_message(f"Add layers failed: {e}", "Error")
-    
 
     def setup_connections(self):
         """Configure les connexions de signaux"""
         # Shapefile selection
         self.shp_tree.itemSelectionChanged.connect(self.on_shapefile_selection_changed)
-        
+
         # Configuration changes
         self.table_name_edit.textChanged.connect(self.update_configuration_preview)
         self.table_name_edit.textChanged.connect(self.on_table_name_changed)
@@ -3188,15 +3160,15 @@ class EnhancedTransformerDialog(QMainWindow):
         self.smart_fields.field_added.connect(self.on_field_added)
         self.smart_fields.field_removed.connect(self.on_field_removed)
         self.smart_fields.field_modified.connect(self.on_field_modified)
-        
+
         # Tab change
         self.main_tabs.currentChanged.connect(self.on_tab_changed)
-        
+
         # Connections with export
         self.transformation_requested.connect(self.on_transformation_completed)
-        
+
         self.ensure_project_layer_signals()
-    
+
     def setup_centralized_logger(self):
         """Configure le logger centralisé avec le widget Activity Log"""
         try:
@@ -3209,16 +3181,16 @@ class EnhancedTransformerDialog(QMainWindow):
             else:
                 # Fallback message to QGIS log only
                 QgsMessageLog.logMessage("Activity Log widget not found - logger will only send to QGIS Message Log", "Transformer", MsgWarning)
-                
+
         except Exception as e:
             error_msg = f"Error setting up centralized logger: {str(e)}"
             # Fallback to QgsMessageLog if the centralized logger fails
             QgsMessageLog.logMessage(error_msg, "Transformer", MsgCritical)
-    
+
     def test_centralized_logger(self):
         """Test the centralized logger with a simple confirmation message"""
         log_info("Activity Monitor ready")
-    
+
     def apply_theme(self):
         """Apply the selected theme.
 
@@ -3263,59 +3235,52 @@ class EnhancedTransformerDialog(QMainWindow):
             log_error(f"Error applying theme: {str(e)}")
             self.setStyleSheet("")
 
-        
     def restore_window_state(self):
-        """Restore the window state"""
+        """Restore the window state (version-guarded to avoid segfault)."""
         try:
             settings = QSettings()
-            geometry = settings.value("Transformer/geometry")
-            if geometry:
-                self.restoreGeometry(geometry)
-            
-            window_state = settings.value("Transformer/windowState")
-            if window_state:
-                self.restoreState(window_state)
-                
-            # Restaurer les paramètres d'interface
+
+            # Purge any stale window state to prevent segfault
+            settings.remove("Transformer/windowState")
+            settings.remove("Transformer/geometry")
+
             theme_value = settings.value("Transformer/theme", InterfaceTheme.QGIS_NATIVE.value)
             try:
                 self.interface_settings.theme = InterfaceTheme(theme_value)
             except ValueError:
                 self.interface_settings.theme = InterfaceTheme.QGIS_NATIVE
-                
+
         except Exception as e:
             self.log_message(f"Error restoring window state: {str(e)}", "Warning")
-    
+
     def save_window_state(self):
         """Save the window state"""
         try:
             settings = QSettings()
-            settings.setValue("Transformer/geometry", self.saveGeometry())
-            settings.setValue("Transformer/windowState", self.saveState())
             settings.setValue("Transformer/theme", self.interface_settings.theme.value)
         except Exception as e:
             self.log_message(f"Error saving window state: {str(e)}", "Warning")
-    
+
     def auto_load_configs(self):
         """Auto load configurations at startup"""
         try:
             all_configs = self.config_manager.get_all_tables()
             loaded_count = 0
-            
+
             for table_name, config in all_configs.items():
                 source_file = config.get('source_file')
                 if source_file and os.path.exists(source_file):
                     self.add_shapefile(source_file)
                     loaded_count += 1
-            
+
             self.refresh_shapefile_list()
-            
+
             if loaded_count > 0:
                 self.log_message(f"Auto-loaded {loaded_count} vector files with existing configurations", "Info")
-                
+
         except Exception as e:
             self.log_message(f"Error auto-loading configurations: {str(e)}", "Warning")
-    
+
     def _show_config_selector(self, table_names: list, filename: str):
         """Show config selector (fallback to first configuration)"""
         try:
@@ -3324,24 +3289,23 @@ class EnhancedTransformerDialog(QMainWindow):
             config = self.config_manager.get_table_config(first_table)
             self._apply_table_config(first_table, config)
             self.log_message(f"Multiple configurations found, loaded first: '{first_table}'", "Info")
-            
+
         except Exception as e:
             self.log_message(f"Error showing config selector: {str(e)}", "Warning")
             # Fallback to first config
             first_table = table_names[0]
             config = self.config_manager.get_table_config(first_table)
             self._apply_table_config(first_table, config)
-    
-    
+
     # === VECTOR FILES MANAGEMENT METHODS ===
-    
+
     def _build_vector_file_filter(self) -> str:
         """Build comprehensive file filter for all QGIS-supported vector formats"""
         # Core vector formats supported by QGIS
         filters = [
             "All Vector Files (*.shp *.geojson *.json *.gpkg *.sqlite *.gml *.kml *.kmz *.csv *.txt *.tab *.mif *.mid *.dxf *.dgn *.gdb *.gpx)",
             "Shapefile (*.shp)",
-            "GeoJSON (*.geojson *.json)", 
+            "GeoJSON (*.geojson *.json)",
             "GeoPackage (*.gpkg)",
             "SQLite/SpatiaLite (*.sqlite *.db)",
             "Geography Markup Language (*.gml)",
@@ -3359,33 +3323,33 @@ class EnhancedTransformerDialog(QMainWindow):
             "All Files (*.*)"
         ]
         return ";;".join(filters)
-    
+
     def _is_supported_vector_format(self, file_path: str) -> bool:
         """Check if file format is supported by QGIS vector layer provider"""
         try:
             # Use QGIS to test if the file can be opened as a vector layer
             test_layer = QgsVectorLayer(file_path, "test", "ogr")
             is_valid = test_layer.isValid()
-            
+
             # Additional check for common extensions
             file_ext = os.path.splitext(file_path)[1].lower()
             supported_extensions = {
                 '.shp', '.geojson', '.json', '.gpkg', '.sqlite', '.db',
-                '.gml', '.kml', '.kmz', '.csv', '.txt', '.tab', 
-                '.mif', '.mid', '.dxf', '.dgn', '.gdb', '.gpx', 
+                '.gml', '.kml', '.kmz', '.csv', '.txt', '.tab',
+                '.mif', '.mid', '.dxf', '.dgn', '.gdb', '.gpx',
                 '.mdb', '.osm', '.pbf'
             }
-            
+
             # If QGIS validation fails, check if it's a known extension
             if not is_valid and file_ext in supported_extensions:
                 self.log_message(f"File {os.path.basename(file_path)} has supported extension but failed QGIS validation", "Warning")
-            
+
             return is_valid
-            
+
         except Exception as e:
             self.log_message(f"Error validating format for {os.path.basename(file_path)}: {str(e)}", "Warning")
             return False
-    
+
     def _detect_vector_format(self, file_path: str) -> str:
         """Detect vector file format and return human-readable name"""
         try:
@@ -3393,12 +3357,12 @@ class EnhancedTransformerDialog(QMainWindow):
             if layer.isValid():
                 provider = layer.dataProvider()
                 storage_type = provider.storageType()
-                
+
                 # Map storage types to user-friendly names
                 format_mapping = {
                     'ESRI Shapefile': 'Shapefile',
                     'GeoJSON': 'GeoJSON',
-                    'GPKG': 'GeoPackage', 
+                    'GPKG': 'GeoPackage',
                     'SQLite/SpatiaLite': 'SQLite',
                     'GML': 'Geography Markup Language',
                     'KML': 'Keyhole Markup Language',
@@ -3406,16 +3370,16 @@ class EnhancedTransformerDialog(QMainWindow):
                     'MapInfo File': 'MapInfo TAB',
                     'DXF': 'AutoCAD DXF'
                 }
-                
+
                 return format_mapping.get(storage_type, storage_type)
         except Exception as exc:
             log_warning(f"Format detection failed for {file_path}: {exc}")
-        
+
         # Fallback to file extension
         ext = os.path.splitext(file_path)[1].lower()
         ext_mapping = {
             '.shp': 'Shapefile',
-            '.geojson': 'GeoJSON', 
+            '.geojson': 'GeoJSON',
             '.json': 'GeoJSON',
             '.gpkg': 'GeoPackage',
             '.sqlite': 'SQLite',
@@ -3426,40 +3390,40 @@ class EnhancedTransformerDialog(QMainWindow):
             '.dxf': 'AutoCAD DXF'
         }
         return ext_mapping.get(ext, 'Unknown')
-    
+
     def load_shapefile(self):
         """Refresh QGIS layers - no external file loading"""
         # This method now only refreshes QGIS layers
         self.auto_load_qgis_layers()
         self.refresh_shapefile_list()
         self.log_message("Refreshed QGIS layers", "Info")
-    
+
     def add_vector_file(self, file_path: str) -> bool:
         """Add a vector file (supports all QGIS-compatible formats)"""
         try:
             # Detect format first
             file_format = self._detect_vector_format(file_path)
-            
+
             # Create layer with appropriate provider
             layer = QgsVectorLayer(file_path, os.path.basename(file_path), "ogr")
-            
+
             if layer.isValid():
                 filename = os.path.basename(file_path)
-                
+
                 # Avoid duplicates
                 if filename in self.loaded_shapefiles:
                     self.log_message(f"Vector file {filename} already loaded", "Warning")
                     return False
-                
+
                 # Enhanced metadata collection
                 provider = layer.dataProvider()
                 encoding = provider.encoding()
-                
+
                 # Get field information
                 fields = layer.fields()
                 field_count = len(fields)
                 field_types = [field.typeName() for field in fields]
-                
+
                 # Store comprehensive information
                 self.loaded_shapefiles[filename] = {
                     'layer': layer,
@@ -3478,111 +3442,111 @@ class EnhancedTransformerDialog(QMainWindow):
                     'storage_type': provider.storageType(),
                     'capabilities': provider.capabilities()
                 }
-                
+
                 # Enhanced logging with format information
                 geometry_info = f"{layer.featureCount()} features, {field_count} fields"
                 crs_info = layer.crs().authid() if layer.crs().isValid() else "No CRS"
-                
+
                 self.log_message(
-                    f"Added {file_format}: {filename} ({geometry_info}, {crs_info})", 
+                    f"Added {file_format}: {filename} ({geometry_info}, {crs_info})",
                     "Info"
                 )
-                
+
                 # Log additional details for complex formats
                 if file_format not in ['Shapefile', 'GeoJSON']:
                     self.log_message(
                         f" Format details: {provider.storageType()}, encoding: {encoding}",
                         "Info"
                     )
-                
+
                 return True
             else:
                 # Enhanced error reporting
                 error_msg = "Unknown error"
                 if hasattr(layer, 'error') and layer.error().message():
                     error_msg = layer.error().message()
-                
+
                 self.log_message(
-                    f" Invalid vector file: {os.path.basename(file_path)} ({file_format}) - {error_msg}", 
+                    f" Invalid vector file: {os.path.basename(file_path)} ({file_format}) - {error_msg}",
                     "Error"
                 )
                 return False
-                
+
         except Exception as e:
             self.log_message(
-                f" Error loading vector file {os.path.basename(file_path)}: {str(e)}", 
+                f" Error loading vector file {os.path.basename(file_path)}: {str(e)}",
                 "Error"
             )
             return False
-    
+
     def add_shapefile(self, file_path: str) -> bool:
         """Legacy method - redirects to add_vector_file for backward compatibility"""
         return self.add_vector_file(file_path)
-    
+
     def refresh_shapefile_list(self):
         """Refresh the shapefile list with multiple configurations per source file"""
         self.shp_tree.clear()
-        
+
         # Group configurations by source_file
         source_file_configs = self._group_configurations_by_source_file()
-        
+
         # Display each source file with its configurations
         for source_file, configs in source_file_configs.items():
             # CRITICAL: Only show mappings if the corresponding layer exists in QGIS
             if not self._is_layer_present_in_qgis(source_file):
                 # Layer not found in QGIS - skip all configurations for this source file
                 continue
-            
+
             # Get source file data from loaded_shapefiles
             data = self.loaded_shapefiles.get(source_file, {})
-            
+
             if not data:
                 # Source file not loaded, create from configuration data
                 data = self._create_data_from_config(configs[0])
-            
+
             # Only show QGIS layers and their configurations
             is_qgis_layer = data.get('is_qgis_layer', False)
             if not is_qgis_layer:
                 # Skip external files - only work with QGIS layers
                 continue
-            
+
             # Create items for each configuration of this source file
             for config in configs:
                 table_name = config['table_name']
                 display_name = f"{source_file} → {table_name}"
-                
+
                 item = QTreeWidgetItem(self.shp_tree)
                 item.setText(0, display_name)
                 item.setText(1, str(data.get('feature_count', 0)))
                 item.setText(2, data.get('geometry_type', 'Unknown'))
                 item.setText(3, data.get('crs', 'Unknown'))
-                
+
                 # Store both source_file and table_name for identification
                 item.setData(0, _ItemDataRole.UserRole, {'source_file': source_file, 'table_name': table_name})
-                
+
                 # Vérifier si c'est une couche QGIS
                 is_qgis_layer = data.get('is_qgis_layer', False)
-                
+
                 # Icône selon le type de géométrie et la source
                 geom_type = data.get('geometry_type', '').lower()
-                
+
                 # Style selon la source
                 palette = QApplication.palette()
                 if is_qgis_layer:
                     # Couches QGIS : palette Link color + gras
                     blue_color = palette_color(palette, None, 'Link')
                     bold_font = QFont("Arial", 9, FontBold)
-                    for col in range(4): # Appliquer à toutes les colonnes
+                    for col in range(4):  # Appliquer à toutes les colonnes
                         item.setForeground(col, blue_color)
                         item.setFont(col, bold_font)
                 else:
                     # Fichiers externes : palette LinkVisited color + normale
                     green_color = palette_color(palette, None, 'LinkVisited')
                     normal_font = QFont("Arial", 9, FontNormal)
-                    for col in range(4): # Appliquer à toutes les colonnes
+                    for col in range(4):  # Appliquer à toutes les colonnes
                         item.setForeground(col, green_color)
                         item.setFont(col, normal_font)
-                
+
                 # Icône selon le type de géométrie (une seule fois)
                 if 'point' in geom_type:
                     item.setIcon(0, ui_icon("point_layer"))
@@ -3592,14 +3556,14 @@ class EnhancedTransformerDialog(QMainWindow):
                     item.setIcon(0, ui_icon("polygon_layer"))
                 else:
                     item.setIcon(0, ui_icon("table_layer"))
-                
+
                 # Enhanced tooltip with configuration information
                 source_type = "QGIS Layer" if is_qgis_layer else "External File"
                 file_format = data.get('format', 'Unknown')
                 field_count = data.get('field_count', 0)
                 encoding = data.get('encoding', 'Unknown')
                 storage_type = data.get('storage_type', 'Unknown')
-                
+
                 tooltip = f"""Source: {source_type}
 Format: {file_format}
 Source File: {source_file}
@@ -3612,23 +3576,23 @@ Encoding: {encoding}
 Storage: {storage_type}
 Path: {data.get('path', 'N/A')}"""
                 item.setToolTip(0, tooltip)
-        
+
         # Add pure source files (loaded but no configuration) - QGIS layers only
         for filename, data in self.loaded_shapefiles.items():
             if filename not in source_file_configs:
                 # Only show QGIS layers - skip external files
                 is_qgis_layer = data.get('is_qgis_layer', False)
                 if not is_qgis_layer:
-                    continue # Skip external files
-                    
+                    continue  # Skip external files
+
                 item = QTreeWidgetItem(self.shp_tree)
-                display_name = os.path.basename(filename) # Display only filename, not full path
+                display_name = os.path.basename(filename)  # Display only filename, not full path
                 item.setText(0, display_name)
                 item.setText(1, str(data.get('feature_count', 0)))
                 item.setText(2, data.get('geometry_type', 'Unknown'))
                 item.setText(3, data.get('crs', 'Unknown'))
                 item.setData(0, _ItemDataRole.UserRole, {'source_file': filename, 'table_name': None})
-                
+
                 # Style as QGIS layer without configuration (palette-aware)
                 palette = QApplication.palette()
                 gray_color = palette_color(palette, None, 'PlaceholderText')
@@ -3637,7 +3601,7 @@ Path: {data.get('path', 'N/A')}"""
                 for col in range(4):
                     item.setForeground(col, gray_color)
                     item.setFont(col, italic_font)
-                
+
                 # Icon based on geometry
                 geom_type = data.get('geometry_type', '').lower()
                 if 'point' in geom_type:
@@ -3648,7 +3612,7 @@ Path: {data.get('path', 'N/A')}"""
                     item.setIcon(0, ui_icon("polygon_layer"))
                 else:
                     item.setIcon(0, ui_icon("table_layer"))
-                
+
                 # Tooltip for unconfigured QGIS layers
                 source_type = "QGIS Layer"
                 tooltip = f"""Source: {source_type}
@@ -3660,20 +3624,20 @@ Geometry: {data.get('geometry_type', 'Unknown')}
 CRS: {data.get('crs', 'Unknown')}
 Path: {data.get('path', 'N/A')}"""
                 item.setToolTip(0, tooltip)
-        
+
         # Redimensionner les colonnes
         for i in range(self.shp_tree.columnCount()):
             self.shp_tree.resizeColumnToContents(i)
-        
+
         # Mettre à jour les statistiques
         self.update_statistics()
-    
+
     def _group_configurations_by_source_file(self):
         """Group configurations by source_file from gestionnaire"""
         try:
             configurations = self.config_manager.get_all_tables()
             source_file_configs = {}
-            
+
             for table_name, config in configurations.items():
                 source_file = config.get('source_file', '')
                 if source_file:
@@ -3683,13 +3647,13 @@ Path: {data.get('path', 'N/A')}"""
                         'table_name': table_name,
                         'config': config
                     })
-            
+
             return source_file_configs
-            
+
         except Exception as e:
             self.log_message(f"Error grouping configurations: {str(e)}", "Warning")
             return {}
-    
+
     def _create_data_from_config(self, config_info):
         """Create basic data structure from configuration when source file not loaded"""
         config = config_info.get('config', {})
@@ -3704,14 +3668,14 @@ Path: {data.get('path', 'N/A')}"""
             'storage_type': 'Configuration only',
             'path': f"Configuration: {config_info['table_name']}"
         }
-    
+
     def remove_selected_shapefile(self):
         """Remove the selected shapefile(s) or configurations - supports multiple selection"""
         selected_items = self.shp_tree.selectedItems()
         if not selected_items:
             self.log_message("Please select one or more items to remove", "Warning")
             return
-        
+
         # Confirmation message for multiple selection
         if len(selected_items) == 1:
             item_data = selected_items[0].data(0, _ItemDataRole.UserRole)
@@ -3725,28 +3689,28 @@ Path: {data.get('path', 'N/A')}"""
                 confirm_msg = f"Remove '{item_data}' from the source files list?"
         else:
             confirm_msg = f"Remove {len(selected_items)} selected items from the list?"
-        
+
         reply = QMessageBox.question(
-            self, "Confirm Removal", 
+            self, "Confirm Removal",
             confirm_msg,
             _MsgBoxButton.Yes | _MsgBoxButton.No,
             _MsgBoxButton.No
         )
-        
+
         if reply != _MsgBoxButton.Yes:
             return
-        
+
         # Remove all selected items
         removed_count = 0
         config_removed_count = 0
-        
+
         for item in selected_items:
             item_data = item.data(0, _ItemDataRole.UserRole)
-            
+
             if isinstance(item_data, dict):
                 source_file = item_data.get('source_file')
                 table_name = item_data.get('table_name')
-                
+
                 if table_name:
                     # Ask if user wants to delete configuration permanently from JSON
                     delete_msg = QMessageBox()
@@ -3754,13 +3718,13 @@ Path: {data.get('path', 'N/A')}"""
                     delete_msg.setWindowTitle("Delete Configuration")
                     delete_msg.setText(f"Configuration '{table_name}' removed from list.")
                     delete_msg.setInformativeText("Do you also want to delete this configuration permanently from the JSON file?\n\n"
-                                                 "• Yes: Delete permanently (won't reappear)\n"
-                                                 "• No: Keep in JSON (will reappear on next load)")
+                                                  "• Yes: Delete permanently (won't reappear)\n"
+                                                  "• No: Keep in JSON (will reappear on next load)")
                     delete_msg.setStandardButtons(_MsgBoxButton.Yes | _MsgBoxButton.No | _MsgBoxButton.Cancel)
                     delete_msg.setDefaultButton(_MsgBoxButton.Yes)
-                    
+
                     delete_reply = delete_msg.exec()
-                    
+
                     if delete_reply == _MsgBoxButton.Yes:
                         # Remove configuration permanently from JSON
                         self.config_manager.remove_table_config(table_name)
@@ -3775,10 +3739,10 @@ Path: {data.get('path', 'N/A')}"""
                     if source_file in self.loaded_shapefiles:
                         data = self.loaded_shapefiles[source_file]
                         is_qgis_layer = data.get('is_qgis_layer', False)
-                        
+
                         del self.loaded_shapefiles[source_file]
                         removed_count += 1
-                        
+
                         if is_qgis_layer:
                             self.log_message(f"Removed QGIS layer from list: {source_file}", "Info")
                         else:
@@ -3788,26 +3752,26 @@ Path: {data.get('path', 'N/A')}"""
                 if item_data in self.loaded_shapefiles:
                     data = self.loaded_shapefiles[item_data]
                     is_qgis_layer = data.get('is_qgis_layer', False)
-                    
+
                     del self.loaded_shapefiles[item_data]
                     removed_count += 1
-                    
+
                     if is_qgis_layer:
                         self.log_message(f"Removed QGIS layer from list: {item_data}", "Info")
                     else:
                         self.log_message(f"Removed external file from list: {item_data}", "Info")
-        
+
         self.refresh_shapefile_list()
-        
+
         if removed_count > 0 or config_removed_count > 0:
-            total_removed = removed_count + config_removed_count
+            removed_count + config_removed_count
             if config_removed_count > 0 and removed_count > 0:
                 self.log_message(f"Removed {removed_count} source file(s) and {config_removed_count} configuration(s)", "Success")
             elif config_removed_count > 0:
                 self.log_message(f"Removed {config_removed_count} configuration(s)", "Success")
             else:
                 self.log_message(f"Removed {removed_count} source file(s)", "Success")
-    
+
     def save_selected_configurations(self):
         """Save configurations for all selected vector files"""
         try:
@@ -3815,29 +3779,29 @@ Path: {data.get('path', 'N/A')}"""
             if not selected_items:
                 self.log_message("Please select one or more vector files to save configurations", "Warning")
                 return
-            
+
             # Get current configuration settings
             table_name = self.table_name_edit.text().strip()
             if not table_name:
                 QMessageBox.warning(self, "Configuration Error", "Table name is required for saving configurations")
                 return
-            
+
             # Get calculated fields and geometry expression
             calculated_fields, geometry_expression = self.smart_fields.get_calculated_fields_with_geometry_info()
-            
+
             # Get filter configuration
             filter_config = {"enabled": False, "expression": ""}
             if hasattr(self, 'smart_filter') and self.smart_filter:
                 filter_config = self.smart_filter.get_filter_config()
-            
+
             # Get target CRS
             target_crs_config = None
             if hasattr(self, 'target_crs') and self.target_crs is not None and self.target_crs.isValid():
                 target_crs_config = self.target_crs.authid()
-            
+
             saved_count = 0
             failed_count = 0
-            
+
             # Save configuration for each selected file
             for item in selected_items:
                 filename = item.data(0, _ItemDataRole.UserRole)
@@ -3846,11 +3810,11 @@ Path: {data.get('path', 'N/A')}"""
                         # Use the configured table name directly - no concatenation
                         # If user wants different names per file, they should configure them individually
                         file_table_name = table_name
-                        
+
                         # Get source file path
                         shapefile_info = self.loaded_shapefiles[filename]
                         source_file = shapefile_info.get('path', filename)
-                        
+
                         # Save configuration using the configuration manager
                         result = self.config_manager.add_table_config(
                             file_table_name,
@@ -3860,38 +3824,38 @@ Path: {data.get('path', 'N/A')}"""
                             target_crs_config,
                             geometry_expression
                         )
-                        
+
                         # Log if a previous configuration was replaced
                         if result.get('replaced_table'):
                             self.log_message(f"Replaced previous configuration for '{result['replaced_table']}' (same source_file)", "Info")
-                        
+
                         saved_count += 1
                         self.log_message(f"Configuration saved for '{filename}' as table '{file_table_name}'", "Success")
-                        
+
                     except Exception as e:
                         failed_count += 1
                         self.log_message(f"Failed to save configuration for '{filename}': {str(e)}", "Error")
-            
+
             # Persist changes to calculated_fields_config.json
             if saved_count > 0:
                 self.config_manager.save_config()
-                
+
             # Summary message
             if saved_count > 0:
                 summary_msg = f"Batch save completed: {saved_count} configuration(s) saved to calculated_fields_config.json"
                 if failed_count > 0:
                     summary_msg += f" ({failed_count} failed)"
-                
+
                 self.log_message(summary_msg, "Success")
                 self.update_configuration_preview()
             else:
                 self.log_message(f"All {len(selected_items)} configuration saves failed", "Error")
-                
+
         except Exception as e:
             error_msg = f"Batch configuration save failed: {str(e)}"
             QMessageBox.critical(self, "Save Error", error_msg)
             self.log_message(error_msg, "Error")
-    
+
     def _set_table_name_edit(self, text: str) -> None:
         """Set table name without updating the layer tree display."""
         self._suppress_table_name_side_effects = True
@@ -3972,46 +3936,46 @@ Path: {data.get('path', 'N/A')}"""
         current = self.shp_tree.currentItem()
         if current:
             item_data = current.data(0, _ItemDataRole.UserRole)
-            
+
             # Handle new format with {source_file, table_name}
             if isinstance(item_data, dict):
                 source_file = item_data.get('source_file')
                 table_name = item_data.get('table_name')
-                
+
                 # Get source file data
                 data = self.loaded_shapefiles.get(source_file, {})
-                
+
                 # Update selection information
                 if table_name:
                     display_text = f"{source_file} → {table_name}"
                 else:
                     display_text = source_file
-                    
+
                 self.selection_info_label.setText(display_text)
                 self.features_count_label.setText(f"{data.get('feature_count', 0):,}")
                 self.geometry_type_label.setText(data.get('geometry_type', 'Unknown'))
                 self.crs_info_label.setText(data.get('crs', 'Unknown'))
-                
+
                 # Update the current CRS automatically
                 self.update_current_crs(current)
-                
+
                 # Configure widgets with the new layer
                 layer = data.get('layer')
                 if layer and layer.isValid():
                     # Configure smart filter with the new layer
                     self.smart_filter.set_layer(layer)
-                    
+
                     # Configure smart fields with the new layer
                     self.smart_fields.set_layer(layer)
-                    
+
                     # Configure the expression builder with the new layer
                     if hasattr(self, 'advanced_expression') and self.advanced_expression:
                         self.advanced_expression.set_layer(layer)
-                
+
                 # Enable duplicate button for valid configurations
                 has_valid_config = bool(table_name and self.config_manager.get_table_config(table_name))
                 self.duplicate_action.setEnabled(has_valid_config)
-                
+
                 # Load the configuration if a table_name is provided
                 if table_name:
                     config = self.config_manager.get_table_config(table_name)
@@ -4025,25 +3989,25 @@ Path: {data.get('path', 'N/A')}"""
                 # Legacy support - assume it's a filename
                 filename = item_data
                 data = self.loaded_shapefiles.get(filename, {})
-                
+
                 # Update selection information
                 self.selection_info_label.setText(filename)
                 self.features_count_label.setText(f"{data.get('feature_count', 0):,}")
                 self.geometry_type_label.setText(data.get('geometry_type', 'Unknown'))
                 self.crs_info_label.setText(data.get('crs', 'Unknown'))
-                
+
                 # Update the current CRS automatically
                 self.update_current_crs(current)
-                
+
                 # Configure widgets with the new layer
                 layer = data.get('layer')
                 if layer:
                     self.smart_filter.set_layer(layer)
                     self.advanced_expression.set_layer(layer)
-                
+
                 # Always try to auto load configuration for individual selection
                 self.auto_load_table_config_for_shapefile(filename)
-            
+
         else:
             self.selection_info_label.setText("No selection")
             self.features_count_label.setText("0")
@@ -4051,7 +4015,7 @@ Path: {data.get('path', 'N/A')}"""
             self.crs_info_label.setText("Unknown")
             # Reset the current CRS
             self.current_crs_label.setText("Unknown")
-    
+
     def auto_load_table_config_for_shapefile(self, filename: str):
         """Auto load configuration ONLY from calculated_fields_config.json - NO external fallback"""
         try:
@@ -4064,7 +4028,7 @@ Path: {data.get('path', 'N/A')}"""
                 self.smart_filter.set_filter_config({})
                 self.update_configuration_preview()
                 return
-            
+
             # ONLY try to load existing saved configuration from calculated_fields_config.json
             table_names = self.config_manager.get_tables_for_source(filename)
             if table_names:
@@ -4072,7 +4036,7 @@ Path: {data.get('path', 'N/A')}"""
                 if len(table_names) > 1:
                     self._show_config_selector(table_names, filename)
                     return
-                
+
                 # Single configuration - load directly
                 first_table = table_names[0]
                 config = self.config_manager.get_table_config(first_table)
@@ -4092,17 +4056,17 @@ Path: {data.get('path', 'N/A')}"""
                 # NO existing configuration: auto-populate all attribute fields in-memory
                 # so the user can start editing immediately (replaces the old "Copy All" button).
                 self._auto_populate_default_config(filename)
-        
+
         except Exception as e:
             self.log_message(
                 f"Error loading configuration for {filename}: {str(e)}", "Warning"
             )
             self.reset_configuration()
-    
+
     def _auto_populate_default_config(self, filename: str) -> None:
         """Build a default in-memory config (one expression per attribute + geometry)
         from the layer attached to ``filename`` and apply it to the UI.
-        
+
         Replaces the manual "Copy All" button: as soon as the user clicks a table,
         the bottom panel shows every attribute as an editable expression. The config
         is NOT persisted automatically; the user explicitly saves later.
@@ -4117,26 +4081,25 @@ Path: {data.get('path', 'N/A')}"""
                 self.smart_filter.set_filter_config({})
                 self.update_configuration_preview()
                 return
-            
+
             # Build calculated_fields = {field_name: '"field_name"'} for every attribute
             calculated_fields = {}
             for fld in layer.fields():
                 fname = fld.name()
                 calculated_fields[fname] = f'"{fname}"'
-            
+
             # Default geometry expression
             geometry_expression = "$geometry"
             try:
-                from qgis.core import QgsWkbTypes
                 if layer.geometryType() != GeomNull:
                     calculated_fields["geometry"] = geometry_expression
             except Exception:
                 calculated_fields["geometry"] = geometry_expression
-            
+
             # Default table name: <basename>_transformed
             base_name = os.path.splitext(filename)[0]
             default_table_name = f"{base_name}_transformed"
-            
+
             in_memory_config = {
                 "calculated_fields": calculated_fields,
                 "filter": {"enabled": False, "expression": ""},
@@ -4158,7 +4121,7 @@ Path: {data.get('path', 'N/A')}"""
                 self.update_configuration_preview()
             except Exception as reset_exc:
                 log_warning(f"reset_configuration failed: {reset_exc}")
-    
+
     def _is_layer_present_in_qgis(self, filename: str) -> bool:
         """Check if a valid, accessible layer corresponding to filename is present in QGIS project"""
         try:
@@ -4197,9 +4160,7 @@ Path: {data.get('path', 'N/A')}"""
                 if layer_source:
                     source_basename = os.path.basename(layer_source)
                     source_no_ext = _strip_ext(source_basename)
-                    if (source_basename == filename
-                            or source_no_ext == filename_no_ext
-                            or source_no_ext == filename):
+                    if (source_basename == filename or source_no_ext == filename_no_ext or source_no_ext == filename):
                         return True
 
                     # 4. GPKG/GeoPackage layer name in source (format: path|layername)
@@ -4213,24 +4174,24 @@ Path: {data.get('path', 'N/A')}"""
         except Exception as e:
             self.log_message(f"Error checking layer presence for {filename}: {str(e)}", "Warning")
             return False
-    
-    def _show_config_selector(self, table_names, filename):
+
+    def _show_config_selector(self, table_names, filename):  # noqa: F811
         """Show selector dialog when multiple configurations exist for one source file"""
         try:
             from qgis.PyQt.QtWidgets import QInputDialog
-            
+
             # Create better display names showing source → table mapping
             display_names = [f"{filename} → {table}" for table in table_names]
-            
+
             display_name, ok = QInputDialog.getItem(
-                self, 
-                "Multiple Configurations Found", 
-                f"Multiple configurations found for source file '{filename}'.\nSelect which configuration to load:", 
-                display_names, 
-                0, 
+                self,
+                "Multiple Configurations Found",
+                f"Multiple configurations found for source file '{filename}'.\nSelect which configuration to load:",
+                display_names,
+                0,
                 False
             )
-            
+
             if ok and display_name:
                 # Extract table name from display name
                 table_name = display_name.split(' → ')[-1]
@@ -4238,10 +4199,10 @@ Path: {data.get('path', 'N/A')}"""
                 if config:
                     self._apply_table_config(table_name, config)
                     self.log_message(f"Loaded configuration '{table_name}' for '{filename}'", "Success")
-                    
+
         except Exception as e:
             self.log_message(f"Error showing config selector: {str(e)}", "Warning")
-    
+
     def _apply_table_config(self, table_name: str, config: dict, as_draft: bool = False):
         """Apply a table configuration to the UI"""
         try:
@@ -4253,21 +4214,21 @@ Path: {data.get('path', 'N/A')}"""
 
             # Update table name without changing the layer tree for browse-only previews
             self._set_table_name_edit(table_name)
-            
+
             # Set calculated fields
             calculated_fields = config.get('calculated_fields', {})
             if hasattr(self, 'smart_fields') and self.smart_fields:
                 self.smart_fields.set_calculated_fields(calculated_fields)
             elif hasattr(self, 'field_widget') and self.field_widget:
                 self.field_widget.set_calculated_fields(calculated_fields)
-            
+
             # Set filter
             filter_config = config.get('filter', {})
             if is_filter_enabled(filter_config):
                 self.smart_filter.set_filter_expression(get_filter_expression(filter_config))
             else:
                 self.smart_filter.clear_filter()
-            
+
             # Set CRS
             target_crs = config.get('target_crs')
             if target_crs:
@@ -4287,18 +4248,18 @@ Path: {data.get('path', 'N/A')}"""
                 # No saved CRS - preserve current target_crs if user has set one
                 if not hasattr(self, 'target_crs') or self.target_crs is None:
                     self.target_crs = None
-            
+
             # Set geometry expression
             geometry_expression = config.get('geometry_expression')
             if geometry_expression and geometry_expression != '$geometry':
                 self.advanced_expression.set_expression(geometry_expression)
-                
+
             # Update configuration preview
             self.update_configuration_preview()
-            
+
         except Exception as e:
             self.log_message(f"Error applying configuration: {str(e)}", "Warning")
-    
+
     def load_table_config_by_name(self, table_name: str):
         """Load a specific configuration by table name and apply it to the interface"""
         try:
@@ -4307,31 +4268,31 @@ Path: {data.get('path', 'N/A')}"""
             if not config:
                 self.log_message(f"Configuration '{table_name}' not found", "Warning")
                 return False
-            
+
             # Apply the configuration to the interface
             self._apply_table_config(table_name, config)
             self.log_message(f"Loaded configuration '{table_name}'", "Success")
             return True
-            
+
         except Exception as e:
             self.log_message(f"Error loading configuration '{table_name}': {str(e)}", "Error")
             return False
-    
+
     def update_configuration_dropdown(self):
         """Update any configuration dropdown/selector UI - placeholder for future implementation"""
         try:
             # For now, we trigger a config preview update to refresh the interface
             self.update_configuration_preview()
-            
+
             # Log available configurations for user reference
             available_configs = self.config_manager.get_all_tables()
             if available_configs:
                 config_names = list(available_configs.keys())
                 self.log_message(f"Available configurations: {', '.join(config_names)}", "Info")
-            
+
         except Exception as e:
             self.log_message(f"Error updating configuration dropdown: {str(e)}", "Warning")
-    
+
     def _on_config_selected(self, table_name, filename):
         """Handle configuration selection from selector"""
         try:
@@ -4340,10 +4301,10 @@ Path: {data.get('path', 'N/A')}"""
                 self._apply_table_config(table_name, config)
             else:
                 self.log_message(f"Configuration '{table_name}' not found", "Warning")
-                
+
         except Exception as e:
             self.log_message(f"Error loading selected configuration: {str(e)}", "Warning")
-    
+
     def _on_config_deleted(self, table_name):
         """Handle configuration deletion from selector"""
         try:
@@ -4351,7 +4312,7 @@ Path: {data.get('path', 'N/A')}"""
             success = self.config_manager.remove_table_config(table_name)
             if success:
                 self.log_message(f"Configuration '{table_name}' deleted successfully", "Success")
-                
+
                 # Refresh selector if needed - get updated list
                 current_filename = self.get_current_filename()
                 if current_filename:
@@ -4364,10 +4325,10 @@ Path: {data.get('path', 'N/A')}"""
                         self.auto_load_table_config_for_shapefile(current_filename)
             else:
                 self.log_message(f"Failed to delete configuration '{table_name}'", "Warning")
-                
+
         except Exception as e:
             self.log_message(f"Error deleting configuration: {str(e)}", "Warning")
-    
+
     def get_current_filename(self):
         """Get current selected filename"""
         try:
@@ -4377,7 +4338,7 @@ Path: {data.get('path', 'N/A')}"""
             return None
         except Exception:
             return None
-    
+
     def reset_configuration(self):
         """Reset the configuration"""
         self.smart_fields.clear_all_fields()
@@ -4385,7 +4346,7 @@ Path: {data.get('path', 'N/A')}"""
         # Reset the CRS target
         self.target_crs = None
         self.update_configuration_preview()
-    
+
     def ensure_project_layer_signals(self):
         """Connect QGIS project layer signals (safe to call multiple times)."""
         project = QgsProject.instance()
@@ -4405,20 +4366,37 @@ Path: {data.get('path', 'N/A')}"""
                 pass
             signal.connect(slot)
 
+    def _schedule_project_sync(self, delay_ms=150):
+        """Coalesce project layer refreshes and defer when the window is hidden."""
+        if not self.isVisible():
+            self._layers_dirty = True
+            return
+        timer = getattr(self, '_project_sync_timer', None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(self.sync_layers_from_project)
+            self._project_sync_timer = timer
+        timer.start(max(0, int(delay_ms)))
+
     def sync_layers_from_project(self):
         """Refresh the layer list from the current QGIS project."""
         try:
+            self._layers_dirty = False
             self.auto_load_qgis_layers()
             self.refresh_shapefile_list()
             if hasattr(self, 'export_widget') and self.export_widget:
                 if hasattr(self.export_widget, 'refresh_layers'):
-                    self.export_widget.refresh_layers()
+                    if self.export_widget.isVisible():
+                        self.export_widget.refresh_layers()
+                    else:
+                        self.export_widget._layers_dirty = True
         except Exception as e:
             self.log_message(f"Error syncing layers from project: {str(e)}", "Warning")
 
     def on_project_read(self, *_args):
         """Handle QGIS project reload (e.g. opening a .qgz file)."""
-        QTimer.singleShot(500, self.sync_layers_from_project)
+        self._schedule_project_sync(500)
 
     def on_project_cleared(self):
         """Handle QGIS project cleared."""
@@ -4432,19 +4410,19 @@ Path: {data.get('path', 'N/A')}"""
         try:
             project = QgsProject.instance()
             loaded_qgis_count = 0
-            
+
             for layer_id, layer in project.mapLayers().items():
                 # Only add VALID vector layers with accessible data (skip invalid/broken layers)
                 if not isinstance(layer, QgsVectorLayer):
                     continue
                 if not layer.isValid():
                     continue
-                
+
                 # Use enhanced format detection
                 provider = layer.dataProvider()
                 provider_type = provider.name().lower()
                 source_path = layer.source()
-                
+
                 # Support all valid vector layer providers (OGR, GDAL, memory, etc.)
                 if provider_type == 'memory':
                     file_format = 'Memory'
@@ -4452,16 +4430,16 @@ Path: {data.get('path', 'N/A')}"""
                     file_format = self._detect_vector_format(source_path)
                 else:
                     file_format = provider.storageType() or provider_type.capitalize()
-                
+
                 layer_name = layer.name()
-                
+
                 plugin_logger.debug(
                     f"Considering QGIS layer: name={layer_name} provider={provider_type} format={file_format}",
                     "ui",
                     "LAYER_CONSIDER",
                     {"layer_name": layer_name, "provider_type": provider_type}
                 )
-                
+
                 # Avoid duplicates if layer is already in the list
                 if layer_name in self.loaded_shapefiles:
                     plugin_logger.debug(
@@ -4471,13 +4449,13 @@ Path: {data.get('path', 'N/A')}"""
                         {"layer_name": layer_name}
                     )
                     continue
-                
+
                 # Enhanced metadata collection
                 encoding = provider.encoding()
                 fields = layer.fields()
                 field_count = len(fields)
                 field_types = [field.typeName() for field in fields]
-                
+
                 # Store comprehensive information (same as add_vector_file)
                 self.loaded_shapefiles[layer_name] = {
                     'layer': layer,
@@ -4495,35 +4473,35 @@ Path: {data.get('path', 'N/A')}"""
                     'extent': layer.extent(),
                     'storage_type': provider.storageType(),
                     'capabilities': provider.capabilities(),
-                    'is_qgis_layer': True # Special flag to identify QGIS layers
+                    'is_qgis_layer': True  # Special flag to identify QGIS layers
                 }
-                
+
                 plugin_logger.info(
                     f"Loaded QGIS layer: {layer_name} (provider={provider_type}, format={file_format})",
                     "ui",
                     "LAYER_LOADED",
                     {"layer_name": layer_name, "provider_type": provider_type, "format": file_format}
                 )
-                
+
                 loaded_qgis_count += 1
-            
+
             # Summary message
             if loaded_qgis_count > 0:
                 self.log_message(
-                    f"Loaded {loaded_qgis_count} layer(s) from project", 
+                    f"Loaded {loaded_qgis_count} layer(s) from project",
                     "Info"
                 )
             # No compatible layers (silent)
-                            
+
         except Exception as e:
             self.log_message(f"Error loading QGIS layers: {str(e)}", "Warning")
-    
+
     def on_layers_added(self, layers):
         """Handle when new layers are added to QGIS project"""
         vector_layers = [layer for layer in layers if isinstance(layer, QgsVectorLayer) and layer.isValid()]
         if vector_layers:
-            QTimer.singleShot(100, self.sync_layers_from_project)
-            
+            self._schedule_project_sync(150)
+
     def on_layers_removed(self, layer_ids):
         """Handle when layers are removed from QGIS project"""
         if layer_ids:
@@ -4539,26 +4517,26 @@ Path: {data.get('path', 'N/A')}"""
                     # L'objet Qt a été supprimé, le retirer de notre liste
                     layers_to_remove.append(layer_name)
                     self.log_message(f"Removed deleted layer reference: {layer_name}", "Debug")
-            
+
             for layer_name in layers_to_remove:
                 del self.loaded_shapefiles[layer_name]
-                
+
             self.refresh_shapefile_list()
             # Vector sources updated (silent)
-            
+
     def on_layer_will_be_removed(self, layer_id):
         """Handle when a layer is about to be removed"""
         # Check if the layer being removed is currently selected
         current_item = self.shp_tree.currentItem()
         if current_item:
             item_data = current_item.data(0, _ItemDataRole.UserRole)
-            
+
             # Extract filename from dict or use directly if string (legacy support)
             if isinstance(item_data, dict):
                 filename = item_data.get('source_file', '')
             else:
                 filename = item_data if item_data else ""
-            
+
             if filename and filename in self.loaded_shapefiles:
                 layer_data = self.loaded_shapefiles[filename]
                 layer = layer_data.get('layer')
@@ -4566,9 +4544,9 @@ Path: {data.get('path', 'N/A')}"""
                     self.log_message(f"Currently selected layer '{filename}' is being removed - configuration will be reset", "Warning")
                 elif not self.is_layer_valid(layer):
                     self.log_message(f"Layer reference for '{filename}' was already deleted", "Debug")
-    
+
     # Removed remove_qgis_layers_from_list - not needed anymore since we only work with QGIS layers
-    
+
     def is_layer_valid(self, layer):
         """Vérifie de manière sécurisée si un objet QgsVectorLayer est encore valide"""
         try:
@@ -4576,14 +4554,14 @@ Path: {data.get('path', 'N/A')}"""
         except RuntimeError:
             # L'objet Qt a été supprimé
             return False
-    
+
     # === CONFIGURATION MANAGEMENT METHODS ===
-    
+
     def update_configuration_preview(self):
         """Update the configuration preview"""
         try:
             table_name = self.table_name_edit.text().strip()
-            
+
             current_item = self.shp_tree.currentItem()
             source_file = ""
             if current_item:
@@ -4593,20 +4571,20 @@ Path: {data.get('path', 'N/A')}"""
                 else:
                     # Legacy support
                     source_file = item_data if item_data else ""
-            
+
             # Get calculated fields separated from geometry
             if hasattr(self, 'smart_fields') and self.smart_fields:
                 calculated_fields, geometry_expression = self.smart_fields.get_calculated_fields_with_geometry_info()
             else:
-                QgsMessageLog.logMessage(f"ERROR: smart_fields not available!", "Transformer", MsgCritical)
+                QgsMessageLog.logMessage("ERROR: smart_fields not available!", "Transformer", MsgCritical)
                 calculated_fields, geometry_expression = {}, None
             filter_config = self.smart_filter.get_filter_config()
-            
+
             # add the CRS target if defined
             target_crs_str = None
             if hasattr(self, 'target_crs') and self.target_crs is not None and self.target_crs.isValid():
                 target_crs_str = self.target_crs.authid()
-            
+
             preview_config = {
                 "table_name": table_name,
                 "source_file": source_file,
@@ -4617,47 +4595,47 @@ Path: {data.get('path', 'N/A')}"""
                 "created": datetime.now().isoformat(),
                 "plugin_version": "1.0.0"
             }
-            
+
             json_text = json.dumps(preview_config, indent=2, ensure_ascii=False)
             self.config_preview.setPlainText(json_text)
-            
+
             # Update statistics
             self.total_fields_label.setText(str(len(calculated_fields)))
-            
+
             filter_status = "Enabled" if is_filter_enabled(filter_config) else "Disabled"
             if is_filter_enabled(filter_config):
                 filter_status += f" ({len(get_filter_expression(filter_config))} chars)"
             self.filter_status_label.setText(filter_status)
-            
+
         except Exception as e:
             self.config_preview.setPlainText(f"Configuration preview error: {str(e)}")
             self.log_message(f"Error updating configuration preview: {str(e)}", "Warning")
-    
+
     def on_filter_changed(self, expression, enabled):
         """Handle filter change"""
         self._mark_config_modified_by_user()
         self.update_configuration_preview()
         if enabled and expression:
             self.log_message(f"Filter updated: {expression[:50]}{'...' if len(expression) > 50 else ''}", "Info")
-    
+
     def on_field_added(self, name, expression):
         """Handle field addition"""
         self._mark_config_modified_by_user()
         self.update_configuration_preview()
         self.log_message(f"Field added: {name} = {expression[:30]}{'...' if len(expression) > 30 else ''}", "Info")
-    
+
     def on_field_removed(self, name):
         """Handle field removal"""
         self._mark_config_modified_by_user()
         self.update_configuration_preview()
         self.log_message(f"Field removed: {name}", "Info")
-    
+
     def on_field_modified(self, old_name, new_name, expression):
         """Handle field modification"""
         self._mark_config_modified_by_user()
         self.update_configuration_preview()
         self.log_message(f"Field modified: {old_name} -> {new_name}", "Info")
-    
+
     def on_table_name_changed(self):
         """Handle table name change - update display in shapefile list when edited."""
         if self._suppress_table_name_side_effects:
@@ -4669,7 +4647,7 @@ Path: {data.get('path', 'N/A')}"""
 
         if self._config_modified_by_user or not self._draft_config_source:
             self._update_tree_item_display()
-    
+
     def duplicate_current_configuration(self):
         """Duplicate the current configuration with a new table name"""
         try:
@@ -4677,59 +4655,59 @@ Path: {data.get('path', 'N/A')}"""
             if not current_item:
                 QMessageBox.warning(self, "Warning", "Please select a configuration to duplicate.")
                 return
-            
+
             item_data = current_item.data(0, _ItemDataRole.UserRole)
             if not isinstance(item_data, dict):
                 QMessageBox.warning(self, "Warning", "Cannot duplicate this item.")
                 return
-            
+
             source_file = item_data.get('source_file')
             current_table_name = item_data.get('table_name')
-            
+
             if not source_file or not current_table_name:
                 QMessageBox.warning(self, "Warning", "Invalid configuration selected.")
                 return
-            
+
             # Get current configuration
             current_config = self.config_manager.get_table_config(current_table_name)
             if not current_config:
                 QMessageBox.warning(self, "Warning", "Configuration not found.")
                 return
-            
+
             # Prompt for new table name
             from qgis.PyQt.QtWidgets import QInputDialog
             new_table_name, ok = QInputDialog.getText(
-                self, 
-                "Duplicate Configuration", 
+                self,
+                "Duplicate Configuration",
                 f"Enter new table name for source '{source_file}':",
                 text=f"{current_table_name}_copy"
             )
-            
+
             if not ok or not new_table_name.strip():
                 return
-            
+
             new_table_name = new_table_name.strip()
-            
+
             # Check if table name already exists
             if self.config_manager.get_table_config(new_table_name):
                 QMessageBox.warning(self, "Warning", f"Table name '{new_table_name}' already exists.")
                 return
-            
+
             # Create new configuration by copying current one
             new_config = current_config.copy()
             new_config['table_name'] = new_table_name
             new_config['source_file'] = source_file
             new_config['created'] = datetime.now().isoformat()
-            
+
             # Save the new configuration - extract parameters for add_table_config
             calculated_fields = new_config.get('calculated_fields', {})
             filter_config = new_config.get('filter', {})
             target_crs = new_config.get('target_crs')
             geometry_expression = new_config.get('geometry_expression')
-            
+
             result = self.config_manager.add_table_config(
-                new_table_name, 
-                source_file, 
+                new_table_name,
+                source_file,
                 calculated_fields,
                 filter_config=filter_config,
                 target_crs=target_crs,
@@ -4740,7 +4718,7 @@ Path: {data.get('path', 'N/A')}"""
             if success:
                 self.refresh_shapefile_list()
                 self.log_message(f"Configuration duplicated: '{current_table_name}' → '{new_table_name}'", "Success")
-                
+
                 # Select the new configuration
                 for i in range(self.shp_tree.topLevelItemCount()):
                     item = self.shp_tree.topLevelItem(i)
@@ -4750,48 +4728,48 @@ Path: {data.get('path', 'N/A')}"""
                         break
             else:
                 QMessageBox.critical(self, "Error", "Failed to save duplicated configuration.")
-                
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Error duplicating configuration: {str(e)}")
             self.log_message(f"Error duplicating configuration: {str(e)}", "Error")
-    
+
     def validate_configuration(self):
         """Validate the current configuration"""
         try:
             # Sync JSON Preview → Field Management before validating
             self._sync_preview_to_fields()
-            
+
             table_name = self.table_name_edit.text().strip()
             if not table_name:
                 QMessageBox.warning(self, "Validation Error", "Table name is required")
                 return False
-            
+
             current_item = self.shp_tree.currentItem()
             if not current_item:
                 QMessageBox.warning(self, "Validation Error", "Please select a shapefile")
                 return False
-            
+
             item_data = current_item.data(0, _ItemDataRole.UserRole)
             if isinstance(item_data, dict):
                 filename = item_data.get('source_file', '')
             else:
                 filename = item_data if item_data else ""
-            
+
             if filename not in self.loaded_shapefiles:
                 QMessageBox.warning(self, "Validation Error", "Source file not found")
                 return False
-                
+
             layer = self.loaded_shapefiles[filename]['layer']
-            
+
             calculated_fields = self.smart_fields.get_calculated_fields()
             if not calculated_fields:
                 QMessageBox.warning(self, "Validation Error", "At least one calculated field is required")
                 return False
-            
+
             # Validate expressions
             errors = []
             successes = []
-            
+
             # Validate filter
             filter_config = self.smart_filter.get_filter_config()
             filter_expr = get_filter_expression(filter_config)
@@ -4802,7 +4780,7 @@ Path: {data.get('path', 'N/A')}"""
                     successes.append(f"FILTER: {filtered_count}/{total_count} features match")
                 else:
                     errors.append(f"FILTER ERROR: {message}")
-            
+
             # Validate calculated fields
             for field_name, expression in calculated_fields.items():
                 is_valid, message = self.transformer.validate_expression(expression, layer)
@@ -4810,7 +4788,7 @@ Path: {data.get('path', 'N/A')}"""
                     successes.append(f"FIELD '{field_name}': Valid")
                 else:
                     errors.append(f"FIELD '{field_name}': {message}")
-            
+
             # Only display results if there are errors
             if errors:
                 result_text = f"Configuration Validation Errors for '{table_name}'\n"
@@ -4818,17 +4796,17 @@ Path: {data.get('path', 'N/A')}"""
                 result_text += "ERRORS DETECTED:\n"
                 for error in errors:
                     result_text += f" {error}\n"
-                
+
                 # Add available fields hint for "Field not found" errors
                 if any("not found" in e.lower() for e in errors):
                     available_fields = [f.name() for f in layer.fields()]
                     result_text += f"\nAVAILABLE SOURCE FIELDS ({len(available_fields)}):\n"
                     result_text += " " + ", ".join(available_fields[:20])
                     if len(available_fields) > 20:
-                        result_text += f"... (+{len(available_fields)-20} more)"
-                
+                        result_text += f"... (+{len(available_fields) - 20} more)"
+
                 result_text += "\n\nPlease fix the errors before proceeding."
-                
+
                 QMessageBox.warning(self, "Validation Errors", result_text)
                 self.log_message(f"Configuration validation failed: {len(errors)} errors", "Warning")
                 self._flash_validate_icons(False)
@@ -4838,14 +4816,14 @@ Path: {data.get('path', 'N/A')}"""
                 self.log_message(f"Configuration validated successfully: {table_name} ({len(successes)} fields validated)", "Info")
                 self._flash_validate_icons(True)
                 return True
-                
+
         except Exception as e:
             error_msg = f"Validation error: {str(e)}"
             QMessageBox.critical(self, "Validation Error", error_msg)
             self.log_message(error_msg, "Error")
             self._flash_validate_icons(False)
             return False
-    
+
     def _validate_icon_actions(self):
         actions = []
         for attr in ("_toolbar_validate_action", "_preview_validate_action"):
@@ -4877,14 +4855,14 @@ Path: {data.get('path', 'N/A')}"""
         ):
             if action is not None:
                 action.setIcon(ui_icon(name))
-    
+
     def initialize_configuration(self):
         """Initialize the configuration with a confirmation window"""
         try:
             # Confirmation window
             reply = QMessageBox.question(
-                self, 
-                "Initialize Configuration", 
+                self,
+                "Initialize Configuration",
                 "This will reset all current configurations:\n\n"
                 "• Clear all calculated fields\n"
                 "• Reset table name\n"
@@ -4894,73 +4872,73 @@ Path: {data.get('path', 'N/A')}"""
                 _MsgBoxButton.Yes | _MsgBoxButton.No,
                 _MsgBoxButton.No
             )
-            
+
             if reply == _MsgBoxButton.Yes:
                 # Reset the table name
                 self.table_name_edit.clear()
-                
+
                 # Reset calculated fields
                 if hasattr(self, 'smart_fields'):
                     self.smart_fields.clear_all_fields()
-                
+
                 # Reset filter
                 if hasattr(self, 'smart_filter'):
                     self.smart_filter.set_filter_config({"enabled": False, "expression": ""})
-                
+
                 # Reset expression builder
                 if hasattr(self, 'advanced_expression'):
                     self.advanced_expression.clear_expression()
-                
+
                 # Update configuration preview
                 self.update_configuration_preview()
-                
+
                 # Confirmation messages
                 QMessageBox.information(
-                    self, 
-                    "Configuration Initialized", 
+                    self,
+                    "Configuration Initialized",
                     "Configuration has been successfully reset.\n\n"
                     "You can now start configuring your transformation from scratch."
                 )
-                
+
                 self.log_message("Configuration initialized successfully", "Info")
-                
+
         except Exception as e:
             error_msg = f"Error initializing configuration: {str(e)}"
             QMessageBox.critical(self, "Initialization Error", error_msg)
             self.log_message(error_msg, "Error")
-    
+
     def _sync_preview_to_fields(self):
         """Sync Configuration Preview JSON to Field Management widget (bidirectional sync)"""
         try:
             json_text = self.config_preview.toPlainText().strip()
             if not json_text:
                 return
-            
+
             # Parse JSON from preview
             try:
                 preview_config = json.loads(json_text)
             except json.JSONDecodeError:
                 return
-            
+
             # Get preview data
             preview_fields = preview_config.get('calculated_fields', {})
             preview_geom = preview_config.get('geometry_expression', '$geometry')
             preview_table = preview_config.get('table_name', '')
-            
+
             # Block signals to prevent update_configuration_preview from being called
             self.smart_fields.blockSignals(True)
             self.smart_filter.blockSignals(True)
-            
+
             try:
                 # Sync table name
                 if preview_table and preview_table != self.table_name_edit.text().strip():
                     self.table_name_edit.blockSignals(True)
                     self.table_name_edit.setText(preview_table)
                     self.table_name_edit.blockSignals(False)
-                
+
                 # Sync fields to Field Management (force update)
                 self.smart_fields.set_calculated_fields(preview_fields, preview_geom)
-                
+
                 # Sync filter if present
                 preview_filter = preview_config.get('filter', {})
                 if preview_filter:
@@ -4969,71 +4947,71 @@ Path: {data.get('path', 'N/A')}"""
                 # Restore signals
                 self.smart_fields.blockSignals(False)
                 self.smart_filter.blockSignals(False)
-                
+
         except Exception as e:
             self.log_message(f"Preview sync error: {str(e)}", "Warning")
-    
+
     def _configurations_are_identical(self, config1, config2):
         """Compare two configurations to check if they are identical"""
         try:
             # Keys to compare (excluding metadata like save_date)
             keys_to_compare = ['calculated_fields', 'filter', 'target_crs', 'geometry_expression', 'source_file']
-            
+
             for key in keys_to_compare:
                 val1 = config1.get(key)
                 val2 = config2.get(key)
-                
+
                 # Handle None values
                 if val1 is None and val2 is None:
                     continue
                 if val1 is None or val2 is None:
                     return False
-                    
+
                 # Special handling for different types
                 if isinstance(val1, dict) and isinstance(val2, dict):
                     if val1 != val2:
                         return False
                 elif str(val1) != str(val2):
                     return False
-            
+
             return True
         except Exception:
             # If comparison fails for any reason, assume they're different
             return False
-    
+
     def save_current_table_config(self, skip_validation=False):
         """Save the current table configuration with duplicate check"""
         try:
             # Sync JSON Preview → Field Management before saving
             self._sync_preview_to_fields()
-            
+
             if not skip_validation and not self.validate_configuration():
                 return
-            
+
             table_name = self.table_name_edit.text().strip()
             current_item = self.shp_tree.currentItem()
-            
+
             # Extract source file from item data
             item_data = current_item.data(0, _ItemDataRole.UserRole)
             if isinstance(item_data, dict):
                 filename = item_data.get('source_file', '')
             else:
                 filename = item_data if item_data else ""
-            
+
             # Get calculated fields separated from geometry expression
             calculated_fields, geometry_expression = self.smart_fields.get_calculated_fields_with_geometry_info()
             filter_config = self.smart_filter.get_filter_config()
-            
+
             # Get target CRS if defined
             target_crs = None
             if hasattr(self, 'target_crs') and self.target_crs is not None and self.target_crs.isValid():
                 target_crs = self.target_crs.authid()
-            
+
             # Check if a configuration already exists for this table
             if self.config_manager.has_table_config(table_name):
                 existing_config = self.config_manager.get_table_config(table_name)
-                existing_source = existing_config.get("source_file", "")
-                
+                existing_config.get("source_file", "")
+
                 # Create current configuration object for comparison
                 current_config = {
                     'calculated_fields': calculated_fields,
@@ -5042,7 +5020,7 @@ Path: {data.get('path', 'N/A')}"""
                     'geometry_expression': geometry_expression,
                     'source_file': filename
                 }
-                
+
                 # Compare configurations - only log if they're different
                 if self._configurations_are_identical(existing_config, current_config):
                     # Configurations are identical, no need to save
@@ -5051,13 +5029,13 @@ Path: {data.get('path', 'N/A')}"""
                 else:
                     # Configurations are different, replace automatically without popup
                     self.log_message(f"Updating configuration for '{table_name}' with new settings", "Info")
-                
+
                 # Replace existing configuration automatically
                 result = self.config_manager.add_table_config(table_name, filename, calculated_fields, filter_config, target_crs, geometry_expression, force_replace=True)
             else:
                 # Add new configuration
                 result = self.config_manager.add_table_config(table_name, filename, calculated_fields, filter_config, target_crs, geometry_expression)
-            
+
             if result.get("success", False) and self.config_manager.save_config():
                 action = result.get("action", "saved")
                 replaced_info = f" (replaced '{result.get('replaced_table')}')" if result.get('replaced_table') else ""
@@ -5067,31 +5045,31 @@ Path: {data.get('path', 'N/A')}"""
                 self.update_statistics()
             else:
                 QMessageBox.critical(self, "Error", "Failed to save configuration")
-                
+
         except Exception as e:
             error_msg = f"Error saving configuration: {str(e)}"
             QMessageBox.critical(self, "Save Error", error_msg)
             self.log_message(error_msg, "Error")
-    
+
     def test_configuration(self):
         """Test the current configuration"""
         try:
             self.status_label.setText("Testing configuration...")
             self.progress_bar.setVisible(True)
-            self.progress_bar.setRange(0, 0) # Mode indéterminé
-            
+            self.progress_bar.setRange(0, 0)  # Mode indéterminé
+
             if self.validate_configuration():
                 # Test with a sample of data
                 current_item = self.shp_tree.currentItem()
                 filename = current_item.data(0, _ItemDataRole.UserRole)
                 layer = self.loaded_shapefiles[filename]['layer']
-                
+
                 calculated_fields = self.smart_fields.get_calculated_fields()
                 filter_config = self.smart_filter.get_filter_config()
-                
+
                 # Créer une couche de test temporaire avec un échantillon
                 test_result = self.create_test_layer(layer, calculated_fields, filter_config)
-                
+
                 if test_result['success']:
                     result_msg = f"""Test Configuration Results
 
@@ -5107,13 +5085,13 @@ Path: {data.get('path', 'N/A')}"""
                                 • Test features processed: {test_result['processed_count']:,}
 
                                 The configuration is working correctly and ready for full transformation."""
-                    
+
                     QMessageBox.information(self, "Test Results", result_msg)
                     self.log_message("Configuration test passed", "Info")
                 else:
                     QMessageBox.warning(self, "Test Failed", f"Test failed: {test_result['error']}")
                     self.log_message(f"Configuration test failed: {test_result['error']}", "Warning")
-            
+
         except Exception as e:
             error_msg = f"Test error: {str(e)}"
             QMessageBox.critical(self, "Test Error", error_msg)
@@ -5121,50 +5099,46 @@ Path: {data.get('path', 'N/A')}"""
         finally:
             self.progress_bar.setVisible(False)
             self.status_label.setText("Ready")
-    
+
     def create_test_layer(self, layer, calculated_fields, filter_config, max_features=100):
-        """Create a test layer with a sample of data"""
+        """Create a test layer with a bounded sample of data (no full materialization in RAM)."""
         try:
             source_count = layer.featureCount()
-            
-            # Apply filter if enabled
+            limit = max(0, int(max_features)) if max_features is not None else 100
+
+            request = QgsFeatureRequest()
             filter_expr = get_filter_expression(filter_config)
             if filter_expr:
-                request = QgsFeatureRequest()
                 request.setFilterExpression(filter_expr)
-                filtered_features = list(layer.getFeatures(request))
-                filtered_count = len(filtered_features)
-            else:
-                filtered_features = list(layer.getFeatures())
-                filtered_count = len(filtered_features)
-            
-            # Limiter à un échantillon
-            test_features = filtered_features[:max_features]
+            request.setLimit(limit)
+
+            test_features = list(layer.getFeatures(request))
             processed_count = len(test_features)
-            
-            # Tester les expressions sur l'échantillon
+            filtered_count = processed_count if filter_expr else source_count
+
             context = create_layer_expression_context(layer)
-            
+            prepared_expressions = {}
+            for field_name, expression_text in calculated_fields.items():
+                is_valid, error_msg, expression = validate_expression_syntax(expression_text)
+                if not is_valid:
+                    raise Exception(f"Syntax error in field '{field_name}': {error_msg}")
+                expression.prepare(context)
+                prepared_expressions[field_name] = expression
+
             for feature in test_features:
                 context.setFeature(feature)
-                
-                for field_name, expression_text in calculated_fields.items():
-                    is_valid, error_msg, expression = validate_expression_syntax(expression_text)
-                    if not is_valid:
-                        raise Exception(f"Syntax error in field '{field_name}': {error_msg}")
-                    
+                for field_name, expression in prepared_expressions.items():
                     success, result, eval_error = evaluate_expression(expression, context)
-                    
                     if not success:
                         raise Exception(f"Expression error in field '{field_name}': {eval_error}")
-            
+
             return {
                 'success': True,
                 'source_count': source_count,
                 'filtered_count': filtered_count,
                 'processed_count': processed_count
             }
-            
+
         except Exception as e:
             return {
                 'success': False,
@@ -5173,9 +5147,9 @@ Path: {data.get('path', 'N/A')}"""
                 'filtered_count': 0,
                 'processed_count': 0
             }
-    
+
     # === TRANSFORMATION METHODS ===
-    
+
     def transform_selected_shapefile(self):
         """Transform the selected shapefile(s) using background QgsTask"""
         try:
@@ -5195,7 +5169,7 @@ Path: {data.get('path', 'N/A')}"""
                     {"status": "no_selection"},
                 )
                 return
-            
+
             if not self.validate_configuration():
                 plugin_logger.debug(
                     "transform_selected_shapefile exit status=validation_failed",
@@ -5204,7 +5178,7 @@ Path: {data.get('path', 'N/A')}"""
                     {"status": "validation_failed"},
                 )
                 return
-            
+
             # Build task items
             items = self._snapshot_selected_transform_items(selected_items)
             if not items:
@@ -5216,14 +5190,14 @@ Path: {data.get('path', 'N/A')}"""
                     {"status": "no_valid_items"},
                 )
                 return
-            
+
             self.save_current_table_config(skip_validation=True)
-            
+
             target_crs = None
             if hasattr(self, 'target_crs') and self.target_crs is not None and self.target_crs.isValid():
                 target_crs = self.target_crs
                 self.log_message(f"Reprojection to {target_crs.authid()} will be applied", "Info")
-            
+
             self._launch_transform_task(items, target_crs)
             plugin_logger.debug(
                 f"transform_selected_shapefile exit status=launched n_items={len(items)}",
@@ -5231,7 +5205,7 @@ Path: {data.get('path', 'N/A')}"""
                 "TRANSFORM_SETUP_EXIT",
                 {"status": "launched", "n_items": len(items)},
             )
-                
+
         except Exception as e:
             error_msg = f"Transformation setup failed: {str(e)}"
             QMessageBox.critical(self, "Transformation Error", error_msg)
@@ -5245,11 +5219,11 @@ Path: {data.get('path', 'N/A')}"""
                 filename = item_data.get('source_file', '')
             else:
                 filename = item_data if item_data else ""
-            
+
             if filename not in self.loaded_shapefiles:
                 self.log_message(f"Source file '{filename}' not found in loaded files", "Warning")
                 continue
-            
+
             items.append({
                 "filename": filename,
                 "shapefile_info": self.loaded_shapefiles[filename],
@@ -5262,7 +5236,7 @@ Path: {data.get('path', 'N/A')}"""
         ``table_filter`` (optional list of table_config names) is forwarded to
         the transformer to restrict which configs are applied per-source.
         """
-        # C3: Guard against concurrent tasks — _current_task on the transformer
+        # C3: Guard against concurrent tasks - _current_task on the transformer
         # is a single slot, two concurrent tasks would overwrite each other.
         if self._active_transform_task is not None:
             self.log_message(
@@ -5284,13 +5258,13 @@ Path: {data.get('path', 'N/A')}"""
             description=f"Transform {len(items)} layer(s)",
             table_filter=table_filter,
         )
-        
+
         task.progressChanged.connect(
             lambda progress: self.progress_bar.setValue(int(progress))
         )
         task.taskCompleted.connect(lambda: self._on_transform_finished(task))
         task.taskTerminated.connect(lambda: self._on_transform_finished(task))
-        
+
         self._active_transform_task = task
         QgsApplication.taskManager().addTask(task)
 
@@ -5307,15 +5281,16 @@ Path: {data.get('path', 'N/A')}"""
 
     def _on_transform_finished(self, task):
         """Callback on main thread when TransformTask completes."""
+        if getattr(task, "_main_window_finished_handled", False):
+            return
+        task._main_window_finished_handled = True
         self.progress_bar.setVisible(False)
         self._set_transform_enabled(True)
         if hasattr(self, 'set_active_task'):
             self.set_active_task("")
         self._active_transform_task = None
-        transform_ok = False
 
         if task.success_count > 0:
-            transform_ok = True
             summary = f"Transformation completed: {len(task.created_layers)} layers from {task.success_count} files"
             if task.fail_count > 0:
                 summary += f" ({task.fail_count} failed)"
@@ -5362,7 +5337,7 @@ Path: {data.get('path', 'N/A')}"""
                     {"status": "no_loaded_layers"},
                 )
                 return
-            
+
             items = self._snapshot_all_transform_items()
             if not items:
                 QMessageBox.warning(self, "Warning", "No configured loaded layers to transform")
@@ -5373,12 +5348,12 @@ Path: {data.get('path', 'N/A')}"""
                     {"status": "no_configured_layers", "loaded_count": loaded_count},
                 )
                 return
-            
+
             target_crs = None
             if hasattr(self, 'target_crs') and self.target_crs is not None and self.target_crs.isValid():
                 target_crs = self.target_crs
                 self.log_message(f"Reprojection to {target_crs.authid()} will be applied to all files", "Info")
-            
+
             self._launch_transform_task(items, target_crs)
             plugin_logger.debug(
                 f"transform_all_shapefiles exit status=launched n_items={len(items)}",
@@ -5386,7 +5361,7 @@ Path: {data.get('path', 'N/A')}"""
                 "TRANSFORM_ALL_EXIT",
                 {"status": "launched", "n_items": len(items)},
             )
-                
+
         except Exception as e:
             error_msg = f"Batch transformation setup error: {str(e)}"
             QMessageBox.critical(self, "Batch Transformation Error", error_msg)
@@ -5428,7 +5403,7 @@ Path: {data.get('path', 'N/A')}"""
         return source_name
 
     # === INTERFACE METHODS ===
-    
+
     def on_tab_changed(self, index):
         """Handle tab change"""
         if index == 0:
@@ -5443,8 +5418,8 @@ Path: {data.get('path', 'N/A')}"""
                 if EXPORT_MODULE_AVAILABLE and hasattr(self, 'export_widget') and self.export_widget:
                     QTimer.singleShot(100, self.export_widget.refresh_layers)
             except (ImportError, AttributeError):
-                pass # Module d'export non disponible, ignorer
-    
+                pass  # Module d'export non disponible, ignorer
+
     def on_transformation_completed(self, shapefile_path):
         """Handle transformation completion"""
         # Refresh layers in the export tab if available - Import local to avoid circular import
@@ -5453,20 +5428,20 @@ Path: {data.get('path', 'N/A')}"""
             if EXPORT_MODULE_AVAILABLE and hasattr(self, 'export_widget') and self.export_widget:
                 QTimer.singleShot(500, self.export_widget.refresh_layers)
         except (ImportError, AttributeError):
-            pass # Module d'export non disponible, ignorer
-    
+            pass  # Module d'export non disponible, ignorer
+
     def update_statistics(self):
         """Update global statistics with real data"""
         try:
             # Count real vector layers in the QGIS project
             project = QgsProject.instance()
-            vector_layers = [layer for layer in project.mapLayers().values() 
-                           if isinstance(layer, QgsVectorLayer) and layer.isValid()]
+            vector_layers = [layer for layer in project.mapLayers().values()
+                             if isinstance(layer, QgsVectorLayer) and layer.isValid()]
             qgis_layer_count = len(vector_layers)
-            
+
             # Count the vector files loaded in the interface
             vector_file_count = len(self.loaded_shapefiles)
-            
+
             # Count the PostgreSQL tables available if the PostgreSQL tab is active
             postgresql_table_count = 0
             try:
@@ -5477,7 +5452,7 @@ Path: {data.get('path', 'N/A')}"""
                         # Count all tables in all schemas
                         for schema_tables in pg_widget.available_tables.values():
                             postgresql_table_count += len(schema_tables)
-                        
+
                         # Display with PostgreSQL tables
                         if postgresql_table_count > 0:
                             self.stats_label.setText(
@@ -5486,20 +5461,20 @@ Path: {data.get('path', 'N/A')}"""
                             return
             except (AttributeError, Exception) as exc:
                 log_warning(f"update_statistics PG count failed: {exc}")
-            
+
             # Display standard without PostgreSQL
             self.stats_label.setText(f"{qgis_layer_count} QGIS layers | {vector_file_count} vector files")
-            
+
             # Update the Statistics panel with real data
             self._update_statistics_panel(qgis_layer_count, postgresql_table_count)
-                
+
         except Exception as e:
             self.log_message(f"Error updating statistics: {str(e)}", "Warning")
             # Fallback vers des valeurs par défaut
             self.stats_label.setText("Statistics unavailable")
             # Fallback pour le panneau Statistics aussi
             self._update_statistics_panel(0, 0)
-    
+
     def _update_statistics_panel(self, qgis_layer_count, postgresql_table_count):
         """Update the Statistics panel with real data"""
         try:
@@ -5521,11 +5496,11 @@ Path: {data.get('path', 'N/A')}"""
                                 total_fields += len(calculated_fields)
                     except Exception:
                         total_fields = 0
-            
+
             # Update the Fields label with the real number of fields
             if hasattr(self, 'total_fields_label'):
                 self.total_fields_label.setText(str(total_fields))
-            
+
             # Update the Tables label with the real data
             if hasattr(self, 'total_tables_label'):
                 if postgresql_table_count > 0:
@@ -5534,7 +5509,7 @@ Path: {data.get('path', 'N/A')}"""
                 else:
                     # Use the number of QGIS layers as fallback
                     self.total_tables_label.setText(str(qgis_layer_count))
-            
+
             # Update the filter status
             if hasattr(self, 'filter_status_label') and hasattr(self, 'smart_filter'):
                 try:
@@ -5545,8 +5520,8 @@ Path: {data.get('path', 'N/A')}"""
                         self.filter_status_label.setText("Disabled")
                 except Exception:
                     self.filter_status_label.setText("Disabled")
-                    
-        except Exception as e:
+
+        except Exception:
             # In case of error, use default values
             if hasattr(self, 'total_fields_label'):
                 self.total_fields_label.setText("0")
@@ -5554,7 +5529,7 @@ Path: {data.get('path', 'N/A')}"""
                 self.total_tables_label.setText(str(qgis_layer_count) if qgis_layer_count > 0 else "0")
             if hasattr(self, 'filter_status_label'):
                 self.filter_status_label.setText("Disabled")
-    
+
     def _log_level_color(self, level: str) -> QColor:
         """Return a palette-aware color for the given log level."""
         palette = QApplication.palette()
@@ -5575,18 +5550,18 @@ Path: {data.get('path', 'N/A')}"""
         try:
             # Initialize cache if not exists
             if not hasattr(self, '_log_cache'):
-                self._log_cache = []
-            
+                self._log_cache = deque(maxlen=2000)
+
             # Auto-detect panel messages and set level to "Panel"
             if self._is_panel_message(message):
                 level = "Panel"
-            
+
             timestamp = datetime.now().strftime("%H:%M:%S")
             log_entry = f"[{timestamp}] {message}"
-            
+
             # Cache the log entry with its level
             self._log_cache.append((log_entry, level))
-            
+
             # Check if this message type is filtered out
             if hasattr(self, 'log_filters') and level in self.log_filters:
                 if not self.log_filters[level]:
@@ -5600,30 +5575,24 @@ Path: {data.get('path', 'N/A')}"""
                     }.get(level, MsgInfo)
                     QgsMessageLog.logMessage(message, "Transformer", qgis_level)
                     return
-            
+
             # Add to the logs widget
             self.logs_text.appendPlainText(log_entry)
-            
-            # Apply color formatting
-            cursor = self.logs_text.textCursor()
-            cursor.movePosition(cursor.End)
-            cursor.movePosition(cursor.StartOfLine, cursor.KeepAnchor)
-            
-            # Professional color coding using QPalette for theme compliance
-            color = self._log_level_color(level)
-            
-            # Apply color to current line
-            format = cursor.charFormat()
-            format.setForeground(color)
-            cursor.setCharFormat(format)
-            
-            # Move cursor to end for next message
-            cursor.movePosition(cursor.End)
-            self.logs_text.setTextCursor(cursor)
-            
-            # Ensure latest message is visible
-            self.logs_text.ensureCursorVisible()
-            
+
+            if self.logs_text.isVisible():
+                cursor = self.logs_text.textCursor()
+                cursor.movePosition(CursorEnd)
+                cursor.movePosition(CursorStartOfLine, CursorKeepAnchor)
+
+                color = self._log_level_color(level)
+                fmt = cursor.charFormat()
+                fmt.setForeground(color)
+                cursor.setCharFormat(fmt)
+
+                cursor.movePosition(CursorEnd)
+                self.logs_text.setTextCursor(cursor)
+                self.logs_text.ensureCursorVisible()
+
             # Log also to QGIS
             qgis_level = {
                 "Info": MsgInfo,
@@ -5632,29 +5601,29 @@ Path: {data.get('path', 'N/A')}"""
                 "Success": MsgInfo,
                 "Panel": MsgInfo
             }.get(level, MsgInfo)
-            
+
             QgsMessageLog.logMessage(message, "Transformer", qgis_level)
-            
-        except Exception:
-            pass # Avoid cascading errors
-    
+
+        except Exception as exc:
+            QgsMessageLog.logMessage(f"UI log_message fallback: {exc}", "Transformer", MsgWarning)
+
     def _is_panel_message(self, message):
         """Detect if a message is related to panel movements"""
         panel_keywords = [
             "Panel ",
-            "moved to", 
-            "shown", 
-            "hidden", 
-            "docked", 
-            "floating", 
+            "moved to",
+            "shown",
+            "hidden",
+            "docked",
+            "floating",
             "Layout reset",
             "drag to reposition",
             "Unknown area",
             "successfully"
         ]
-        
+
         return any(keyword in message for keyword in panel_keywords)
-    
+
     def _on_filter_combo_clicked(self, index):
         """Handle combo box clicks to toggle filter states"""
         try:
@@ -5662,22 +5631,22 @@ Path: {data.get('path', 'N/A')}"""
             filter_keys = ["Success", "Info", "Warning", "Error", "Panel"]
             if 0 <= index < len(filter_keys):
                 filter_key = filter_keys[index]
-                
+
                 # Toggle the filter state
                 self.log_filters[filter_key] = not self.log_filters[filter_key]
-                
+
                 # Update the combo box display
                 self._update_filter_combo_display()
-                
+
                 # Refresh the log display
                 self.filter_logs()
-                
+
                 # Close the combo box popup (auto-collapse)
                 self.filter_combo.hidePopup()
-                
+
         except Exception as exc:
             log_warning(f"_on_filter_combo_clicked failed: {exc}")
-    
+
     def _update_filter_combo_display(self):
         """Update combo box items to show current filter states with QGIS native style"""
         try:
@@ -5688,7 +5657,7 @@ Path: {data.get('path', 'N/A')}"""
                 ("Error", self.log_filters.get("Error", True)),
                 ("Panel", self.log_filters.get("Panel", False))
             ]
-            
+
             # Update items with QGIS native green/white styling
             for i, (name, is_checked) in enumerate(filter_items):
                 if is_checked:
@@ -5701,57 +5670,57 @@ Path: {data.get('path', 'N/A')}"""
                     self.filter_combo.setItemData(i, palette_color(palette, None, 'Text'), ForegroundRole)
                 else:
                     # Inactive filter styling
-                    display_text = f"⬜ {name}"
+                    display_text = f"â¬œ {name}"
                     self.filter_combo.setItemText(i, display_text)
                     palette = QApplication.palette()
                     self.filter_combo.setItemData(i, palette_color(palette, None, 'Mid'), BackgroundRole)
                     self.filter_combo.setItemData(i, palette_color(palette, None, 'Text'), ForegroundRole)
         except Exception as exc:
             log_warning(f"_update_filter_combo_display failed: {exc}")
-    
+
     def filter_logs(self):
         """Filter log display based on filter states"""
         try:
             if not hasattr(self, 'logs_text') or not hasattr(self, 'log_filters'):
                 return
-            
+
             # Get all text content and store with levels
             if not hasattr(self, '_log_cache'):
-                self._log_cache = []
-                return # No cached logs yet
-            
+                self._log_cache = deque(maxlen=2000)
+                return  # No cached logs yet
+
             # Clear display
             self.logs_text.clear()
-            
+
             # Re-add cached logs that match active filters
             for log_entry, level in self._log_cache:
                 if level in self.log_filters and self.log_filters[level]:
                     self.logs_text.appendPlainText(log_entry)
-                    
+
                     # Apply color formatting
                     cursor = self.logs_text.textCursor()
-                    cursor.movePosition(cursor.End)
-                    cursor.movePosition(cursor.StartOfLine, cursor.KeepAnchor)
-                    
+                    cursor.movePosition(CursorEnd)
+                    cursor.movePosition(CursorStartOfLine, CursorKeepAnchor)
+
                     color = self._log_level_color(level)
                     format = cursor.charFormat()
                     format.setForeground(color)
                     cursor.setCharFormat(format)
-            
+
             # Restore scroll position
             self.logs_text.ensureCursorVisible()
-            
+
         except Exception as exc:
             log_warning(f"filter_logs failed: {exc}")
-    
+
     def clear_logs(self):
         """Clear the logs"""
         self.logs_text.clear()
         self.log_message("Logs cleared", "Info")
-    
+
     def _trigger_postgresql_auto_mapping(self, layer_names=None):
         """Trigger automatic check of mappings for transformed layers
-        
+
         Args:
             layer_names (list, optional): List of layer names to check.
                                          If None, checks all layers.
@@ -5760,83 +5729,83 @@ Path: {data.get('path', 'N/A')}"""
             # Vérifier si le widget PostgreSQL est disponible et initialisé
             if not hasattr(self, 'postgresql_widget') or not self.postgresql_widget:
                 QgsMessageLog.logMessage(
-                    "PostgreSQL widget not available - skipping auto-mapping check", 
+                    "PostgreSQL widget not available - skipping auto-mapping check",
                     "Transformer", MsgInfo
                 )
                 return
-            
+
             # Déclencher la vérification automatique des mappings
             QgsMessageLog.logMessage(
-                f"Triggering PostgreSQL auto-mapping check for layers: {layer_names}", 
+                f"Triggering PostgreSQL auto-mapping check for layers: {layer_names}",
                 "Transformer", MsgInfo
             )
-            
+
             # Utiliser un léger délai pour permettre aux couches d'être complètement chargées
             QTimer.singleShot(1000, lambda: self._perform_auto_mapping_check(layer_names))
-            
+
         except Exception as e:
             QgsMessageLog.logMessage(
-                f"Error triggering PostgreSQL auto-mapping: {str(e)}", 
+                f"Error triggering PostgreSQL auto-mapping: {str(e)}",
                 "Transformer", MsgWarning
             )
-    
+
     def _perform_auto_mapping_check(self, layer_names=None):
         """Effectue la vérification automatique des mappings (appelée avec délai)
-        
+
         Args:
             layer_names (list, optional): Liste des noms de couches à vérifier.
         """
         try:
             # Appeler la méthode de vérification automatique du widget PostgreSQL
             mappings_loaded = self.postgresql_widget.trigger_auto_mapping_check(layer_names)
-            
+
             if mappings_loaded > 0:
                 QgsMessageLog.logMessage(
-                    f"Auto-mapping successful: {mappings_loaded} mapping(s) loaded automatically", 
+                    f"Auto-mapping successful: {mappings_loaded} mapping(s) loaded automatically",
                     "Transformer", MsgSuccess
                 )
-                
+
                 # Optionnellement, switcher vers l'onglet PostgreSQL si des mappings ont été chargés
                 # Rechercher l'index de l'onglet PostgreSQL
                 for i in range(self.main_tabs.count()):
                     if self.main_tabs.tabText(i) == "PostgreSQL":
                         # Afficher une notification subtile au lieu de switcher automatiquement
                         self.log_message(
-                            f" {mappings_loaded} mapping(s) PostgreSQL prêt(s) pour export (onglet PostgreSQL)", 
+                            f" {mappings_loaded} mapping(s) PostgreSQL prêt(s) pour export (onglet PostgreSQL)",
                             "Success"
                         )
                         break
             else:
-                pass # Auto-mapping check completed (silent)
-                
+                pass  # Auto-mapping check completed (silent)
+
         except Exception as e:
             QgsMessageLog.logMessage(
-                f"Error during auto-mapping check: {str(e)}", 
+                f"Error during auto-mapping check: {str(e)}",
                 "Transformer", MsgWarning
             )
-    
+
     def export_logs(self):
         """Export the logs"""
         try:
             filename, _ = QFileDialog.getSaveFileName(
-                self, "Export Logs", 
+                self, "Export Logs",
                 f"shape_transformer_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
                 "Text Files (*.txt);;All Files (*.*)"
             )
-            
+
             if filename:
                 with open(filename, 'w', encoding='utf-8') as f:
                     f.write(self.logs_text.toPlainText())
-                
+
                 self.log_message(f"Logs exported to {filename}", "Success")
-                
+
         except Exception as e:
             error_msg = f"Error exporting logs: {str(e)}"
             QMessageBox.critical(self, "Export Error", error_msg)
             self.log_message(error_msg, "Error")
-    
+
     # === MENU METHODS ===
-    
+
     def new_configuration(self):
         """Create a new configuration"""
         reply = QMessageBox.question(
@@ -5845,19 +5814,19 @@ Path: {data.get('path', 'N/A')}"""
             _MsgBoxButton.Yes | _MsgBoxButton.No,
             _MsgBoxButton.No
         )
-        
+
         if reply == _MsgBoxButton.Yes:
             self.table_name_edit.clear()
             self.reset_configuration()
             self.log_message("New configuration created", "Info")
-    
+
     def open_configuration(self):
         """Import external configuration and merge into calculated_fields_config.json"""
         filename, _ = QFileDialog.getOpenFileName(
             self, "Import Configuration", "",
             "JSON Files (*.json);;All Files (*.*)"
         )
-        
+
         if filename:
             if self.config_manager.import_config(filename):
                 # After successful import, configurations are merged into calculated_fields_config.json
@@ -5865,29 +5834,29 @@ Path: {data.get('path', 'N/A')}"""
                 self.log_message(f"Configuration merged from {filename} into calculated_fields_config.json", "Success")
             else:
                 self.log_message("Failed to import and merge configuration", "Error")
-    
+
     def save_configuration(self):
         """Save the global configuration"""
         filename, _ = QFileDialog.getSaveFileName(
-            self, "Save Configuration", 
+            self, "Save Configuration",
             f"shape_transformer_config_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
             "JSON Files (*.json);;All Files (*.*)"
         )
-        
+
         if filename:
             if self.config_manager.export_config(filename):
                 self.log_message(f"Configuration exported to {filename}", "Success")
             else:
                 QMessageBox.critical(self, "Error", "Failed to export configuration")
-    
+
     def import_configuration(self):
         """Import external configuration and merge into calculated_fields_config.json"""
         self.open_configuration()
-    
+
     def export_configuration(self):
         """Export the configuration"""
         self.save_configuration()
-    
+
     def show_preferences(self):
         """Show preferences"""
         # Import local pour éviter l'import circulaire
@@ -5897,52 +5866,52 @@ Path: {data.get('path', 'N/A')}"""
             self.interface_settings = dialog.get_settings()
             self.apply_theme()
             self.log_message("Preferences updated", "Info")
-    
+
     def change_theme(self, theme):
         """Change the interface theme"""
         self.interface_settings.theme = theme
         self.apply_theme()
         self.log_message(f"Theme changed to {theme.value}", "Info")
-    
+
     def validate_all_configurations(self):
         """Validate all configurations"""
         try:
             issues = self.config_manager.validate_config()
-            
+
             if not issues:
                 self.log_message("All configurations are valid!", "Success")
             else:
                 issues_text = "\n".join([f"• {issue}" for issue in issues])
                 QMessageBox.warning(self, "Validation Results", f"Issues found:\n\n{issues_text}")
-            
+
             self.log_message(f"Configuration validation: {len(issues)} issues found", "Info" if not issues else "Warning")
-            
+
         except Exception as e:
             error_msg = f"Validation error: {str(e)}"
             QMessageBox.critical(self, "Validation Error", error_msg)
             self.log_message(error_msg, "Error")
-    
+
     def cleanup_missing_sources(self):
         """Cleanup missing sources"""
         try:
             removed_count = self.config_manager.cleanup_missing_sources()
-            
+
             if removed_count > 0:
                 QMessageBox.information(
-                    self, "Cleanup Complete", 
+                    self, "Cleanup Complete",
                     f"Removed {removed_count} configuration(s) with missing source files."
                 )
                 self.auto_load_configs()
             else:
                 QMessageBox.information(self, "Cleanup Complete", "No missing sources found.")
-            
+
             self.log_message(f"Cleanup completed: {removed_count} configurations removed", "Info")
-            
+
         except Exception as e:
             error_msg = f"Cleanup error: {str(e)}"
             QMessageBox.critical(self, "Cleanup Error", error_msg)
             self.log_message(error_msg, "Error")
-    
+
     def open_expression_tester(self):
         """Open the expression tester"""
         current_item = self.shp_tree.currentItem()
@@ -5951,10 +5920,10 @@ Path: {data.get('path', 'N/A')}"""
             layer = self.loaded_shapefiles[filename]['layer']
         else:
             layer = None
-        
+
         dialog = ExpressionTesterDialog(layer, self)
         dialog.exec()
-    
+
     def _help_dialog_header(self):
         styles = self._help_content_styles()
         header_widget = QWidget()
@@ -6122,28 +6091,28 @@ Path: {data.get('path', 'N/A')}"""
             f"function=show_help event=exit result={result}",
             severity="debug", module="ui", code="HELP_DIALOG_EXIT",
         )
-    
+
     def stop_help_animation(self):
         """Arrête les timers d'animation du Help"""
         try:
             if hasattr(self, 'help_typing_timer') and self.help_typing_timer is not None:
                 self.help_typing_timer.stop()
         except RuntimeError:
-            pass # Timer already deleted
+            pass  # Timer already deleted
         try:
             if hasattr(self, 'help_cursor_timer') and self.help_cursor_timer is not None:
                 self.help_cursor_timer.stop()
         except RuntimeError:
-            pass # Timer already deleted
+            pass  # Timer already deleted
 
     def animate_typewriter(self, label):
         """Anime l'effet typewriter"""
         if not hasattr(self, 'typewriter_phrases') or not label:
             return
-            
+
         try:
             current_phrase = self.typewriter_phrases[self.current_phrase_index]
-            
+
             if self.is_typing:
                 # Écriture caractère par caractère
                 if self.current_char_index <= len(current_phrase):
@@ -6155,36 +6124,36 @@ Path: {data.get('path', 'N/A')}"""
                     # Pause à la fin de la phrase
                     if hasattr(self, 'help_typing_timer'):
                         self.help_typing_timer.stop()
-                    QTimer.singleShot(1500, lambda: self.start_erasing(label)) # Pause 1.5s
+                    QTimer.singleShot(1500, lambda: self.start_erasing(label))  # Pause 1.5s
         except RuntimeError:
             # Widget supprimé, arrêter l'animation
             self.stop_help_animation()
-        
+
     def start_erasing(self, label):
         """Démarre l'effacement"""
         if not label:
             return
-            
+
         try:
             if not hasattr(self, 'help_typing_timer') or self.help_typing_timer is None:
                 return
-                
+
             self.is_typing = False
             self.help_typing_timer.timeout.disconnect()
             self.help_typing_timer.timeout.connect(lambda: self.animate_erasing(label))
-            self.help_typing_timer.start(30) # Plus rapide pour effacer: 30ms
+            self.help_typing_timer.start(30)  # Plus rapide pour effacer: 30ms
         except RuntimeError:
             # Timer has been deleted, stop animation gracefully
             self.stop_help_animation()
-        
+
     def animate_erasing(self, label):
         """Anime l'effacement"""
         if not hasattr(self, 'typewriter_phrases') or not label:
             return
-            
+
         try:
             current_phrase = self.typewriter_phrases[self.current_phrase_index]
-            
+
             if self.current_char_index > 0:
                 self.current_char_index -= 1
                 text = current_phrase[:self.current_char_index]
@@ -6200,12 +6169,12 @@ Path: {data.get('path', 'N/A')}"""
                     self.help_typing_timer.start(40)
         except RuntimeError:
             self.stop_help_animation()
-            
+
     def animate_cursor(self, label):
         """Anime le curseur clignotant"""
         if not label or not hasattr(self, 'typewriter_phrases'):
             return
-            
+
         try:
             self.cursor_visible = not self.cursor_visible
             current_phrase = self.typewriter_phrases[self.current_phrase_index]
@@ -6214,7 +6183,7 @@ Path: {data.get('path', 'N/A')}"""
             label.setText(text + cursor)
         except RuntimeError:
             self.stop_help_animation()
-    
+
     def show_about(self):
         """Show about information"""
         plugin_logger.log(
@@ -6225,26 +6194,26 @@ Path: {data.get('path', 'N/A')}"""
         about_html = f"""
         <div style="font-family:'Segoe UI',system-ui,-apple-system,sans-serif; color:{styles['body']};">
         <h2 style="color:{styles['title']}; text-align:center; margin-bottom:4px;">Transformer</h2>
-        <h3 style="color:{styles['body_muted']}; text-align:center; margin-top:0; margin-bottom:18px;">QGIS Attribute Manager v3.0.0</h3>
+        <h3 style="color:{styles['body_muted']}; text-align:center; margin-top:0; margin-bottom:18px;">Atelier de recettes vectorielles QGIS · v3.3.0</h3>
         <p style="text-align:center; margin-bottom:18px; color:{styles['body']};">
-        Controlled vector transformations with native QGIS expressions, smart filtering, JSON configurations, and PostgreSQL publishing.
+        Préparation, nettoyage, filtrage, transformations géométriques et livraison contrôlée vers fichiers SIG et PostgreSQL/PostGIS, sans modifier vos couches sources.
         </p>
         <hr style="border:none; border-top:1px solid {styles['divider']}; margin:18px 0;"/>
         <table style="margin:0 auto; border-collapse:collapse;">
-        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Author</b></td><td style="padding:6px 14px; color:{styles['body']};">Yadda</td></tr>
-        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Engine</b></td><td style="padding:6px 14px; color:{styles['body']};">Native QGIS Expression Engine</td></tr>
-        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Formats</b></td><td style="padding:6px 14px; color:{styles['body']};">QGIS vector layers, file exports, PostgreSQL</td></tr>
-        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Website</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="{PLUGIN_WEBSITE_URL}">geodeci.xyz</a></td></tr>
-        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Repository</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="{PLUGIN_REPOSITORY_URL}">github.com/yadda07/Transformer</a></td></tr>
-        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Issues</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="{PLUGIN_ISSUES_URL}">github.com/yadda07/Transformer/issues</a></td></tr>
-        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Contact</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="mailto:youcef.geodesien@gmail.com">youcef.geodesien@gmail.com</a></td></tr>
-        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>License</b></td><td style="padding:6px 14px; color:{styles['body']};">Open Source</td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Auteur</b></td><td style="padding:6px 14px; color:{styles['body']};">Youcef ADDA | GEODECI</td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Moteur</b></td><td style="padding:6px 14px; color:{styles['body']};">Expressions natives QGIS &amp; QgsTask</td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Destinations</b></td><td style="padding:6px 14px; color:{styles['body']};">Couches mémoire QGIS, 11 formats fichiers, PostgreSQL/PostGIS</td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Site web</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="{PLUGIN_WEBSITE_URL}">geodeci.xyz</a></td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Dépôt GitHub</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="{PLUGIN_REPOSITORY_URL}">github.com/yadda07/Transformer</a></td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Support / Issues</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="{PLUGIN_ISSUES_URL}">github.com/yadda07/Transformer/issues</a></td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Contact</b></td><td style="padding:6px 14px; color:{styles['code']};"><a href="mailto:youcef.geodesien@gmail.com">youcef.geodesien@gmail.com</a> | <a href="mailto:contact@geodeci.xyz">contact@geodeci.xyz</a></td></tr>
+        <tr><td style="padding:6px 14px; color:{styles['body_muted']};"><b>Licence</b></td><td style="padding:6px 14px; color:{styles['body']};">GPL-2.0-or-later</td></tr>
         </table>
         </div>
         """
 
         msg = QMessageBox(self)
-        msg.setWindowTitle("About Transformer")
+        msg.setWindowTitle("À propos de Transformer")
         msg.setTextFormat(_TextFormat.RichText)
         text_interaction = getattr(Qt, "TextBrowserInteraction", None)
         if text_interaction is None and hasattr(Qt, "TextInteractionFlag"):
@@ -6260,15 +6229,15 @@ Path: {data.get('path', 'N/A')}"""
             f"function=show_about event=exit result={result}",
             severity="debug", module="ui", code="ABOUT_DIALOG_EXIT",
         )
-    
+
     # === CLOSE METHODS ===
-    
+
     def closeEvent(self, event):
         """Handle the window close event"""
         try:
-            # Save the window state
+            self.save_dock_state()
             self.save_window_state()
-            
+
             # Check for unsaved changes
             if self.has_unsaved_changes():
                 reply = QMessageBox.question(
@@ -6277,12 +6246,17 @@ Path: {data.get('path', 'N/A')}"""
                     _MsgBoxButton.Save | _MsgBoxButton.Discard | _MsgBoxButton.Cancel,
                     _MsgBoxButton.Save
                 )
-                
+
                 if reply == _MsgBoxButton.Save:
                     self.save_current_table_config()
                 elif reply == _MsgBoxButton.Cancel:
                     event.ignore()
                     return
+
+            for timer_attr in ('_project_sync_timer', '_show_sync_timer', '_show_dock_timer'):
+                timer = getattr(self, timer_attr, None)
+                if timer is not None:
+                    timer.stop()
 
             # Disconnect QgsProject signals only when the window is actually closing
             project = QgsProject.instance()
@@ -6300,43 +6274,43 @@ Path: {data.get('path', 'N/A')}"""
                     signal.disconnect(slot)
                 except (TypeError, RuntimeError) as exc:
                     log_warning(f"Signal disconnect skipped during close: {exc}")
-            
+
             self.log_message("Application closing", "Info")
             self.window_closed.emit()
             event.accept()
-            
+
         except Exception as e:
             self.log_message(f"Error during application close: {str(e)}", "Error")
             event.accept()
-    
+
     def has_unsaved_changes(self) -> bool:
         """Check for unsaved changes"""
         try:
             table_name = self.table_name_edit.text().strip()
             if not table_name:
                 return False
-            
+
             current_config = self.config_manager.get_table_config(table_name)
             if not current_config:
                 # New configuration not saved
                 calculated_fields = self.smart_fields.get_calculated_fields()
                 return bool(calculated_fields)
-            
+
             # Compare with the current configuration
             current_fields = current_config.get('calculated_fields', {})
             new_fields = self.smart_fields.get_calculated_fields()
-            
+
             return current_fields != new_fields
-            
+
         except Exception as e:
             self.log_message(f"Error checking unsaved changes: {str(e)}", "Error")
             return False
-    
+
     def filter_crs_list(self, text):
         """Filter the CRS list based on search text"""
         if not text or len(text) < 2:
             return
-        
+
         # Search in the list of available CRS
         # This method can be used to filter a dropdown list
         # ou pour afficher des suggestions dans un tooltip
@@ -6348,7 +6322,7 @@ Path: {data.get('path', 'N/A')}"""
                 if crs.isValid():
                     self.crs_search_edit.setToolTip(f"Found: {crs.description()} ({crs.authid()})")
                     return
-            
+
             # Search by name or description
             # Use a simple approach for now
             common_crs = [
@@ -6360,37 +6334,37 @@ Path: {data.get('path', 'N/A')}"""
                 ("32632", "WGS 84 / UTM zone 32N"),
                 ("3395", "WGS 84 / World Mercator"),
             ]
-            
+
             matches = []
             text_lower = text.lower()
             for code, name in common_crs:
                 if text_lower in name.lower() or text_lower in code:
                     matches.append(f"EPSG:{code} - {name}")
-            
+
             if matches:
-                tooltip = "Suggestions:\n" + "\n".join(matches[:5]) # Limite à 5 suggestions
+                tooltip = "Suggestions:\n" + "\n".join(matches[:5])  # Limite à 5 suggestions
                 self.crs_search_edit.setToolTip(tooltip)
             else:
                 self.crs_search_edit.setToolTip("No matches found")
-                
+
         except Exception as e:
             self.log_message(f"Error filtering CRS list: {str(e)}")
-    
+
     def open_crs_dialog(self):
         """Open the QGIS native CRS selection dialog"""
         try:
             from qgis.gui import QgsProjectionSelectionDialog
             dialog = QgsProjectionSelectionDialog(self)
             dialog.setWindowTitle("Select Target CRS")
-            
+
             if dialog.exec() == _DialogCode.Accepted:
                 crs = dialog.crs()
                 if crs.isValid():
                     self.set_target_crs(crs.authid(), crs.description())
-                    
+
         except Exception as e:
             self.log_message(f"Error opening CRS dialog: {str(e)}", "Error")
-    
+
     def set_target_crs(self, crs_code, crs_name):
         """Set the target CRS"""
         try:
@@ -6398,16 +6372,16 @@ Path: {data.get('path', 'N/A')}"""
             if self.target_crs.isValid():
                 self.target_crs_label.setText(f"{crs_name} ({crs_code})")
                 self.crs_search_edit.setText(crs_code)
-                
+
                 # Add to the recent CRS list
                 self.add_to_recent_crs(crs_code, crs_name)
-                
+
                 # Enable reprojection button if it exists
                 if hasattr(self, 'apply_reprojection_button'):
                     self.apply_reprojection_button.setEnabled(True)
-                
+
                 self.log_message(f"Target CRS set to: {crs_code}", "Info")
-                
+
                 # Update configuration preview immediately to show the CRS
                 self.update_configuration_preview()
             else:
@@ -6416,26 +6390,26 @@ Path: {data.get('path', 'N/A')}"""
         except Exception as e:
             self.log_message(f"Error setting target CRS: {str(e)}", "Error")
             self.target_crs = None
-    
+
     def add_to_recent_crs(self, crs_code, crs_name):
         """Add a CRS to the recent list"""
         # Create a tuple (code, name) for the CRS
         new_crs = (crs_code, crs_name)
-        
+
         # Remove the CRS if it already exists in the list
         if new_crs in self.recent_crs_list:
             self.recent_crs_list.remove(new_crs)
-        
+
         # Add the CRS to the beginning of the list
         self.recent_crs_list.insert(0, new_crs)
-        
+
         # Limit to 4 recent CRS maximum
         if len(self.recent_crs_list) > 4:
             self.recent_crs_list = self.recent_crs_list[:4]
-        
+
         # Update the buttons
         self.update_recent_crs_buttons()
-    
+
     def update_recent_crs_buttons(self):
         """Update the Quick Access buttons with recent CRS"""
         for i, btn in enumerate(self.quick_crs_buttons):
@@ -6447,46 +6421,46 @@ Path: {data.get('path', 'N/A')}"""
                 btn.setEnabled(True)
                 btn.setVisible(True)
                 btn.setToolTip(f"{crs_name} ({crs_code})")
-                
+
                 # Remove previous connections to avoid duplicates
                 try:
                     btn.clicked.disconnect()
                 except TypeError:
-                    pass # No connections to disconnect
+                    pass  # No connections to disconnect
                 btn.clicked.connect(lambda checked, c=crs_code, n=crs_name: self.set_target_crs(c, n))
             else:
                 btn.setText("---")
                 btn.setEnabled(False)
                 btn.setVisible(False)
                 btn.setToolTip("")
-    
+
     def apply_reprojection(self):
         """Apply reprojection to all selected shapefiles"""
         try:
             if not hasattr(self, 'target_crs') or not self.target_crs.isValid():
                 QMessageBox.warning(self, "Warning", "Please select a valid target CRS first.")
                 return
-            
+
             # Get all selected items
             selected_items = self.shp_tree.selectedItems()
             if not selected_items:
                 QMessageBox.warning(self, "Warning", "Please select at least one shapefile.")
                 return
-            
+
             # Process each selected shapefile
             successful_count = 0
             failed_count = 0
-            
+
             for item in selected_items:
                 filename = item.data(0, _ItemDataRole.UserRole)
                 if not filename or filename not in self.loaded_shapefiles:
                     self.log_message(f"Skipping invalid file: {filename}", "Warning")
                     failed_count += 1
                     continue
-                
+
                 try:
                     shapefile_info = self.loaded_shapefiles[filename]
-                    
+
                     # Handle both external files and QGIS layers
                     if shapefile_info.get('is_qgis_layer', False):
                         # For QGIS layers, use the layer directly
@@ -6495,7 +6469,7 @@ Path: {data.get('path', 'N/A')}"""
                             self.log_message(f"Invalid QGIS layer: {filename}", "Error")
                             failed_count += 1
                             continue
-                        
+
                         # Create output path based on layer name
                         output_path = Path.home() / f"{filename}_reprojected.shp"
                     else:
@@ -6506,27 +6480,30 @@ Path: {data.get('path', 'N/A')}"""
                             self.log_message(f"Failed to load shapefile: {filename}", "Error")
                             failed_count += 1
                             continue
-                        
+
                         # Create output path next to original file
                         input_path = Path(shapefile_path)
                         output_path = input_path.parent / f"{input_path.stem}_reprojected.shp"
-                    
+
                     # Options de sauvegarde
                     save_options = QgsVectorFileWriter.SaveVectorOptions()
                     save_options.driverName = "ESRI Shapefile"
                     save_options.fileEncoding = "UTF-8"
-                    
+
                     # Transformer CRS
-                    transform_context = QgsCoordinateTransformContext()
+                    transform_context = QgsProject.instance().transformContext()
+                    if self.target_crs and self.target_crs.isValid():
+                        save_options.ct = QgsCoordinateTransform(
+                            layer.crs(), self.target_crs, transform_context
+                        )
                     error = QgsVectorFileWriter.writeAsVectorFormatV3(
-                        layer, str(output_path), transform_context, save_options, 
-                        self.target_crs, None
+                        layer, str(output_path), transform_context, save_options
                     )
-                    
+
                     if error[0] == WriterNoError:
                         self.log_message(f"Reprojection completed: {filename} -> {output_path.name}", "Success")
                         successful_count += 1
-                        
+
                         # Save target CRS in configuration for this specific file
                         try:
                             # Get existing configuration or create basic one
@@ -6543,13 +6520,13 @@ Path: {data.get('path', 'N/A')}"""
                                 calculated_fields = {}
                                 filter_config = {"enabled": False, "expression": ""}
                                 geometry_expression = "$geometry"
-                                
+
                                 # Add basic fields from layer
                                 if layer and layer.isValid():
                                     for field in layer.fields():
                                         field_name = field.name()
                                         calculated_fields[field_name] = f'"{field_name}"'
-                            
+
                             # Save config with the target CRS
                             target_crs_str = self.target_crs.authid() if self.target_crs and self.target_crs.isValid() else None
                             result = self.config_manager.add_table_config(
@@ -6560,23 +6537,23 @@ Path: {data.get('path', 'N/A')}"""
                                 target_crs_str,
                                 geometry_expression
                             )
-                            
+
                             # Log if a previous configuration was replaced
                             if result.get('replaced_table'):
                                 self.log_message(f"Replaced previous configuration for '{result['replaced_table']}' (same source_file)", "Info")
                             self.log_message(f"Target CRS {target_crs_str} saved for '{filename}'", "Info")
-                            
+
                         except Exception as e:
                             self.log_message(f"Warning: Could not save CRS config for {filename}: {str(e)}", "Warning")
-                        
+
                     else:
                         self.log_message(f"Reprojection failed for {filename}: {error[1]}", "Error")
                         failed_count += 1
-                        
+
                 except Exception as e:
                     self.log_message(f"Error reprojecting {filename}: {str(e)}", "Error")
                     failed_count += 1
-            
+
             # Summary message
             total_files = len(selected_items)
             if successful_count > 0:
@@ -6584,65 +6561,65 @@ Path: {data.get('path', 'N/A')}"""
                 if failed_count > 0:
                     summary_msg += f", {failed_count} failed"
                 self.log_message(summary_msg, "Success")
-                
+
                 # Save the configuration manager changes to disk
                 if self.config_manager.save_config():
                     self.log_message("All target CRS configurations saved to disk", "Info")
                 else:
                     self.log_message("Warning: Could not save configurations to disk", "Warning")
-                
+
                 # Reload the shapefiles list if any files were processed
                 self.refresh_shapefile_list()
             else:
                 self.log_message(f"All {total_files} reprojection operations failed", "Error")
-                
+
         except Exception as e:
             error_msg = f"Error during batch reprojection: {str(e)}"
             QMessageBox.critical(self, "Error", error_msg)
             self.log_message(error_msg, "Error")
-    
+
     def apply_json_changes(self):
         """Apply manual JSON changes to the configuration"""
         try:
             import json
-            
+
             # Get the manually edited JSON text
             json_text = self.config_preview.toPlainText().strip()
-            
+
             if not json_text:
                 self.log_message("No JSON configuration to apply", "Warning")
                 return
-            
+
             # Parse the JSON
             try:
                 config = json.loads(json_text)
             except json.JSONDecodeError as e:
                 self.log_message(f"Invalid JSON syntax: {str(e)}", "Error")
                 return
-            
+
             # Validate required fields
             required_fields = ['table_name', 'calculated_fields']
             for field in required_fields:
                 if field not in config:
                     self.log_message(f"Missing required field in JSON: '{field}'", "Error")
                     return
-            
+
             # Apply table name
             if 'table_name' in config:
                 self.table_name_edit.setText(config['table_name'])
-            
+
             # Apply calculated fields and geometry expression
             calculated_fields = config.get('calculated_fields', {})
             geometry_expression = config.get('geometry_expression', '$geometry')
-            
+
             # Update the field widget
             self.smart_fields.set_calculated_fields(calculated_fields, geometry_expression)
-            
+
             # Apply filter configuration
             filter_config = config.get('filter', {})
             if filter_config:
                 self.smart_filter.set_filter_config(filter_config)
-            
+
             # Apply target CRS if specified
             target_crs_str = config.get('target_crs')
             if target_crs_str:
@@ -6657,11 +6634,11 @@ Path: {data.get('path', 'N/A')}"""
                         self.log_message(f"Invalid CRS in JSON: {target_crs_str}", "Warning")
                 except Exception as e:
                     self.log_message(f"Error applying CRS: {str(e)}", "Warning")
-            
+
             # Count applied changes
             fields_count = len(calculated_fields)
             filter_enabled = is_filter_enabled(filter_config)
-            
+
             # Success message
             changes_applied = []
             changes_applied.append(f"{fields_count} fields")
@@ -6669,34 +6646,34 @@ Path: {data.get('path', 'N/A')}"""
                 changes_applied.append("filter enabled")
             if target_crs_str:
                 changes_applied.append("target CRS")
-                
+
             changes_summary = ", ".join(changes_applied)
             self.log_message(f"JSON changes applied: {changes_summary}", "Success")
-            
+
             # Update the configuration preview to show properly formatted JSON
             self.update_configuration_preview()
-            
+
         except Exception as e:
             error_msg = f"Error applying JSON changes: {str(e)}"
             self.log_message(error_msg, "Error")
-    
+
     def update_current_crs(self, item):
         """Update the current CRS display"""
         if item:
             item_data = item.data(0, _ItemDataRole.UserRole)
             filename = None
-            
+
             # Handle new format with source_file and table_name
             if isinstance(item_data, dict):
                 filename = item_data.get('source_file', '')
             else:
                 # Legacy format - direct filename string
                 filename = item_data
-            
+
             if filename and filename in self.loaded_shapefiles:
                 # Use the already loaded information
                 data = self.loaded_shapefiles[filename]
-                
+
                 # Try first with the layer for complete description
                 layer = data.get('layer')
                 if layer and layer.isValid():
@@ -6704,7 +6681,7 @@ Path: {data.get('path', 'N/A')}"""
                     if crs.isValid():
                         self.current_crs_label.setText(f"{crs.description()} ({crs.authid()})")
                         return
-                
+
                 # Fallback: use the stored CRS directly
                 crs_authid = data.get('crs', '')
                 if crs_authid and crs_authid != 'Unknown':
@@ -6718,10 +6695,16 @@ Path: {data.get('path', 'N/A')}"""
                     except Exception:
                         self.current_crs_label.setText(crs_authid)
                     return
-        
+
         self.current_crs_label.setText("Unknown")
-    
+
     # Core transformation functionality
-    
+
     # === NOUVEAUX WIDGETS MODULAIRES (transformation blocs centraux → docks) ===
- 
+
+
+from .recipe_workspace import RecipeWorkspaceMixin
+
+
+class EnhancedTransformerDialog(RecipeWorkspaceMixin, TransformerWindowBase):
+    """Atelier de recettes QGIS 3.40 - 4.x (Qt 5 / Qt 6), avec les services QGIS du plugin."""

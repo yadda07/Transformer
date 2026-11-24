@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Youcef ADDA | GEODECI | https://geodeci.xyz/ | youcef.geodesien@gmail.com
 """Semantic SVG icons for the Activity Log / Log Monitor."""
 
 from qgis.PyQt.QtGui import QIcon

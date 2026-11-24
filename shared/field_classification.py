@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Youcef ADDA | GEODECI | https://geodeci.xyz/ | youcef.geodesien@gmail.com
 """
 Field transformation classification and color convention.
 
@@ -31,10 +32,10 @@ class FieldTransformCategory(Enum):
 # Convention: muted fills that stay readable on light and dark tree backgrounds.
 _CATEGORY_COLORS_LIGHT = {
     FieldTransformCategory.UNCHANGED: None,
-    FieldTransformCategory.TYPE_CAST: QColor("#EDE7F6"),      # purple — type conversion
-    FieldTransformCategory.GEOMETRY: QColor("#E0F2F1"),      # teal — geometric ops
-    FieldTransformCategory.CALCULATED: QColor("#FFF3E0"),     # amber — computed values
-    FieldTransformCategory.NEW_FIELD: QColor("#E3F2FD"),      # blue — new column
+    FieldTransformCategory.TYPE_CAST: QColor("#EDE7F6"),      # purple - type conversion
+    FieldTransformCategory.GEOMETRY: QColor("#E0F2F1"),      # teal - geometric ops
+    FieldTransformCategory.CALCULATED: QColor("#FFF3E0"),     # amber - computed values
+    FieldTransformCategory.NEW_FIELD: QColor("#E3F2FD"),      # blue - new column
 }
 
 _CATEGORY_COLORS_DARK = {

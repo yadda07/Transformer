@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Youcef ADDA | GEODECI | https://geodeci.xyz/ | youcef.geodesien@gmail.com
 """Shared constants used across the Transformer plugin."""
 
 # Common vector file extensions recognized by the plugin.

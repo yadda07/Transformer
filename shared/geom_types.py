@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Youcef ADDA | GEODECI | https://geodeci.xyz/ | youcef.geodesien@gmail.com
 """
 Centralized QgsWkbTypes geometry type mappings.
 
@@ -6,7 +7,6 @@ Used across transformer.py and postgresql_integration.py to avoid
 divergence when new geometry types are introduced.
 """
 
-from qgis.core import QgsWkbTypes
 from .compat import GeomPoint, GeomLine, GeomPolygon, GeomNull, GeomUnknown
 
 
@@ -29,6 +29,29 @@ WKB_TO_PG_TYPE = {
     GeomLine: "MULTILINESTRING",
     GeomPolygon: "MULTIPOLYGON",
 }
+
+PG_GEOM_TYPE_NAMES = frozenset({
+    "GEOMETRY",
+    "POINT",
+    "MULTIPOINT",
+    "LINESTRING",
+    "MULTILINESTRING",
+    "POLYGON",
+    "MULTIPOLYGON",
+    "POINTZ",
+    "MULTIPOINTZ",
+    "LINESTRINGZ",
+    "MULTILINESTRINGZ",
+    "POLYGONZ",
+    "MULTIPOLYGONZ",
+})
+
+
+def normalize_pg_geom_type(pg_geom_type: str) -> str:
+    normalized = (pg_geom_type or "GEOMETRY").upper()
+    if normalized in PG_GEOM_TYPE_NAMES:
+        return normalized
+    return "GEOMETRY"
 
 
 def get_geom_name(wkb_type) -> str:
